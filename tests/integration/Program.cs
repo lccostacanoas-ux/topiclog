@@ -112,6 +112,53 @@ try
         using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
         Assert(doc.RootElement.GetProperty("openapi").GetString() == "3.1.0", "Versão OpenAPI deve ser 3.1.0.");
     }).ConfigureAwait(false);
+
+    await RunTestAsync("CORS permite origem http://localhost:3000 e expõe cabeçalho X-Correlation-Id", async () =>
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/system/feature-flags");
+        request.Headers.Add("Origin", "http://localhost:3000");
+
+        using var response = await client.SendAsync(request).ConfigureAwait(false);
+        Assert(response.StatusCode == HttpStatusCode.OK, "Requisição CORS deve retornar 200 OK.");
+
+        string allowOrigin = response.Headers.GetValues("Access-Control-Allow-Origin").FirstOrDefault() ?? string.Empty;
+        string exposeHeaders = string.Join(",", response.Headers.GetValues("Access-Control-Expose-Headers"));
+
+        Assert(allowOrigin == "http://localhost:3000", $"Access-Control-Allow-Origin esperado 'http://localhost:3000', recebido '{allowOrigin}'.");
+        Assert(exposeHeaders.Contains(CorrelationIdMiddleware.HeaderName, StringComparison.OrdinalIgnoreCase),
+            "Access-Control-Expose-Headers deve incluir X-Correlation-Id.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("DOCS/api/openapi-v1.json existe e é um contrato OpenAPI 3.1.0 válido", async () =>
+    {
+        string specPath = Path.Combine(Directory.GetCurrentDirectory(), "DOCS", "api", "openapi-v1.json");
+        Assert(File.Exists(specPath), $"Arquivo OpenAPI não encontrado em {specPath}.");
+
+        await using var stream = File.OpenRead(specPath);
+        using var doc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        Assert(doc.RootElement.GetProperty("openapi").GetString() == "3.1.0", "openapi-v1.json deve ser versão 3.1.0.");
+        Assert(doc.RootElement.GetProperty("paths").TryGetProperty("/api/v1/system/feature-flags", out _),
+            "openapi-v1.json deve documentar /api/v1/system/feature-flags.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("Frontend (apps/web) contém tokens do Design System e microtextos obrigatórios D01–D17", async () =>
+    {
+        string rootDir = Directory.GetCurrentDirectory();
+        string tokensCss = await File.ReadAllTextAsync(Path.Combine(rootDir, "apps", "web", "src", "styles", "tokens.css")).ConfigureAwait(false);
+        string pageTsx = await File.ReadAllTextAsync(Path.Combine(rootDir, "apps", "web", "src", "app", "page.tsx")).ConfigureAwait(false);
+        string breakdownTsx = await File.ReadAllTextAsync(Path.Combine(rootDir, "apps", "web", "src", "components", "FinancialBreakdownPreview.tsx")).ConfigureAwait(false);
+
+        Assert(tokensCss.Contains("#155EEF", StringComparison.OrdinalIgnoreCase), "Token --color-primary (#155EEF) ausente.");
+        Assert(tokensCss.Contains("#16803C", StringComparison.OrdinalIgnoreCase), "Token --color-success (#16803C) ausente.");
+        Assert(tokensCss.Contains("#B54708", StringComparison.OrdinalIgnoreCase), "Token --color-warning (#B54708) ausente.");
+        Assert(tokensCss.Contains("#B42318", StringComparison.OrdinalIgnoreCase), "Token --color-danger (#B42318) ausente.");
+
+        Assert(pageTsx.Contains("João Monlevade", StringComparison.Ordinal), "Menção à prioridade João Monlevade ausente na Home.");
+        Assert(pageTsx.Contains("Belo Horizonte", StringComparison.Ordinal), "Menção à prioridade Belo Horizonte ausente na Home.");
+        Assert(breakdownTsx.Contains("Valor do transporte", StringComparison.Ordinal), "Microtexto oficial 'Valor do transporte' ausente.");
+        Assert(breakdownTsx.Contains("Você receberá", StringComparison.Ordinal), "Microtexto oficial 'Você receberá' ausente.");
+        Assert(breakdownTsx.Contains("Crédito bancário pendente", StringComparison.Ordinal), "Microtexto oficial 'Crédito bancário pendente' ausente.");
+    }).ConfigureAwait(false);
 }
 finally
 {

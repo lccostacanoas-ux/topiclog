@@ -55,11 +55,24 @@ namespace TopicLog.Api
                 ?? builder.Configuration.GetValue<bool>("FeatureFlags:RunWorkerInProcess", true);
             builder.Services.AddTopicLogWorker(registerHostedService: runWorkerInProcess);
 
+            // 4. CORS restrito ao Frontend Next.js local com exposição de X-Correlation-Id
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("LocalWebFrontend", policy =>
+                {
+                    policy.WithOrigins("http://localhost:3000", "http://127.0.0.1:3000")
+                          .WithMethods("GET", "POST", "PATCH", "OPTIONS")
+                          .WithHeaders("Content-Type", "Accept", CorrelationIdMiddleware.HeaderName, "Idempotency-Key")
+                          .WithExposedHeaders(CorrelationIdMiddleware.HeaderName);
+                });
+            });
+
             var app = builder.Build();
 
-            // 4. Pipeline de Middlewares (Correlação + ProblemDetails RFC 9457)
+            // 5. Pipeline de Middlewares (Correlação + ProblemDetails RFC 9457 + CORS)
             app.UseMiddleware<CorrelationIdMiddleware>();
             app.UseMiddleware<GlobalExceptionMiddleware>();
+            app.UseCors("LocalWebFrontend");
 
             MapSystemAndHealthEndpoints(app);
 

@@ -1,0 +1,63 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Topic Log API — Monólito Modular",
+    "version": "1.0.0-pr00",
+    "description": "API REST da plataforma Topic Log (Minas Gerais — Piloto João Monlevade e Belo Horizonte). Ambiente de Testes / Sandbox."
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Liveness probe e uso de memória",
+        "responses": {
+          "200": {
+            "description": "API viva"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Readiness probe, provedores sandbox e estado do worker",
+        "responses": {
+          "200": {
+            "description": "API pronta"
+          }
+        }
+      }
+    },
+    "/api/v1/system/feature-flags": {
+      "get": {
+        "summary": "Retorna feature flags e regras vinculantes v2.0 (D01-D17)",
+        "responses": {
+          "200": {
+            "description": "Configurações ativas"
+          }
+        }
+      }
+    },
+    "/api/v1/system/modules": {
+      "get": {
+        "summary": "Lista os 19 módulos do monólito modular",
+        "responses": {
+          "200": {
+            "description": "Lista de módulos"
+          }
+        }
+      }
+    },
+    "/api/v1/system/validate-weight": {
+      "post": {
+        "summary": "Valida peso em gramas por modal (5kg bicicleta, 20kg moto/carro)",
+        "responses": {
+          "200": {
+            "description": "Peso válido"
+          },
+          "422": {
+            "description": "ProblemDetails — Peso excedido"
+          }
+        }
+      }
+    }
+  }
+}

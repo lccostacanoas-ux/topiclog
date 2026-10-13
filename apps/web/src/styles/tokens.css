@@ -1,0 +1,167 @@
+/* ==========================================================================
+   TOPIC LOG — Design System Tokens (04-Design-System.md)
+   Propostas iniciais sujeitas à aprovação estética final; contraste WCAG 2.2 AA
+   ========================================================================== */
+
+:root {
+  /* Cores Semânticas (04-Design-System.md Seção 2) */
+  --color-primary: #155EEF;
+  --color-primary-hover: #004EEB;
+  --color-success: #16803C;
+  --color-warning: #B54708;
+  --color-danger: #B42318;
+  --color-text: #101828;
+  --color-muted: #475467;
+  --color-surface: #FFFFFF;
+  --color-background: #F8FAFC;
+  --color-border: #D0D5DD;
+
+  /* Superfícies suaves de apoio com contraste WCAG AA */
+  --color-success-bg: #ECFDF3;
+  --color-warning-bg: #FFFAEB;
+  --color-danger-bg: #FEF3F2;
+  --color-primary-bg: #EFF4FF;
+
+  /* Raios de borda */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Ritmo de espaçamento */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Tipografia */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Acessibilidade WCAG 2.2 AA — Foco visível de teclado */
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  top: -48px;
+  left: var(--space-4);
+  background: var(--color-primary);
+  color: var(--color-surface);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 600;
+  z-index: 1000;
+}
+
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+/* Layout e Containers (Grade 12 colunas desktop / 4 mobile, máx ~1200px) */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+.env-banner {
+  background-color: var(--color-warning-bg);
+  border-bottom: 1px solid var(--color-warning);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+
+.grid-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .grid-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grid-two {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.status-pill--success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.status-pill--warning {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.status-pill--danger {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.status-pill--neutral {
+  background-color: var(--color-primary-bg);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
