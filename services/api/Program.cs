@@ -7,6 +7,7 @@ using TopicLog.Api.Common.Options;
 using TopicLog.Api.Infrastructure.Providers;
 using TopicLog.Api.Modules;
 using TopicLog.Api.Modules.Identity;
+using TopicLog.Api.Modules.Verification;
 using TopicLog.Worker;
 using TopicLog.Worker.Services;
 
@@ -51,8 +52,9 @@ namespace TopicLog.Api
             builder.Services.AddSingleton<IMapsProvider, LocalFreeMapsProvider>();
             builder.Services.AddSingleton<IObjectStorageProvider, LocalDiskObjectStorageProvider>();
 
-            // 3. Módulo de Identidade, Criptografia, Sessões e RBAC/ABAC (PR-01.1)
+            // 3. Módulos de Identidade (PR-01.1) e Verificação KYC / Elegibilidade Bilateral (PR-01.2)
             builder.Services.AddTopicLogIdentityModule(builder.Configuration);
+            builder.Services.AddTopicLogVerificationModule();
 
             // 4. Worker assíncrono acoplado In-Process para otimizar uso de RAM (~8 GB)
             bool runWorkerInProcess = overrideRunWorkerInProcess
@@ -80,6 +82,7 @@ namespace TopicLog.Api
 
             MapSystemAndHealthEndpoints(app);
             app.MapTopicLogIdentityEndpoints();
+            app.MapTopicLogVerificationEndpoints();
 
             return app;
         }
@@ -214,14 +217,14 @@ namespace TopicLog.Api
                 return Results.Ok(validation);
             });
 
-            // Especificação OpenAPI 3.1.0 (PR-00 + PR-01.1)
+            // Especificação OpenAPI 3.1.0 (PR-00 + PR-01.1 + PR-01.2)
             app.MapGet("/openapi/v1.json", () => Results.Ok(new
             {
                 openapi = "3.1.0",
                 info = new
                 {
                     title = "Topic Log API — Monólito Modular",
-                    version = "1.1.0-pr01.1",
+                    version = "1.2.0-pr01.2",
                     description = "API REST da plataforma Topic Log (Minas Gerais — Piloto João Monlevade e Belo Horizonte). Ambiente de Testes / Sandbox."
                 },
                 paths = new Dictionary<string, object>
@@ -238,7 +241,14 @@ namespace TopicLog.Api
                     ["/api/v1/me"] = new { get = new { summary = "Perfil privado do próprio usuário autenticado" }, patch = new { summary = "Atualização do próprio perfil e papéis SENDER/CARRIER/RECIPIENT" } },
                     ["/api/v1/users/{userId}/private-profile"] = new { get = new { summary = "Perfil privado protegido por ABAC (403 em acesso cruzado)" }, patch = new { summary = "Edição protegida por ABAC (403 em acesso cruzado)" } },
                     ["/api/v1/users/{userId}/public-card"] = new { get = new { summary = "Cartão público mínimo para contraparte sem exposição de PII (LGPD)" } },
-                    ["/api/v1/audit/events"] = new { get = new { summary = "Trilha de auditoria protegida por RBAC (exclusivo SUPPORT / GENERAL_ADMIN)" } }
+                    ["/api/v1/audit/events"] = new { get = new { summary = "Trilha de auditoria protegida por RBAC (exclusivo SUPPORT / GENERAL_ADMIN)" } },
+                    ["/api/v1/kyc/me"] = new { get = new { summary = "Dossiê de KYC progressivo do próprio titular autenticado" } },
+                    ["/api/v1/kyc/users/{userId}"] = new { get = new { summary = "Dossiê de KYC protegido por ABAC (titular ou SUPPORT/GENERAL_ADMIN)" } },
+                    ["/api/v1/kyc/cases/submit"] = new { post = new { summary = "Submissão dos 4 checks obrigatórios por referência segura sem biometria bruta (D05)" } },
+                    ["/api/v1/kyc/cases/{caseId}/review-decision"] = new { post = new { summary = "Decisão de revisão protegida por RBAC e segregação de funções (bloqueia autoaprovação)" } },
+                    ["/api/v1/kyc/cases/{caseId}/reanalysis"] = new { post = new { summary = "Solicitação de reanálise pelo titular de caso REJECTED/EXPIRED" } },
+                    ["/api/v1/kyc/evaluate-bilateral"] = new { post = new { summary = "Validação independente de elegibilidade bilateral Remetente + Transportador (D05)" } },
+                    ["/api/v1/terms/current"] = new { get = new { summary = "Manifesto vigente dos Termos de Uso com distribuição legal de responsabilidades (D08)" } }
                 }
             }));
         }

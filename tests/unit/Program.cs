@@ -8,6 +8,7 @@ using TopicLog.Api.Common.Options;
 using TopicLog.Api.Infrastructure.Providers;
 using TopicLog.Api.Modules;
 using TopicLog.Api.Modules.Identity;
+using TopicLog.Api.Modules.Verification;
 
 var tests = new List<(string Name, Action Execute)>
 {
@@ -319,11 +320,214 @@ var tests = new List<(string Name, Action Execute)>
         Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS kyc_cases", StringComparison.Ordinal), "Tabela kyc_cases ausente no DDL.");
         Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS kyc_checks", StringComparison.Ordinal), "Tabela kyc_checks ausente no DDL.");
         Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS audit_events", StringComparison.Ordinal), "Tabela audit_events ausente no DDL.");
+    }),
+
+    ("PR-01.2 (Máquina de Estados KYC): Valida transições permitidas e bloqueia pulo de etapas (NOT_STARTED -> VERIFIED) ou aprovação pelo titular", () =>
+    {
+        // Transições válidas
+        VerificationApplicationService.ValidateStateTransition(KycStatus.NOT_STARTED, KycStatus.IN_REVIEW, isOwnerSubmissionOrAppeal: true, isAuthorizedReviewerDecision: false);
+        VerificationApplicationService.ValidateStateTransition(KycStatus.IN_REVIEW, KycStatus.VERIFIED, isOwnerSubmissionOrAppeal: false, isAuthorizedReviewerDecision: true);
+        VerificationApplicationService.ValidateStateTransition(KycStatus.IN_REVIEW, KycStatus.REJECTED, isOwnerSubmissionOrAppeal: false, isAuthorizedReviewerDecision: true);
+        VerificationApplicationService.ValidateStateTransition(KycStatus.REJECTED, KycStatus.IN_REVIEW, isOwnerSubmissionOrAppeal: true, isAuthorizedReviewerDecision: false);
+        VerificationApplicationService.ValidateStateTransition(KycStatus.VERIFIED, KycStatus.EXPIRED, isOwnerSubmissionOrAppeal: false, isAuthorizedReviewerDecision: true);
+        VerificationApplicationService.ValidateStateTransition(KycStatus.EXPIRED, KycStatus.IN_REVIEW, isOwnerSubmissionOrAppeal: true, isAuthorizedReviewerDecision: false);
+
+        // Negativo 1: Pulo direto NOT_STARTED -> VERIFIED
+        bool blockedSkip = false;
+        try
+        {
+            VerificationApplicationService.ValidateStateTransition(KycStatus.NOT_STARTED, KycStatus.VERIFIED, isOwnerSubmissionOrAppeal: false, isAuthorizedReviewerDecision: true);
+        }
+        catch (DomainRuleViolationException ex) when (ex.RuleCode == "INVALID_KYC_STATE_TRANSITION")
+        {
+            blockedSkip = true;
+        }
+        Assert(blockedSkip, "Deve bloquear pulo direto de NOT_STARTED para VERIFIED.");
+
+        // Negativo 2: Titular tentando aprovar IN_REVIEW -> VERIFIED
+        bool blockedOwnerApprove = false;
+        try
+        {
+            VerificationApplicationService.ValidateStateTransition(KycStatus.IN_REVIEW, KycStatus.VERIFIED, isOwnerSubmissionOrAppeal: true, isAuthorizedReviewerDecision: false);
+        }
+        catch (DomainRuleViolationException ex) when (ex.RuleCode == "INVALID_KYC_STATE_TRANSITION")
+        {
+            blockedOwnerApprove = true;
+        }
+        Assert(blockedOwnerApprove, "Titular jamais pode executar transição para VERIFIED.");
+    }),
+
+    ("PR-01.2 (LGPD D05): ValidateSafeEvidenceReference bloqueia payloads de biometria facial bruta (data:image, base64, templates)", () =>
+    {
+        string safeRef = VerificationApplicationService.ValidateSafeEvidenceReference("fac_partner_session_001", "PartnerFacialSessionRef");
+        Assert(safeRef == "fac_partner_session_001", "Referência opaca curta deve ser aceita.");
+
+        bool blockedDataUri = false;
+        try
+        {
+            _ = VerificationApplicationService.ValidateSafeEvidenceReference("data:image/jpeg;base64,/9j/4AAQSkZJRg==", "PartnerFacialSessionRef");
+        }
+        catch (DomainRuleViolationException ex) when (ex.RuleCode == "RAW_BIOMETRY_PAYLOAD_FORBIDDEN")
+        {
+            blockedDataUri = true;
+        }
+        Assert(blockedDataUri, "Payload data:image Base64 deve ser bloqueado com RAW_BIOMETRY_PAYLOAD_FORBIDDEN.");
+    }),
+
+    ("PR-01.2 (4 Checks Obrigatórios D05): EnsureAllFourChecksPassed bloqueia aprovação se qualquer check estiver PENDING ou FAILED", () =>
+    {
+        Guid caseId = Guid.NewGuid();
+        var incompleteChecks = new List<KycCheckEntity>
+        {
+            new() { KycCaseId = caseId, CheckType = KycCheckType.CPF_STATUS, Status = KycCheckStatus.PASSED, EvidenceReference = "ref1" },
+            new() { KycCaseId = caseId, CheckType = KycCheckType.IDENTITY_DOCUMENT, Status = KycCheckStatus.PASSED, EvidenceReference = "ref2" },
+            new() { KycCaseId = caseId, CheckType = KycCheckType.ADDRESS_PROOF, Status = KycCheckStatus.PASSED, EvidenceReference = "ref3" },
+            new() { KycCaseId = caseId, CheckType = KycCheckType.FACIAL_BIOMETRY_PARTNER, Status = KycCheckStatus.PENDING, EvidenceReference = "ref4" }
+        };
+
+        bool blockedIncomplete = false;
+        try
+        {
+            VerificationApplicationService.EnsureAllFourChecksPassed(incompleteChecks);
+        }
+        catch (DomainRuleViolationException ex) when (ex.RuleCode == "KYC_CHECKS_NOT_ALL_PASSED")
+        {
+            blockedIncomplete = true;
+        }
+        Assert(blockedIncomplete, "Aprovação deve ser bloqueada quando FACIAL_BIOMETRY_PARTNER ainda está PENDING.");
+
+        incompleteChecks[3].Status = KycCheckStatus.PASSED;
+        VerificationApplicationService.EnsureAllFourChecksPassed(incompleteChecks);
+    }),
+
+    ("PR-01.2 (D08): Manifesto de Termos vigentes distribui responsabilidades e proíbe cláusula de isenção absoluta", () =>
+    {
+        var secOpts = Options.Create(new SecurityOptions());
+        var keyMat = new RuntimeKeyMaterialProvider(secOpts);
+        var crypto = new SecurityCryptoService(secOpts, keyMat);
+        var auditRepo = new InMemoryAuditRepository();
+        var auth = new ResourceAuthorizationService(crypto, auditRepo);
+        using var service = new VerificationApplicationService(
+            new InMemoryUserRepository(),
+            new InMemoryKycRepository(),
+            auditRepo,
+            new SandboxKycProvider(),
+            crypto,
+            auth,
+            secOpts);
+
+        var manifest = service.GetCurrentTermsManifest();
+        Assert(!manifest.HasAbsolutePlatformExemptionClause, "D08 proíbe cláusula de isenção absoluta da plataforma.");
+        Assert(manifest.Responsibilities.Count == 3, "Deve explicitar responsabilidades de SENDER, CARRIER e TOPIC_LOG_PLATFORM.");
+    }),
+
+    ("PR-01.2 (Concorrência e Idempotência): Chamadas concorrentes (Task.WhenAll) a ReviewKycDecisionAsync permitem apenas 1 aprovação e rejeitam duplicatas", () =>
+    {
+        var secOpts = Options.Create(new SecurityOptions());
+        var keyMat = new RuntimeKeyMaterialProvider(secOpts);
+        var crypto = new SecurityCryptoService(secOpts, keyMat);
+        var userRepo = new InMemoryUserRepository();
+        var kycRepo = new InMemoryKycRepository();
+        var auditRepo = new InMemoryAuditRepository();
+        var auth = new ResourceAuthorizationService(crypto, auditRepo);
+        using var service = new VerificationApplicationService(
+            userRepo,
+            kycRepo,
+            auditRepo,
+            new SandboxKycProvider(),
+            crypto,
+            auth,
+            secOpts);
+
+        Guid ownerId = Guid.NewGuid();
+        Guid reviewerId = Guid.NewGuid();
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        userRepo.CreateAsync(
+            new UserEntity
+            {
+                Id = ownerId,
+                Email = "owner.conc@example.test",
+                PhoneEncrypted = crypto.EncryptPhone("31900001111"),
+                PhoneMasked = "(**) *****-1111",
+                PasswordHash = crypto.HashPassword("SenhaConc#01"),
+                Status = UserAccountStatus.ACTIVE,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc
+            },
+            new UserProfileEntity
+            {
+                UserId = ownerId,
+                DisplayName = "Owner Concorrência",
+                Roles = [UserRole.SENDER],
+                KycStatus = KycStatus.NOT_STARTED,
+                TermsAcceptedVersion = secOpts.Value.RequiredTermsVersion,
+                TermsAcceptedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc
+            },
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        var ownerActor = new AuthenticatedActor(ownerId, "owner.conc@example.test", [UserRole.SENDER], KycStatus.NOT_STARTED, "jti-owner");
+        var reviewerActor = new AuthenticatedActor(reviewerId, "rev.conc@example.test", [UserRole.SUPPORT], KycStatus.VERIFIED, "jti-rev");
+
+        var submitted = service.SubmitKycCaseAsync(
+            ownerActor,
+            new SubmitKycCaseRequest(
+                Cpf: "55566677708",
+                IdentityDocumentRef: "private/kyc/doc_c1",
+                AddressProofRef: "private/kyc/addr_c1",
+                PartnerFacialSessionRef: "fac_sbx_c1",
+                ConsentGiven: true),
+            "corr-conc-submit",
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        Guid caseId = submitted.ActiveCaseId ?? throw new InvalidOperationException("ActiveCaseId ausente.");
+
+        KycCheckReviewInput[] checksPassed =
+        [
+            new("CPF_STATUS", "PASSED"),
+            new("IDENTITY_DOCUMENT", "PASSED"),
+            new("ADDRESS_PROOF", "PASSED"),
+            new("FACIAL_BIOMETRY_PARTNER", "PASSED")
+        ];
+
+        var decisionReq = new ReviewKycDecisionRequest(
+            TargetStatus: "VERIFIED",
+            CheckResults: checksPassed,
+            JustificationOrRejectionReason: "Aprovação concorrente controlada",
+            ValidityDays: 365);
+
+        int successCount = 0;
+        int duplicateBlockedCount = 0;
+
+        var tasks = Enumerable.Range(0, 5).Select(async idx =>
+        {
+            try
+            {
+                await Task.Yield();
+                _ = await service.ReviewKycDecisionAsync(
+                    reviewerActor,
+                    caseId,
+                    decisionReq,
+                    $"corr-conc-{idx}",
+                    CancellationToken.None).ConfigureAwait(false);
+                Interlocked.Increment(ref successCount);
+            }
+            catch (DomainRuleViolationException ex) when (ex.RuleCode == "INVALID_KYC_STATE_TRANSITION")
+            {
+                Interlocked.Increment(ref duplicateBlockedCount);
+            }
+        });
+
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+        Assert(successCount == 1, $"Exatamente 1 aprovação concorrente deve ter sucesso, observado {successCount}.");
+        Assert(duplicateBlockedCount == 4, $"As outras 4 requisições concorrentes devem ser bloqueadas com INVALID_KYC_STATE_TRANSITION, observado {duplicateBlockedCount}.");
     })
 };
 
 Console.WriteLine("======================================================================");
-Console.WriteLine("TopicLog.UnitTests (.NET 10 LTS) — Executando suíte PR-00.2 + PR-01.1");
+Console.WriteLine("TopicLog.UnitTests (.NET 10 LTS) — Executando suíte PR-00.2 + PR-01.1 + PR-01.2");
 Console.WriteLine("======================================================================");
 
 int passed = 0;

@@ -27,6 +27,19 @@ public sealed record KycVerificationStatusResult(
     DateTimeOffset? VerifiedAtUtc,
     DateTimeOffset? ExpiresAtUtc);
 
+public sealed record KycSandboxSubmissionRequest(
+    Guid UserId,
+    string CpfHash,
+    string IdentityDocumentReference,
+    string AddressProofReference,
+    string PartnerFacialSessionReference);
+
+public sealed record KycSandboxSubmissionReceipt(
+    string ProviderName,
+    string ProviderReferenceId,
+    DateTimeOffset ReceivedAtUtc,
+    bool IsSandboxMode);
+
 /// <summary>
 /// Contrato desacoplado de verificação de identidade e biometria facial (D05).
 /// Proibido armazenar biometria facial bruta no banco da Topic Log (LGPD / Minimização).
@@ -37,5 +50,9 @@ public interface IKycProvider
 
     Task<KycVerificationStatusResult> GetVerificationStatusAsync(
         Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<KycSandboxSubmissionReceipt> RegisterSandboxSubmissionAsync(
+        KycSandboxSubmissionRequest request,
         CancellationToken cancellationToken);
 }

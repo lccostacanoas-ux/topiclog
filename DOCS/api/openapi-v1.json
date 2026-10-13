@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Topic Log API — Monólito Modular",
-    "version": "1.1.0-pr01.1",
+    "version": "1.2.0-pr01.2",
     "description": "API REST da plataforma Topic Log (Minas Gerais — Piloto João Monlevade e Belo Horizonte). Ambiente de Testes / Sandbox."
   },
   "paths": {
@@ -135,6 +135,41 @@
     "/api/v1/audit/events": {
       "get": {
         "summary": "Trilha de auditoria protegida por RBAC (exclusivo SUPPORT / GENERAL_ADMIN)"
+      }
+    },
+    "/api/v1/kyc/me": {
+      "get": {
+        "summary": "Dossiê de KYC progressivo do próprio titular autenticado"
+      }
+    },
+    "/api/v1/kyc/users/{userId}": {
+      "get": {
+        "summary": "Dossiê de KYC protegido por ABAC (titular ou SUPPORT/GENERAL_ADMIN)"
+      }
+    },
+    "/api/v1/kyc/cases/submit": {
+      "post": {
+        "summary": "Submissão dos 4 checks obrigatórios por referência segura sem biometria bruta (D05)"
+      }
+    },
+    "/api/v1/kyc/cases/{caseId}/review-decision": {
+      "post": {
+        "summary": "Decisão de revisão protegida por RBAC e segregação de funções (bloqueia autoaprovação)"
+      }
+    },
+    "/api/v1/kyc/cases/{caseId}/reanalysis": {
+      "post": {
+        "summary": "Solicitação de reanálise pelo titular de caso REJECTED/EXPIRED"
+      }
+    },
+    "/api/v1/kyc/evaluate-bilateral": {
+      "post": {
+        "summary": "Validação independente de elegibilidade bilateral Remetente + Transportador (D05)"
+      }
+    },
+    "/api/v1/terms/current": {
+      "get": {
+        "summary": "Manifesto vigente dos Termos de Uso com distribuição legal de responsabilidades (D08)"
       }
     }
   }

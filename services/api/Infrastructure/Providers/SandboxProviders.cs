@@ -109,6 +109,20 @@ public sealed class SandboxKycProvider : IKycProvider
             VerifiedAtUtc: null,
             ExpiresAtUtc: null));
     }
+
+    public Task<KycSandboxSubmissionReceipt> RegisterSandboxSubmissionAsync(
+        KycSandboxSubmissionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return Task.FromResult(new KycSandboxSubmissionReceipt(
+            ProviderName: ProviderName,
+            ProviderReferenceId: $"kyc_sandbox_{Guid.NewGuid():N}",
+            ReceivedAtUtc: DateTimeOffset.UtcNow,
+            IsSandboxMode: true));
+    }
 }
 
 /// <summary>

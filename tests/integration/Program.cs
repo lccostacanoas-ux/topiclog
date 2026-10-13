@@ -7,11 +7,13 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using TopicLog.Api;
+using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Middleware;
 using TopicLog.Api.Modules.Identity;
+using TopicLog.Api.Modules.Verification;
 
 Console.WriteLine("======================================================================");
-Console.WriteLine("TopicLog.IntegrationTests (.NET 10 LTS) — Executando suíte HTTP PR-00 + PR-01.1");
+Console.WriteLine("TopicLog.IntegrationTests (.NET 10 LTS) — Executando suíte HTTP PR-00 + PR-01.1 + PR-01.2");
 Console.WriteLine("======================================================================");
 
 var sw = Stopwatch.StartNew();
@@ -391,6 +393,482 @@ try
             password = "SenhaSintetica#02"
         }).ConfigureAwait(false);
         Assert((int)blockedCorrectPasswordResp.StatusCode == 423, "Login durante lockout ativo deve retornar HTTP 423 Locked.");
+    }).ConfigureAwait(false);
+
+    // =========================================================================
+    // Suíte de Integração HTTP da PR-01.2 (KYC Progressivo, SoD, Reanálise e D05/D08)
+    // =========================================================================
+    Guid userACaseId = Guid.Empty;
+    Guid carrierActiveUserId = Guid.Empty;
+    string carrierActiveToken = string.Empty;
+    Guid carrierActiveCaseId = Guid.Empty;
+
+    string supportOperatorToken = string.Empty;
+    Guid supportOperatorId = Guid.Empty;
+    Guid supportSelfCaseId = Guid.Empty;
+
+    KycCheckReviewInput[] allPassedChecks =
+    [
+        new("CPF_STATUS", "PASSED"),
+        new("IDENTITY_DOCUMENT", "PASSED"),
+        new("ADDRESS_PROOF", "PASSED"),
+        new("FACIAL_BIOMETRY_PARTNER", "PASSED")
+    ];
+
+    KycCheckReviewInput[] addressFailedChecks =
+    [
+        new("CPF_STATUS", "PASSED"),
+        new("IDENTITY_DOCUMENT", "PASSED"),
+        new("ADDRESS_PROOF", "FAILED"),
+        new("FACIAL_BIOMETRY_PARTNER", "PASSED")
+    ];
+
+    await RunTestAsync("PR-01.2 (D08): GET /api/v1/terms/current retorna manifesto de responsabilidade distribuída sem cláusula de isenção absoluta", async () =>
+    {
+        using var resp = await client.GetAsync("/api/v1/terms/current").ConfigureAwait(false);
+        Assert(resp.StatusCode == HttpStatusCode.OK, "Endpoint /api/v1/terms/current deve retornar 200 OK.");
+
+        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        var root = doc.RootElement;
+        Assert(root.GetProperty("decisionCode").GetString() == "D08", "decisionCode deve ser D08.");
+        Assert(!root.GetProperty("hasAbsolutePlatformExemptionClause").GetBoolean(), "hasAbsolutePlatformExemptionClause deve ser false (D08).");
+        Assert(root.GetProperty("responsibilities").GetArrayLength() == 3, "Devem constar cláusulas para SENDER, CARRIER e TOPIC_LOG_PLATFORM.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (LGPD D05): POST /api/v1/kyc/cases/submit sem consentimento ou com biometria facial bruta retorna 400 Bad Request", async () =>
+    {
+        // 1. Sem consentimento LGPD
+        using var noConsentReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "00000000191",
+                identityDocumentRef = "private/kyc/doc_sintetico_a1",
+                addressProofRef = "private/kyc/addr_sintetico_a1",
+                partnerFacialSessionRef = "fac_sandbox_session_a1",
+                consentGiven = false
+            })
+        };
+        noConsentReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var noConsentResp = await client.SendAsync(noConsentReq).ConfigureAwait(false);
+        Assert(noConsentResp.StatusCode == HttpStatusCode.BadRequest, "Submissão sem consentGiven=true deve retornar 400.");
+
+        using var noConsentDoc = await JsonDocument.ParseAsync(await noConsentResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(noConsentDoc.RootElement.GetProperty("ruleCode").GetString() == "KYC_CONSENT_REQUIRED", "ruleCode esperado KYC_CONSENT_REQUIRED.");
+
+        // 2. Envio de imagem/biometria facial bruta Base64
+        using var rawBioReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "00000000191",
+                identityDocumentRef = "private/kyc/doc_sintetico_a1",
+                addressProofRef = "private/kyc/addr_sintetico_a1",
+                partnerFacialSessionRef = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD==",
+                consentGiven = true
+            })
+        };
+        rawBioReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var rawBioResp = await client.SendAsync(rawBioReq).ConfigureAwait(false);
+        Assert(rawBioResp.StatusCode == HttpStatusCode.BadRequest, "Envio de biometria bruta deve retornar 400.");
+
+        using var rawBioDoc = await JsonDocument.ParseAsync(await rawBioResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(rawBioDoc.RootElement.GetProperty("ruleCode").GetString() == "RAW_BIOMETRY_PAYLOAD_FORBIDDEN", "ruleCode esperado RAW_BIOMETRY_PAYLOAD_FORBIDDEN.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (D05): POST /api/v1/kyc/cases/submit registra 4 checks por referência segura e transiciona titular para IN_REVIEW", async () =>
+    {
+        using var submitReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "00000000191",
+                identityDocumentRef = "private/kyc/doc_sintetico_a1",
+                addressProofRef = "private/kyc/addr_sintetico_a1",
+                partnerFacialSessionRef = "fac_sandbox_session_a1",
+                consentGiven = true
+            })
+        };
+        submitReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var submitResp = await client.SendAsync(submitReq).ConfigureAwait(false);
+        Assert(submitResp.StatusCode == HttpStatusCode.OK, $"Submissão válida deve retornar 200 OK, recebido {(int)submitResp.StatusCode}.");
+
+        using var doc = await JsonDocument.ParseAsync(await submitResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        var root = doc.RootElement;
+        userACaseId = root.GetProperty("activeCaseId").GetGuid();
+
+        Assert(root.GetProperty("currentKycStatus").GetString() == "IN_REVIEW", "Status após submissão deve ser IN_REVIEW.");
+        Assert(root.GetProperty("canNavigatePlatform").GetBoolean(), "Usuário IN_REVIEW continua navegando normalmente.");
+        Assert(!root.GetProperty("canContractDelivery").GetBoolean(), "Usuário IN_REVIEW ainda não pode contratar entrega.");
+        Assert(root.GetProperty("checks").GetArrayLength() == 4, "Devem existir exatamente os 4 checks obrigatórios.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Negativo RBAC 403): Usuário comum tentando aprovar o próprio caso em /review-decision recebe 403 Forbidden", async () =>
+    {
+        using var selfApproveReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{userACaseId}/review-decision")
+        {
+            Content = JsonContent.Create(new
+            {
+                targetStatus = "VERIFIED",
+                checkResults = allPassedChecks,
+                justificationOrRejectionReason = "Tentativa de autoaprovação por usuário comum"
+            })
+        };
+        selfApproveReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var selfApproveResp = await client.SendAsync(selfApproveReq).ConfigureAwait(false);
+
+        Assert(selfApproveResp.StatusCode == HttpStatusCode.Forbidden, "Usuário SENDER/CARRIER jamais pode acessar /review-decision.");
+        using var doc = await JsonDocument.ParseAsync(await selfApproveResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(doc.RootElement.GetProperty("ruleCode").GetString() == "AUTH_FORBIDDEN_INSUFFICIENT_ROLE", "ruleCode deve ser AUTH_FORBIDDEN_INSUFFICIENT_ROLE.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Negativo ABAC 403): Outra conta tentando consultar dossiê de KYC do Usuário A em /api/v1/kyc/users/{id} recebe 403 Forbidden", async () =>
+    {
+        // Cadastra segundo transportador ativo sintético
+        using var regCarrierResp = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = "transportador.ativo.03@example.test",
+            password = "SenhaSintetica#03",
+            displayName = "Transportador Sintético Gama",
+            phone = "(31) 90000-0003",
+            cpf = "22233344405",
+            city = "João Monlevade",
+            stateUf = "MG",
+            initialRoles = carrierOnlyRoles,
+            acceptTerms = true
+        }).ConfigureAwait(false);
+
+        Assert(regCarrierResp.StatusCode == HttpStatusCode.Created, "Cadastro do Transportador Gama deve retornar 201.");
+        using var carrierDoc = await JsonDocument.ParseAsync(await regCarrierResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        carrierActiveToken = carrierDoc.RootElement.GetProperty("accessToken").GetString() ?? string.Empty;
+        carrierActiveUserId = carrierDoc.RootElement.GetProperty("profile").GetProperty("userId").GetGuid();
+
+        // Transportador Gama tenta ler dossiê de KYC do Usuário A -> 403 Forbidden
+        using var crossKycReq = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/kyc/users/{userAId}");
+        crossKycReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", carrierActiveToken);
+        using var crossKycResp = await client.SendAsync(crossKycReq).ConfigureAwait(false);
+
+        Assert(crossKycResp.StatusCode == HttpStatusCode.Forbidden, "Acesso cruzado ao dossiê de KYC de outro usuário deve retornar 403.");
+        using var errDoc = await JsonDocument.ParseAsync(await crossKycResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(errDoc.RootElement.GetProperty("ruleCode").GetString() == "AUTH_FORBIDDEN_CROSS_USER_ACCESS", "ruleCode deve ser AUTH_FORBIDDEN_CROSS_USER_ACCESS.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Negativo SoD 403): Operador SUPPORT tentando aprovar seu próprio caso de KYC recebe 403 KYC_SELF_APPROVAL_FORBIDDEN", async () =>
+    {
+        // Provisiona operador de suporte sintético no repositório de desenvolvimento para teste de revisão e SoD
+        var userRepo = app.Services.GetRequiredService<IUserRepository>();
+        var crypto = app.Services.GetRequiredService<SecurityCryptoService>();
+        supportOperatorId = Guid.NewGuid();
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        var supportUser = new UserEntity
+        {
+            Id = supportOperatorId,
+            Email = "suporte.operacional.sintetico@example.test",
+            PhoneEncrypted = crypto.EncryptPhone("31900000999"),
+            PhoneMasked = "(**) *****-0999",
+            PasswordHash = crypto.HashPassword("SenhaSuporte#2026"),
+            Status = UserAccountStatus.ACTIVE,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc
+        };
+        var supportProfile = new UserProfileEntity
+        {
+            UserId = supportOperatorId,
+            DisplayName = "Operador Suporte Sintético",
+            Roles = [UserRole.SUPPORT, UserRole.SENDER],
+            KycStatus = KycStatus.NOT_STARTED,
+            TermsAcceptedVersion = "2026.1-D08-DRAFT",
+            TermsAcceptedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc
+        };
+        await userRepo.CreateAsync(supportUser, supportProfile, CancellationToken.None).ConfigureAwait(false);
+        (supportOperatorToken, _, _) = crypto.CreateAccessToken(supportUser, supportProfile, nowUtc);
+
+        // Operador submete caso próprio
+        using var subReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "33344455506",
+                identityDocumentRef = "private/kyc/doc_sup_1",
+                addressProofRef = "private/kyc/addr_sup_1",
+                partnerFacialSessionRef = "fac_sandbox_sup_1",
+                consentGiven = true
+            })
+        };
+        subReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+        using var subResp = await client.SendAsync(subReq).ConfigureAwait(false);
+        Assert(subResp.StatusCode == HttpStatusCode.OK, "Submissão do caso do operador deve retornar 200.");
+
+        using var subDoc = await JsonDocument.ParseAsync(await subResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        supportSelfCaseId = subDoc.RootElement.GetProperty("activeCaseId").GetGuid();
+
+        // Operador SUPPORT tenta aprovar o próprio caso -> 403 KYC_SELF_APPROVAL_FORBIDDEN
+        using var selfDecideReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{supportSelfCaseId}/review-decision")
+        {
+            Content = JsonContent.Create(new
+            {
+                targetStatus = "VERIFIED",
+                checkResults = allPassedChecks,
+                justificationOrRejectionReason = "Tentativa de autoaprovação pelo próprio operador"
+            })
+        };
+        selfDecideReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+        using var selfDecideResp = await client.SendAsync(selfDecideReq).ConfigureAwait(false);
+
+        Assert(selfDecideResp.StatusCode == HttpStatusCode.Forbidden, "Operador SUPPORT não pode aprovar o próprio caso de KYC (Segregação de Funções).");
+        using var errDoc = await JsonDocument.ParseAsync(await selfDecideResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(errDoc.RootElement.GetProperty("ruleCode").GetString() == "KYC_SELF_APPROVAL_FORBIDDEN", "ruleCode deve ser KYC_SELF_APPROVAL_FORBIDDEN.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Rejeição e Reanálise): Operador SUPPORT reprova caso (REJECTED), titular solicita reanálise (IN_REVIEW) e operador aprova os 4 checks (VERIFIED)", async () =>
+    {
+        // 1. Operador SUPPORT reprova o caso do Usuário A por falha no comprovante de endereço
+        using var rejectReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{userACaseId}/review-decision")
+        {
+            Content = JsonContent.Create(new
+            {
+                targetStatus = "REJECTED",
+                checkResults = addressFailedChecks,
+                justificationOrRejectionReason = "Comprovante de endereço ilegível na verificação inicial"
+            })
+        };
+        rejectReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+        using var rejectResp = await client.SendAsync(rejectReq).ConfigureAwait(false);
+        Assert(rejectResp.StatusCode == HttpStatusCode.OK, "Reprovação fundamentada deve retornar 200 OK.");
+
+        using var rejectDoc = await JsonDocument.ParseAsync(await rejectResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(rejectDoc.RootElement.GetProperty("currentKycStatus").GetString() == "REJECTED", "Status deve mudar para REJECTED.");
+
+        // 2. Titular (Usuário A) solicita reanálise enviando nova referência de comprovante de endereço
+        using var appealReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{userACaseId}/reanalysis")
+        {
+            Content = JsonContent.Create(new
+            {
+                identityDocumentRef = "private/kyc/doc_sintetico_a1",
+                addressProofRef = "private/kyc/addr_sintetico_a2_corrigido",
+                partnerFacialSessionRef = "fac_sandbox_session_a2",
+                appealJustification = "Novo comprovante de endereço enviado em alta resolução"
+            })
+        };
+        appealReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var appealResp = await client.SendAsync(appealReq).ConfigureAwait(false);
+        Assert(appealResp.StatusCode == HttpStatusCode.OK, "Pedido de reanálise pelo titular deve retornar 200 OK.");
+
+        using var appealDoc = await JsonDocument.ParseAsync(await appealResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(appealDoc.RootElement.GetProperty("currentKycStatus").GetString() == "IN_REVIEW", "Caso deve retornar para IN_REVIEW após pedido de reanálise.");
+
+        // 3. Operador SUPPORT aprova os 4 checks do Usuário A -> VERIFIED
+        using var approveReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{userACaseId}/review-decision")
+        {
+            Content = JsonContent.Create(new
+            {
+                targetStatus = "VERIFIED",
+                checkResults = allPassedChecks,
+                justificationOrRejectionReason = "Todos os 4 checks (CPF, identidade, endereço e facial) validados no sandbox",
+                validityDays = 365
+            })
+        };
+        approveReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+        using var approveResp = await client.SendAsync(approveReq).ConfigureAwait(false);
+        Assert(approveResp.StatusCode == HttpStatusCode.OK, "Aprovação pelo suporte com 4 checks PASSED deve retornar 200 OK.");
+
+        using var approveDoc = await JsonDocument.ParseAsync(await approveResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(approveDoc.RootElement.GetProperty("currentKycStatus").GetString() == "VERIFIED", "Status deve ser VERIFIED.");
+        Assert(approveDoc.RootElement.GetProperty("canContractDelivery").GetBoolean(), "Titular VERIFIED deve estar apto a contratar.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Elegibilidade Bilateral D05): POST /api/v1/kyc/evaluate-bilateral bloqueia autocontratação, bloqueia quando Transportador está pendente e libera apenas quando ambos estão VERIFIED", async () =>
+    {
+        // 1. Tentativa de autocontratação (Usuário A como Remetente e Transportador ao mesmo tempo) -> bloqueado
+        using var selfContractReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/evaluate-bilateral")
+        {
+            Content = JsonContent.Create(new
+            {
+                senderUserId = userAId,
+                carrierUserId = userAId
+            })
+        };
+        selfContractReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var selfContractResp = await client.SendAsync(selfContractReq).ConfigureAwait(false);
+        Assert(selfContractResp.StatusCode == HttpStatusCode.OK, "Avaliação deve retornar 200 com resultado estruturado.");
+
+        using var selfContractDoc = await JsonDocument.ParseAsync(await selfContractResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(!selfContractDoc.RootElement.GetProperty("isEligible").GetBoolean(), "Autocontratação deve retornar isEligible=false.");
+
+        // 2. Remetente (Usuário A) VERIFIED + Transportador Gama (NOT_STARTED) -> bloqueado
+        using var unilateralReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/evaluate-bilateral")
+        {
+            Content = JsonContent.Create(new
+            {
+                senderUserId = userAId,
+                carrierUserId = carrierActiveUserId
+            })
+        };
+        unilateralReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var unilateralResp = await client.SendAsync(unilateralReq).ConfigureAwait(false);
+        using var unilateralDoc = await JsonDocument.ParseAsync(await unilateralResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+
+        Assert(!unilateralDoc.RootElement.GetProperty("isEligible").GetBoolean(), "Contratação deve ser bloqueada quando o Transportador não está VERIFIED (D05).");
+        Assert(unilateralDoc.RootElement.GetProperty("sender").GetProperty("isEligible").GetBoolean(), "Remetente já deve constar como elegível individualmente.");
+        Assert(!unilateralDoc.RootElement.GetProperty("carrier").GetProperty("isEligible").GetBoolean(), "Transportador deve constar como não elegível individualmente.");
+
+        // 3. Transportador Gama submete os 4 checks e é aprovado pelo Operador SUPPORT
+        using var subCarrierReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "22233344405",
+                identityDocumentRef = "private/kyc/doc_carrier_gama",
+                addressProofRef = "private/kyc/addr_carrier_gama",
+                partnerFacialSessionRef = "fac_sandbox_carrier_gama",
+                consentGiven = true
+            })
+        };
+        subCarrierReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", carrierActiveToken);
+        using var subCarrierResp = await client.SendAsync(subCarrierReq).ConfigureAwait(false);
+        using var subCarrierDoc = await JsonDocument.ParseAsync(await subCarrierResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        carrierActiveCaseId = subCarrierDoc.RootElement.GetProperty("activeCaseId").GetGuid();
+
+        using var approveCarrierReq = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{carrierActiveCaseId}/review-decision")
+        {
+            Content = JsonContent.Create(new
+            {
+                targetStatus = "VERIFIED",
+                checkResults = allPassedChecks,
+                justificationOrRejectionReason = "Transportador Gama aprovado nos 4 checks obrigatórios",
+                validityDays = 365
+            })
+        };
+        approveCarrierReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+        using var approveCarrierResp = await client.SendAsync(approveCarrierReq).ConfigureAwait(false);
+        Assert(approveCarrierResp.StatusCode == HttpStatusCode.OK, "Aprovação do Transportador Gama deve retornar 200 OK.");
+
+        // 4. Agora Remetente (VERIFIED) + Transportador Gama (VERIFIED) -> elegibilidade bilateral APROVADA!
+        using var bilateralOkReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/evaluate-bilateral")
+        {
+            Content = JsonContent.Create(new
+            {
+                senderUserId = userAId,
+                carrierUserId = carrierActiveUserId
+            })
+        };
+        bilateralOkReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var bilateralOkResp = await client.SendAsync(bilateralOkReq).ConfigureAwait(false);
+        using var bilateralOkDoc = await JsonDocument.ParseAsync(await bilateralOkResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+
+        Assert(bilateralOkDoc.RootElement.GetProperty("isEligible").GetBoolean(), "Com Remetente e Transportador VERIFIED, elegibilidade bilateral deve ser true (D05).");
+        Assert(bilateralOkDoc.RootElement.GetProperty("blockingCodes").GetArrayLength() == 0, "Não deve haver códigos de bloqueio quando ambos estão VERIFIED.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Negativo 401): Todos os endpoints protegidos de verificação (/kyc/me, /kyc/users/{id}, /kyc/cases/submit, /review-decision, /reanalysis, /evaluate-bilateral) exigem JWT", async () =>
+    {
+        using var getMeResp = await client.GetAsync("/api/v1/kyc/me").ConfigureAwait(false);
+        Assert(getMeResp.StatusCode == HttpStatusCode.Unauthorized, "GET /api/v1/kyc/me sem token deve retornar 401.");
+
+        using var getUserResp = await client.GetAsync($"/api/v1/kyc/users/{userAId}").ConfigureAwait(false);
+        Assert(getUserResp.StatusCode == HttpStatusCode.Unauthorized, "GET /api/v1/kyc/users/{id} sem token deve retornar 401.");
+
+        using var postSubmitResp = await client.PostAsJsonAsync("/api/v1/kyc/cases/submit", new
+        {
+            cpf = "00000000191",
+            identityDocumentRef = "private/kyc/doc_x",
+            addressProofRef = "private/kyc/addr_x",
+            partnerFacialSessionRef = "fac_sbx_x",
+            consentGiven = true
+        }).ConfigureAwait(false);
+        Assert(postSubmitResp.StatusCode == HttpStatusCode.Unauthorized, "POST /api/v1/kyc/cases/submit sem token deve retornar 401.");
+
+        using var postReviewResp = await client.PostAsJsonAsync($"/api/v1/kyc/cases/{userACaseId}/review-decision", new
+        {
+            targetStatus = "VERIFIED",
+            checkResults = allPassedChecks,
+            justificationOrRejectionReason = "Tentativa sem token"
+        }).ConfigureAwait(false);
+        Assert(postReviewResp.StatusCode == HttpStatusCode.Unauthorized, "POST /review-decision sem token deve retornar 401.");
+
+        using var postReanalysisResp = await client.PostAsJsonAsync($"/api/v1/kyc/cases/{userACaseId}/reanalysis", new
+        {
+            identityDocumentRef = "private/kyc/doc_x",
+            addressProofRef = "private/kyc/addr_x",
+            partnerFacialSessionRef = "fac_sbx_x",
+            appealJustification = "Tentativa sem token"
+        }).ConfigureAwait(false);
+        Assert(postReanalysisResp.StatusCode == HttpStatusCode.Unauthorized, "POST /reanalysis sem token deve retornar 401.");
+
+        using var postBilateralResp = await client.PostAsJsonAsync("/api/v1/kyc/evaluate-bilateral", new
+        {
+            senderUserId = userAId,
+            carrierUserId = carrierActiveUserId
+        }).ConfigureAwait(false);
+        Assert(postBilateralResp.StatusCode == HttpStatusCode.Unauthorized, "POST /evaluate-bilateral sem token deve retornar 401.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Concorrência HTTP, Repetição e Dados Inválidos): Requisições repetidas/concorrentes bloqueiam aprovação duplicada (422) e validam entradas inválidas", async () =>
+    {
+        // 1. Submissão repetida para usuário já VERIFIED -> 422 INVALID_KYC_STATE_TRANSITION
+        using var duplicateSubmitReq = new HttpRequestMessage(HttpMethod.Post, "/api/v1/kyc/cases/submit")
+        {
+            Content = JsonContent.Create(new
+            {
+                cpf = "00000000191",
+                identityDocumentRef = "private/kyc/doc_sintetico_a1",
+                addressProofRef = "private/kyc/addr_sintetico_a1",
+                partnerFacialSessionRef = "fac_sandbox_session_a1",
+                consentGiven = true
+            })
+        };
+        duplicateSubmitReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var duplicateSubmitResp = await client.SendAsync(duplicateSubmitReq).ConfigureAwait(false);
+        Assert(duplicateSubmitResp.StatusCode == HttpStatusCode.UnprocessableEntity, "Submissão repetida de usuário já VERIFIED deve retornar 422.");
+
+        // 2. Aprovação repetida / concorrente de caso já VERIFIED (5 chamadas HTTP simultâneas via Task.WhenAll) -> todas 422 INVALID_KYC_STATE_TRANSITION
+        var concurrentTasks = Enumerable.Range(0, 5).Select(async _ =>
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/kyc/cases/{userACaseId}/review-decision")
+            {
+                Content = JsonContent.Create(new
+                {
+                    targetStatus = "VERIFIED",
+                    checkResults = allPassedChecks,
+                    justificationOrRejectionReason = "Tentativa concorrente duplicada de aprovação"
+                })
+            };
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supportOperatorToken);
+            using var resp = await client.SendAsync(req).ConfigureAwait(false);
+            return resp.StatusCode;
+        });
+
+        HttpStatusCode[] statuses = await Task.WhenAll(concurrentTasks).ConfigureAwait(false);
+        Assert(statuses.All(s => s == HttpStatusCode.UnprocessableEntity), "Todas as tentativas repetidas/concorrentes sobre caso já VERIFIED devem retornar 422.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.2 (Sanitização LGPD e Auditoria): Eventos gravados em IAuditRepository contêm responsável, data, ação e motivo, sem expor CPF bruto, senhas, tokens ou biometria", async () =>
+    {
+        var auditRepo = app.Services.GetRequiredService<IAuditRepository>();
+        var events = await auditRepo.ListRecentAsync(100, CancellationToken.None).ConfigureAwait(false);
+
+        Assert(events.Count > 0, "Devem existir eventos de auditoria registrados.");
+        Assert(events.Any(e => e.Action == "KYC_CASE_SUBMITTED"), "Deve existir evento KYC_CASE_SUBMITTED.");
+        Assert(events.Any(e => e.Action == "KYC_SELF_APPROVAL_BLOCKED"), "Deve existir evento KYC_SELF_APPROVAL_BLOCKED.");
+        Assert(events.Any(e => e.Action == "KYC_DECISION_REJECTED"), "Deve existir evento KYC_DECISION_REJECTED.");
+        Assert(events.Any(e => e.Action == "KYC_REANALYSIS_REQUESTED"), "Deve existir evento KYC_REANALYSIS_REQUESTED.");
+        Assert(events.Any(e => e.Action == "KYC_DECISION_VERIFIED"), "Deve existir evento KYC_DECISION_VERIFIED.");
+        Assert(events.Any(e => e.Action == "BILATERAL_KYC_VERIFIED"), "Deve existir evento BILATERAL_KYC_VERIFIED.");
+
+        foreach (var evt in events)
+        {
+            Assert(evt.CreatedAtUtc != default, $"Evento {evt.Action} deve possuir timestamp válido.");
+            Assert(!string.IsNullOrWhiteSpace(evt.MetadataJson), $"Evento {evt.Action} deve possuir metadados estruturados.");
+
+            // Confirma que nenhum CPF bruto de 11 dígitos, senha, token ou imagem base64 vazou nos metadados de auditoria
+            Assert(!evt.MetadataJson.Contains("00000000191", StringComparison.Ordinal), "CPF bruto do Usuário A jamais deve aparecer em audit_events.");
+            Assert(!evt.MetadataJson.Contains("22233344405", StringComparison.Ordinal), "CPF bruto do Transportador Gama jamais deve aparecer em audit_events.");
+            Assert(!evt.MetadataJson.Contains("33344455506", StringComparison.Ordinal), "CPF bruto do Operador jamais deve aparecer em audit_events.");
+            Assert(!evt.MetadataJson.Contains("SenhaSintetica", StringComparison.OrdinalIgnoreCase), "Senhas jamais devem aparecer em audit_events.");
+            Assert(!evt.MetadataJson.Contains("data:image", StringComparison.OrdinalIgnoreCase), "Biometria bruta jamais deve aparecer em audit_events.");
+        }
     }).ConfigureAwait(false);
 }
 finally
