@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -7,9 +8,10 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using TopicLog.Api;
 using TopicLog.Api.Common.Middleware;
+using TopicLog.Api.Modules.Identity;
 
 Console.WriteLine("======================================================================");
-Console.WriteLine("TopicLog.IntegrationTests (.NET 10 LTS) — Executando suíte HTTP PR-00.2");
+Console.WriteLine("TopicLog.IntegrationTests (.NET 10 LTS) — Executando suíte HTTP PR-00 + PR-01.1");
 Console.WriteLine("======================================================================");
 
 var sw = Stopwatch.StartNew();
@@ -159,6 +161,237 @@ try
         Assert(breakdownTsx.Contains("Você receberá", StringComparison.Ordinal), "Microtexto oficial 'Você receberá' ausente.");
         Assert(breakdownTsx.Contains("Crédito bancário pendente", StringComparison.Ordinal), "Microtexto oficial 'Crédito bancário pendente' ausente.");
     }).ConfigureAwait(false);
+
+    string userAToken = string.Empty;
+    string userARefreshToken = string.Empty;
+    Guid userAId = Guid.Empty;
+
+    string userBToken = string.Empty;
+    Guid userBId = Guid.Empty;
+
+    string[] senderAndCarrierRoles = ["SENDER", "CARRIER"];
+    string[] generalAdminRoles = ["GENERAL_ADMIN"];
+    string[] carrierOnlyRoles = ["CARRIER"];
+
+    await RunTestAsync("PR-01.1 (D05/D08): POST /api/v1/auth/register cria conta sem exigir KYC (NOT_STARTED), permite navegação e bloqueia contratação inicial", async () =>
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = "remetente.sintetico.01@example.test",
+            password = "SenhaSintetica#01",
+            displayName = "Titular Sintético Alfa",
+            phone = "(31) 90000-0001",
+            cpf = "00000000191",
+            city = "João Monlevade",
+            stateUf = "MG",
+            initialRoles = senderAndCarrierRoles,
+            acceptTerms = true,
+            termsVersion = "2026.1-D08-DRAFT"
+        }).ConfigureAwait(false);
+
+        Assert(response.StatusCode == HttpStatusCode.Created, $"Esperado HTTP 201, recebido {(int)response.StatusCode}");
+
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        var root = doc.RootElement;
+
+        userAToken = root.GetProperty("accessToken").GetString() ?? string.Empty;
+        userARefreshToken = root.GetProperty("refreshToken").GetString() ?? string.Empty;
+
+        var profile = root.GetProperty("profile");
+        userAId = profile.GetProperty("userId").GetGuid();
+
+        Assert(!string.IsNullOrWhiteSpace(userAToken), "accessToken deve ser emitido.");
+        Assert(!string.IsNullOrWhiteSpace(userARefreshToken), "refreshToken deve ser emitido.");
+        Assert(profile.GetProperty("kycStatus").GetString() == "NOT_STARTED", "Conta recém-criada deve iniciar com kycStatus NOT_STARTED (D05).");
+        Assert(profile.GetProperty("canNavigatePlatform").GetBoolean(), "Usuário sem KYC deve poder navegar na plataforma (D05).");
+        Assert(!profile.GetProperty("canContractDelivery").GetBoolean(), "Usuário sem KYC VERIFIED não pode contratar entrega (D05).");
+        Assert(profile.GetProperty("phoneMasked").GetString() == "(**) *****-0001", "Telefone deve ser retornado mascarado.");
+        Assert(profile.GetProperty("cpfMasked").GetString() == "***.000.001-**", "CPF deve ser retornado mascarado.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (D08): POST /api/v1/auth/register sem aceite dos Termos retorna 400 Bad Request (TERMS_ACCEPTANCE_REQUIRED)", async () =>
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = "sem.termos.sintetico@example.test",
+            password = "SenhaSintetica#01",
+            displayName = "Usuário Sem Termos",
+            phone = "(31) 90000-0099",
+            acceptTerms = false
+        }).ConfigureAwait(false);
+
+        Assert(response.StatusCode == HttpStatusCode.BadRequest, $"Esperado HTTP 400, recebido {(int)response.StatusCode}");
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(doc.RootElement.GetProperty("ruleCode").GetString() == "TERMS_ACCEPTANCE_REQUIRED", "ruleCode deve ser TERMS_ACCEPTANCE_REQUIRED.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (RBAC): POST /api/v1/auth/register tentando autoatribuir GENERAL_ADMIN retorna 403 Forbidden", async () =>
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = "escalacao.indevida@example.test",
+            password = "SenhaSintetica#01",
+            displayName = "Tentativa Escalação",
+            phone = "(31) 90000-0088",
+            initialRoles = generalAdminRoles,
+            acceptTerms = true
+        }).ConfigureAwait(false);
+
+        Assert(response.StatusCode == HttpStatusCode.Forbidden, $"Esperado HTTP 403, recebido {(int)response.StatusCode}");
+        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(doc.RootElement.GetProperty("ruleCode").GetString() == "ROLE_SELF_ASSIGNMENT_FORBIDDEN", "ruleCode deve ser ROLE_SELF_ASSIGNMENT_FORBIDDEN.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (Auth 401): GET /api/v1/me sem token ou com token adulterado retorna 401 Unauthorized", async () =>
+    {
+        using var noTokenResp = await client.GetAsync("/api/v1/me").ConfigureAwait(false);
+        Assert(noTokenResp.StatusCode == HttpStatusCode.Unauthorized, "Requisição sem Bearer token deve retornar 401.");
+
+        using var badTokenReq = new HttpRequestMessage(HttpMethod.Get, "/api/v1/me");
+        badTokenReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken + "adulterado");
+        using var badTokenResp = await client.SendAsync(badTokenReq).ConfigureAwait(false);
+        Assert(badTokenResp.StatusCode == HttpStatusCode.Unauthorized, "Token com assinatura adulterada deve retornar 401.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (Gate G1 — ABAC 403): Usuário A tentando ler ou editar /private-profile do Usuário B recebe 403 Forbidden e gera CROSS_ACCESS_DENIED", async () =>
+    {
+        // Cadastra Usuário B sintético
+        using var regBResp = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        {
+            email = "transportador.sintetico.02@example.test",
+            password = "SenhaSintetica#02",
+            displayName = "Titular Sintético Beta",
+            phone = "(31) 90000-0002",
+            cpf = "11122233396",
+            city = "Belo Horizonte",
+            stateUf = "MG",
+            initialRoles = carrierOnlyRoles,
+            acceptTerms = true
+        }).ConfigureAwait(false);
+
+        Assert(regBResp.StatusCode == HttpStatusCode.Created, "Cadastro do Usuário B deve retornar 201.");
+        using var docB = await JsonDocument.ParseAsync(await regBResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        userBToken = docB.RootElement.GetProperty("accessToken").GetString() ?? string.Empty;
+        userBId = docB.RootElement.GetProperty("profile").GetProperty("userId").GetGuid();
+
+        // 1. Usuário A tenta ler perfil privado do próprio Usuário A -> 200 OK
+        using var selfReadReq = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/users/{userAId}/private-profile");
+        selfReadReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var selfReadResp = await client.SendAsync(selfReadReq).ConfigureAwait(false);
+        Assert(selfReadResp.StatusCode == HttpStatusCode.OK, "Titular deve conseguir ler o próprio perfil privado (200 OK).");
+
+        // 2. Usuário A tenta ler perfil privado do Usuário B -> 403 Forbidden
+        using var crossReadReq = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/users/{userBId}/private-profile");
+        crossReadReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var crossReadResp = await client.SendAsync(crossReadReq).ConfigureAwait(false);
+        Assert(crossReadResp.StatusCode == HttpStatusCode.Forbidden, $"Acesso cruzado de leitura deve retornar 403, recebido {(int)crossReadResp.StatusCode}.");
+
+        using var crossReadDoc = await JsonDocument.ParseAsync(await crossReadResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(crossReadDoc.RootElement.GetProperty("ruleCode").GetString() == "AUTH_FORBIDDEN_CROSS_USER_ACCESS", "ruleCode deve ser AUTH_FORBIDDEN_CROSS_USER_ACCESS.");
+
+        // 3. Usuário A tenta alterar perfil privado do Usuário B -> 403 Forbidden
+        using var crossPatchReq = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/users/{userBId}/private-profile")
+        {
+            Content = JsonContent.Create(new { displayName = "Alteração Indevida" })
+        };
+        crossPatchReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var crossPatchResp = await client.SendAsync(crossPatchReq).ConfigureAwait(false);
+        Assert(crossPatchResp.StatusCode == HttpStatusCode.Forbidden, "Acesso cruzado de escrita deve retornar 403.");
+
+        // 4. Verifica que o evento CROSS_ACCESS_DENIED foi registrado no repositório de auditoria
+        var auditRepo = app.Services.GetRequiredService<IAuditRepository>();
+        var auditEvents = await auditRepo.ListRecentAsync(50, CancellationToken.None).ConfigureAwait(false);
+        Assert(auditEvents.Any(e => e.Action == "CROSS_ACCESS_DENIED" && e.ActorUserId == userAId),
+            "Trilha audit_events deve registrar CROSS_ACCESS_DENIED com o ActorUserId do infrator.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (LGPD): GET /api/v1/users/{id}/public-card retorna nome abreviado e oculta e-mail, telefone e CPF", async () =>
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/users/{userBId}/public-card");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var resp = await client.SendAsync(req).ConfigureAwait(false);
+
+        Assert(resp.StatusCode == HttpStatusCode.OK, "Consulta de public-card deve retornar 200 OK.");
+        string rawJson = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        Assert(!rawJson.Contains("email", StringComparison.OrdinalIgnoreCase), "public-card jamais pode expor campo email.");
+        Assert(!rawJson.Contains("phone", StringComparison.OrdinalIgnoreCase), "public-card jamais pode expor campo phone.");
+        Assert(!rawJson.Contains("cpf", StringComparison.OrdinalIgnoreCase), "public-card jamais pode expor campo cpf.");
+
+        using var doc = JsonDocument.Parse(rawJson);
+        Assert(doc.RootElement.GetProperty("abbreviatedDisplayName").GetString() == "Titular B.", "Nome deve ser abreviado no cartão público.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (RBAC 403): Usuário comum tentando acessar /api/v1/audit/events recebe 403 Forbidden", async () =>
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/audit/events");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userAToken);
+        using var resp = await client.SendAsync(req).ConfigureAwait(false);
+
+        Assert(resp.StatusCode == HttpStatusCode.Forbidden, "Usuário SENDER/CARRIER não pode ler trilha de auditoria interna.");
+        using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(doc.RootElement.GetProperty("ruleCode").GetString() == "AUTH_FORBIDDEN_INSUFFICIENT_ROLE", "ruleCode deve ser AUTH_FORBIDDEN_INSUFFICIENT_ROLE.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (Sessão): POST /api/v1/auth/refresh rotaciona token e bloqueia reuso do refresh token anterior", async () =>
+    {
+        // 1. Primeira renovação com userARefreshToken -> 200 OK
+        using var refreshResp1 = await client.PostAsJsonAsync("/api/v1/auth/refresh", new
+        {
+            refreshToken = userARefreshToken
+        }).ConfigureAwait(false);
+        Assert(refreshResp1.StatusCode == HttpStatusCode.OK, "Primeira rotação do refresh token deve retornar 200 OK.");
+
+        using var doc1 = await JsonDocument.ParseAsync(await refreshResp1.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        string rotatedRefreshToken = doc1.RootElement.GetProperty("refreshToken").GetString() ?? string.Empty;
+        Assert(rotatedRefreshToken != userARefreshToken, "Novo refresh token deve ser diferente do anterior.");
+
+        // 2. Tentativa de reuso do refresh token antigo já rotacionado -> 401 AUTH_REFRESH_TOKEN_REUSED e revoga família
+        using var reuseResp = await client.PostAsJsonAsync("/api/v1/auth/refresh", new
+        {
+            refreshToken = userARefreshToken
+        }).ConfigureAwait(false);
+        Assert(reuseResp.StatusCode == HttpStatusCode.Unauthorized, "Reuso de refresh token rotacionado deve retornar 401.");
+
+        using var docReuse = await JsonDocument.ParseAsync(await reuseResp.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+        Assert(docReuse.RootElement.GetProperty("ruleCode").GetString() == "AUTH_REFRESH_TOKEN_REUSED", "ruleCode deve ser AUTH_REFRESH_TOKEN_REUSED.");
+
+        // 3. Mesmo o token novo da família agora está revogado por segurança
+        using var familyRevokedResp = await client.PostAsJsonAsync("/api/v1/auth/refresh", new
+        {
+            refreshToken = rotatedRefreshToken
+        }).ConfigureAwait(false);
+        Assert(familyRevokedResp.StatusCode == HttpStatusCode.Unauthorized, "Família de refresh tokens deve estar revogada após detecção de reuso.");
+    }).ConfigureAwait(false);
+
+    await RunTestAsync("PR-01.1 (Brute-Force): 5 tentativas de login com senha inválida bloqueiam temporariamente a conta com HTTP 423 Locked", async () =>
+    {
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            using var failResp = await client.PostAsJsonAsync("/api/v1/auth/login", new
+            {
+                email = "transportador.sintetico.02@example.test",
+                password = $"SenhaErrada#{attempt}"
+            }).ConfigureAwait(false);
+            Assert(failResp.StatusCode == HttpStatusCode.Unauthorized, $"Tentativa {attempt} deve retornar 401.");
+        }
+
+        // 5ª tentativa dispara bloqueio temporário (423 Locked)
+        using var lockResp = await client.PostAsJsonAsync("/api/v1/auth/login", new
+        {
+            email = "transportador.sintetico.02@example.test",
+            password = "SenhaErrada#5"
+        }).ConfigureAwait(false);
+        Assert((int)lockResp.StatusCode == 423, $"5ª falha consecutiva deve retornar HTTP 423 Locked, recebido {(int)lockResp.StatusCode}.");
+
+        // Tentativa seguinte mesmo com a senha correta deve continuar bloqueada durante o período de lockout
+        using var blockedCorrectPasswordResp = await client.PostAsJsonAsync("/api/v1/auth/login", new
+        {
+            email = "transportador.sintetico.02@example.test",
+            password = "SenhaSintetica#02"
+        }).ConfigureAwait(false);
+        Assert((int)blockedCorrectPasswordResp.StatusCode == 423, "Login durante lockout ativo deve retornar HTTP 423 Locked.");
+    }).ConfigureAwait(false);
 }
 finally
 {
@@ -169,9 +402,10 @@ finally
 sw.Stop();
 using var proc = Process.GetCurrentProcess();
 double ramMb = Math.Round(proc.WorkingSet64 / (1024.0 * 1024.0), 2);
+double peakRamMb = Math.Round(proc.PeakWorkingSet64 / (1024.0 * 1024.0), 2);
 
 Console.WriteLine("----------------------------------------------------------------------");
-Console.WriteLine($"Resultado IntegrationTests: {passed} aprovados, {failed} falharam | Tempo: {sw.ElapsedMilliseconds} ms | RAM: {ramMb} MB");
+Console.WriteLine($"Resultado IntegrationTests: {passed} aprovados, {failed} falharam | Tempo: {sw.ElapsedMilliseconds} ms | WorkingSet: {ramMb} MB | PeakWorkingSet: {peakRamMb} MB");
 Console.WriteLine("----------------------------------------------------------------------");
 
 return failed == 0 ? 0 : 1;

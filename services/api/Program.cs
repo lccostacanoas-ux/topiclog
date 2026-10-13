@@ -6,6 +6,7 @@ using TopicLog.Api.Common.Middleware;
 using TopicLog.Api.Common.Options;
 using TopicLog.Api.Infrastructure.Providers;
 using TopicLog.Api.Modules;
+using TopicLog.Api.Modules.Identity;
 using TopicLog.Worker;
 using TopicLog.Worker.Services;
 
@@ -50,31 +51,35 @@ namespace TopicLog.Api
             builder.Services.AddSingleton<IMapsProvider, LocalFreeMapsProvider>();
             builder.Services.AddSingleton<IObjectStorageProvider, LocalDiskObjectStorageProvider>();
 
-            // 3. Worker assíncrono acoplado In-Process para otimizar uso de RAM (~8 GB)
+            // 3. Módulo de Identidade, Criptografia, Sessões e RBAC/ABAC (PR-01.1)
+            builder.Services.AddTopicLogIdentityModule(builder.Configuration);
+
+            // 4. Worker assíncrono acoplado In-Process para otimizar uso de RAM (~8 GB)
             bool runWorkerInProcess = overrideRunWorkerInProcess
                 ?? builder.Configuration.GetValue<bool>("FeatureFlags:RunWorkerInProcess", true);
             builder.Services.AddTopicLogWorker(registerHostedService: runWorkerInProcess);
 
-            // 4. CORS restrito ao Frontend Next.js local com exposição de X-Correlation-Id
+            // 5. CORS restrito ao Frontend Next.js local com exposição de X-Correlation-Id
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("LocalWebFrontend", policy =>
                 {
                     policy.WithOrigins("http://localhost:3000", "http://127.0.0.1:3000")
                           .WithMethods("GET", "POST", "PATCH", "OPTIONS")
-                          .WithHeaders("Content-Type", "Accept", CorrelationIdMiddleware.HeaderName, "Idempotency-Key")
+                          .WithHeaders("Content-Type", "Accept", "Authorization", CorrelationIdMiddleware.HeaderName, "Idempotency-Key")
                           .WithExposedHeaders(CorrelationIdMiddleware.HeaderName);
                 });
             });
 
             var app = builder.Build();
 
-            // 5. Pipeline de Middlewares (Correlação + ProblemDetails RFC 9457 + CORS)
+            // 6. Pipeline de Middlewares (Correlação + ProblemDetails RFC 9457 + CORS)
             app.UseMiddleware<CorrelationIdMiddleware>();
             app.UseMiddleware<GlobalExceptionMiddleware>();
             app.UseCors("LocalWebFrontend");
 
             MapSystemAndHealthEndpoints(app);
+            app.MapTopicLogIdentityEndpoints();
 
             return app;
         }
@@ -209,14 +214,14 @@ namespace TopicLog.Api
                 return Results.Ok(validation);
             });
 
-            // Especificação OpenAPI 3.1.0 (PR-00)
+            // Especificação OpenAPI 3.1.0 (PR-00 + PR-01.1)
             app.MapGet("/openapi/v1.json", () => Results.Ok(new
             {
                 openapi = "3.1.0",
                 info = new
                 {
                     title = "Topic Log API — Monólito Modular",
-                    version = "1.0.0-pr00",
+                    version = "1.1.0-pr01.1",
                     description = "API REST da plataforma Topic Log (Minas Gerais — Piloto João Monlevade e Belo Horizonte). Ambiente de Testes / Sandbox."
                 },
                 paths = new Dictionary<string, object>
@@ -225,7 +230,15 @@ namespace TopicLog.Api
                     ["/health/ready"] = new { get = new { summary = "Readiness probe, provedores sandbox e estado do worker", responses = new { _200 = new { description = "API pronta" } } } },
                     ["/api/v1/system/feature-flags"] = new { get = new { summary = "Retorna feature flags e regras vinculantes v2.0 (D01-D17)", responses = new { _200 = new { description = "Configurações ativas" } } } },
                     ["/api/v1/system/modules"] = new { get = new { summary = "Lista os 19 módulos do monólito modular", responses = new { _200 = new { description = "Lista de módulos" } } } },
-                    ["/api/v1/system/validate-weight"] = new { post = new { summary = "Valida peso em gramas por modal (5kg bicicleta, 20kg moto/carro)", responses = new { _200 = new { description = "Peso válido" }, _422 = new { description = "ProblemDetails — Peso excedido" } } } }
+                    ["/api/v1/system/validate-weight"] = new { post = new { summary = "Valida peso em gramas por modal (5kg bicicleta, 20kg moto/carro)", responses = new { _200 = new { description = "Peso válido" }, _422 = new { description = "ProblemDetails — Peso excedido" } } } },
+                    ["/api/v1/auth/register"] = new { post = new { summary = "Cadastro de conta multipapel sem exigência imediata de KYC (D05) e aceite de termos (D08)", responses = new { _201 = new { description = "Conta criada" }, _400 = new { description = "ProblemDetails — Regra violada" } } } },
+                    ["/api/v1/auth/login"] = new { post = new { summary = "Autenticação com PBKDF2-HMAC-SHA256 e proteção contra força bruta", responses = new { _200 = new { description = "Sessão iniciada" }, _401 = new { description = "Credenciais inválidas" }, _423 = new { description = "Conta temporariamente bloqueada" } } } },
+                    ["/api/v1/auth/refresh"] = new { post = new { summary = "Rotação de Refresh Token com detecção de reuso", responses = new { _200 = new { description = "Sessão renovada" }, _401 = new { description = "Token inválido ou reutilizado" } } } },
+                    ["/api/v1/auth/logout"] = new { post = new { summary = "Revogação da sessão atual", responses = new { _204 = new { description = "Sessão encerrada" } } } },
+                    ["/api/v1/me"] = new { get = new { summary = "Perfil privado do próprio usuário autenticado" }, patch = new { summary = "Atualização do próprio perfil e papéis SENDER/CARRIER/RECIPIENT" } },
+                    ["/api/v1/users/{userId}/private-profile"] = new { get = new { summary = "Perfil privado protegido por ABAC (403 em acesso cruzado)" }, patch = new { summary = "Edição protegida por ABAC (403 em acesso cruzado)" } },
+                    ["/api/v1/users/{userId}/public-card"] = new { get = new { summary = "Cartão público mínimo para contraparte sem exposição de PII (LGPD)" } },
+                    ["/api/v1/audit/events"] = new { get = new { summary = "Trilha de auditoria protegida por RBAC (exclusivo SUPPORT / GENERAL_ADMIN)" } }
                 }
             }));
         }

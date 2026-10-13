@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Domain;
 using TopicLog.Api.Common.Options;
 using TopicLog.Api.Infrastructure.Providers;
 using TopicLog.Api.Modules;
+using TopicLog.Api.Modules.Identity;
 
 var tests = new List<(string Name, Action Execute)>
 {
@@ -174,11 +177,153 @@ var tests = new List<(string Name, Action Execute)>
     ("TRD Seção 1: Catálogo do Monólito Modular contém exatamente os 19 módulos previstos", () =>
     {
         Assert(ModuleCatalog.All.Count == 19, $"Esperados 19 módulos, encontrados {ModuleCatalog.All.Count}.");
+    }),
+
+    ("DEC-02.1/02.2/02.3: PBKDF2-HMAC-SHA256 gera salt aleatório único por senha, verifica em tempo constante e suporta NeedsRehash", () =>
+    {
+        var secOptions = Options.Create(new SecurityOptions { Pbkdf2Iterations = 210_000 });
+        var keyProvider = new RuntimeKeyMaterialProvider(secOptions);
+        var crypto = new SecurityCryptoService(secOptions, keyProvider);
+
+        string hash1 = crypto.HashPassword("SenhaSintetica#2026");
+        string hash2 = crypto.HashPassword("SenhaSintetica#2026");
+
+        Assert(hash1 != hash2, "Duas execuções para a mesma senha devem produzir hashes diferentes (salt aleatório individual).");
+        Assert(hash1.StartsWith("v1$pbkdf2-sha256$210000$", StringComparison.Ordinal), "Formato do hash deve ser versionado.");
+        Assert(SecurityCryptoService.VerifyPassword("SenhaSintetica#2026", hash1), "Senha correta deve validar positivamente.");
+        Assert(!SecurityCryptoService.VerifyPassword("SenhaIncorreta#2026", hash1), "Senha incorreta deve falhar.");
+        Assert(!crypto.NeedsRehash(hash1), "Hash com 210.000 iterações não deve exigir rehash.");
+
+        string legacyIterationsHash = crypto.HashPassword("SenhaSintetica#2026", iterationsOverride: 100_000);
+        Assert(crypto.NeedsRehash(legacyIterationsHash), "Hash com menos iterações que a política atual deve sinalizar NeedsRehash=true.");
+    }),
+
+    ("DEC-02.1: AES-256-GCM criptografa/descriptografa telefone com nonce único e rejeita payload adulterado", () =>
+    {
+        var secOptions = Options.Create(new SecurityOptions());
+        var keyProvider = new RuntimeKeyMaterialProvider(secOptions);
+        var crypto = new SecurityCryptoService(secOptions, keyProvider);
+
+        string encrypted1 = crypto.EncryptPhone("(31) 90000-0001");
+        string encrypted2 = crypto.EncryptPhone("(31) 90000-0001");
+
+        Assert(encrypted1 != encrypted2, "AES-GCM deve utilizar nonce aleatório distinto em cada operação.");
+        Assert(!encrypted1.Contains("900000001", StringComparison.Ordinal), "Texto cifrado não pode conter o telefone em claro.");
+        Assert(crypto.DecryptPhone(encrypted1) == "31900000001", "Descriptografia deve recuperar exatamente os dígitos originais.");
+        Assert(SecurityCryptoService.MaskPhone("(31) 90000-0001") == "(**) *****-0001", "Máscara de telefone incorreta.");
+
+        // Adulteração da tag de autenticação deve lançar CryptographicException
+        string[] parts = encrypted1.Split('$');
+        byte[] tamperedCiphertext = Convert.FromBase64String(parts[4]);
+        tamperedCiphertext[0] ^= 0xFF;
+        string tamperedPayload = $"{parts[0]}${parts[1]}${parts[2]}${parts[3]}${Convert.ToBase64String(tamperedCiphertext)}";
+
+        bool threwAuthError = false;
+        try
+        {
+            _ = crypto.DecryptPhone(tamperedPayload);
+        }
+        catch (CryptographicException)
+        {
+            threwAuthError = true;
+        }
+        Assert(threwAuthError, "AES-GCM deve rejeitar ciphertext adulterado com CryptographicException.");
+    }),
+
+    ("DEC-02.4: JWT HS256 valida assinatura, expiração (exp), emissor (iss), audiência (aud) e rejeita alg:none", () =>
+    {
+        var secOptions = Options.Create(new SecurityOptions
+        {
+            Issuer = "https://api.topiclog.com.br",
+            Audience = "https://app.topiclog.com.br",
+            AccessTokenLifetimeMinutes = 15,
+            ClockSkewSeconds = 0
+        });
+        var keyProvider = new RuntimeKeyMaterialProvider(secOptions);
+        var crypto = new SecurityCryptoService(secOptions, keyProvider);
+
+        var user = new UserEntity
+        {
+            Id = Guid.NewGuid(),
+            Email = "sintetico.jwt@example.test",
+            PhoneEncrypted = "enc",
+            PhoneMasked = "(**) *****-0001",
+            PasswordHash = "hash"
+        };
+        var profile = new UserProfileEntity
+        {
+            UserId = user.Id,
+            DisplayName = "Titular Sintético",
+            Roles = [UserRole.SENDER, UserRole.CARRIER],
+            KycStatus = KycStatus.NOT_STARTED,
+            TermsAcceptedVersion = "2026.1-D08-DRAFT",
+            TermsAcceptedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        DateTimeOffset issuedAt = DateTimeOffset.UtcNow;
+        var (token, _, _) = crypto.CreateAccessToken(user, profile, issuedAt);
+
+        Assert(crypto.TryValidateAccessToken(token, out var actor, out string? err, issuedAt) && actor is not null,
+            $"Token íntegro deve ser aceito (erro: {err}).");
+        Assert(actor!.UserId == user.Id && actor.Roles.Contains(UserRole.CARRIER), "Claims do ator autenticado devem corresponder.");
+
+        // 1. Token expirado
+        Assert(!crypto.TryValidateAccessToken(token, out _, out string? expErr, issuedAt.AddMinutes(16))
+            && expErr == "TOKEN_EXPIRED", "Token expirado deve ser rejeitado com TOKEN_EXPIRED.");
+
+        // 2. Emissor (iss) divergente
+        var wrongIssuerCrypto = new SecurityCryptoService(
+            Options.Create(new SecurityOptions { Issuer = "https://outro.emissor.test", Audience = "https://app.topiclog.com.br" }),
+            keyProvider);
+        var (wrongIssToken, _, _) = wrongIssuerCrypto.CreateAccessToken(user, profile, issuedAt);
+        Assert(!crypto.TryValidateAccessToken(wrongIssToken, out _, out string? issErr, issuedAt)
+            && issErr == "INVALID_TOKEN_ISSUER", "Token com emissor incorreto deve ser rejeitado.");
+
+        // 3. Audiência (aud) divergente
+        var wrongAudCrypto = new SecurityCryptoService(
+            Options.Create(new SecurityOptions { Issuer = "https://api.topiclog.com.br", Audience = "https://outra.audiencia.test" }),
+            keyProvider);
+        var (wrongAudToken, _, _) = wrongAudCrypto.CreateAccessToken(user, profile, issuedAt);
+        Assert(!crypto.TryValidateAccessToken(wrongAudToken, out _, out string? audErr, issuedAt)
+            && audErr == "INVALID_TOKEN_AUDIENCE", "Token com audiência incorreta deve ser rejeitado.");
+
+        // 4. Ataque alg:none
+        string noneHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"alg\":\"none\",\"typ\":\"JWT\"}")).TrimEnd('=');
+        string[] validParts = token.Split('.');
+        string algNoneToken = $"{noneHeader}.{validParts[1]}.{validParts[2]}";
+        Assert(!crypto.TryValidateAccessToken(algNoneToken, out _, out string? algErr, issuedAt)
+            && algErr == "INVALID_TOKEN_ALGORITHM", "Token com alg:none deve ser bloqueado imediatamente.");
+    }),
+
+    ("DEC-02.5: SecurityOptionsValidator bloqueia Production sem chaves injetadas e não há segredos hardcoded", () =>
+    {
+        var defaultOpts = new SecurityOptions();
+        Assert(string.IsNullOrEmpty(defaultOpts.JwtSigningKeyBase64) && string.IsNullOrEmpty(defaultOpts.PiiEncryptionKeyBase64),
+            "SecurityOptions não pode conter chaves gravadas no código-fonte.");
+
+        var prodFlags = Options.Create(new FeatureFlagsOptions { EnvironmentMode = "Production" });
+        var validator = new SecurityOptionsValidator(prodFlags);
+        var validation = validator.Validate(null, defaultOpts);
+        Assert(validation.Failed, "Em Production, ausência de chaves injetadas por ambiente deve bloquear inicialização.");
+    }),
+
+    ("DEC-01.3: Script DDL INFRA/sql/001_identity_kyc_audit.sql existe e declara as tabelas do modelo aprovado", () =>
+    {
+        string sqlPath = Path.Combine(Directory.GetCurrentDirectory(), "INFRA", "sql", "001_identity_kyc_audit.sql");
+        Assert(File.Exists(sqlPath), $"Script SQL não encontrado em {sqlPath}.");
+
+        string ddl = File.ReadAllText(sqlPath);
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS users", StringComparison.Ordinal), "Tabela users ausente no DDL.");
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS profiles", StringComparison.Ordinal), "Tabela profiles ausente no DDL.");
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS refresh_tokens", StringComparison.Ordinal), "Tabela refresh_tokens ausente no DDL.");
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS kyc_cases", StringComparison.Ordinal), "Tabela kyc_cases ausente no DDL.");
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS kyc_checks", StringComparison.Ordinal), "Tabela kyc_checks ausente no DDL.");
+        Assert(ddl.Contains("CREATE TABLE IF NOT EXISTS audit_events", StringComparison.Ordinal), "Tabela audit_events ausente no DDL.");
     })
 };
 
 Console.WriteLine("======================================================================");
-Console.WriteLine("TopicLog.UnitTests (.NET 10 LTS) — Executando suíte da PR-00.2");
+Console.WriteLine("TopicLog.UnitTests (.NET 10 LTS) — Executando suíte PR-00.2 + PR-01.1");
 Console.WriteLine("======================================================================");
 
 int passed = 0;
@@ -203,9 +348,10 @@ foreach (var (name, execute) in tests)
 sw.Stop();
 using var proc = Process.GetCurrentProcess();
 double ramMb = Math.Round(proc.WorkingSet64 / (1024.0 * 1024.0), 2);
+double peakRamMb = Math.Round(proc.PeakWorkingSet64 / (1024.0 * 1024.0), 2);
 
 Console.WriteLine("----------------------------------------------------------------------");
-Console.WriteLine($"Resultado UnitTests: {passed} aprovados, {failed} falharam | Tempo: {sw.ElapsedMilliseconds} ms | RAM: {ramMb} MB");
+Console.WriteLine($"Resultado UnitTests: {passed} aprovados, {failed} falharam | Tempo: {sw.ElapsedMilliseconds} ms | WorkingSet: {ramMb} MB | PeakWorkingSet: {peakRamMb} MB");
 Console.WriteLine("----------------------------------------------------------------------");
 
 return failed == 0 ? 0 : 1;
