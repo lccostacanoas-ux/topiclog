@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>TopicLog.UnitTests</RootNamespace>
+    <AssemblyName>TopicLog.UnitTests</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\services\api\TopicLog.Api.csproj" />
+    <ProjectReference Include="..\..\services\worker\TopicLog.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

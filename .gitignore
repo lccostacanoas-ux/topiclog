@@ -1,0 +1,53 @@
+# .NET / C#
+bin/
+obj/
+out/
+*.user
+*.userosscache
+*.suo
+*.Upd2Date
+*.aps
+*.ncb
+*.opendb
+*.VC.db
+*.vsidx
+.vs/
+TestResults/
+coverage/
+
+# Node.js / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment & Secrets (Never commit credentials or local keys)
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+*.pfx
+*.pem
+*.key
+
+# Local Storage & Temporary Data
+storage-private/
+App_Data/
+tmp/
+temp/
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
