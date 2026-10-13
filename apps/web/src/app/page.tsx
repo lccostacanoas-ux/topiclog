@@ -27,12 +27,27 @@ export default function HomePage(): React.JSX.Element {
           {state.productName} — Conexão de Pequenas Encomendas e Rotas em Minas Gerais
         </h1>
 
-        <p style={{ color: "var(--color-muted)", margin: 0, maxWidth: "820px" }}>
+        <p style={{ color: "var(--color-muted)", margin: "0 0 16px 0", maxWidth: "820px" }}>
           Cadastro e pesquisa abertos para todos os municípios de <strong>Minas Gerais ({state.targetStateUf})</strong>, com
           prioridade de implantação piloto em <strong>João Monlevade (1ª prioridade)</strong> e{" "}
           <strong>Belo Horizonte (2ª prioridade)</strong>. A presença de um município na busca não garante disponibilidade
           imediata de transportadores ativos (D02).
         </p>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
+          <a href="/cadastro" className="btn btn--primary">
+            Criar Conta Gratuita (Sem KYC Inicial)
+          </a>
+          <a href="/entrar" className="btn btn--outline">
+            Fazer Login
+          </a>
+          <a href="/verificacao-kyc" className="btn btn--secondary">
+            Verificação KYC e Elegibilidade (D05)
+          </a>
+          <a href="/termos" className="btn btn--outline">
+            Termos e Responsabilidades (D08)
+          </a>
+        </div>
       </header>
 
       <section aria-labelledby="modais-heading" style={{ marginBottom: "24px" }}>

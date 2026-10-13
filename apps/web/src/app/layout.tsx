@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import React from "react";
+import { NavigationHeader } from "../components/NavigationHeader";
+import { AuthProvider } from "../lib/auth-context";
 import "../styles/tokens.css";
 
 export const metadata: Metadata = {
@@ -26,7 +28,10 @@ export default function RootLayout({
             pretendido <code>www.topiclog.com.br</code> sujeito a verificação de registro/INPI — D01).
           </div>
         </div>
-        {children}
+        <AuthProvider>
+          <NavigationHeader />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
