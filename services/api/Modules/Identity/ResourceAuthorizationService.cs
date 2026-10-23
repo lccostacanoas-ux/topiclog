@@ -55,6 +55,28 @@ public sealed class ResourceAuthorizationService
     }
 
     /// <summary>
+    /// Tenta extrair o ator autenticado do HttpContext sem lançar exceção caso não haja cabeçalho de autenticação.
+    /// </summary>
+    public bool TryGetAuthenticatedActor(HttpContext httpContext, out AuthenticatedActor? actor)
+    {
+        actor = null;
+        if (httpContext is null)
+        {
+            return false;
+        }
+
+        string? authHeader = httpContext.Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(authHeader)
+            || !authHeader.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string rawToken = authHeader[BearerPrefix.Length..].Trim();
+        return _crypto.TryValidateAccessToken(rawToken, out actor, out _) && actor is not null;
+    }
+
+    /// <summary>
     /// Autorização ABAC por titularidade do recurso: permite acesso somente ao próprio dono do recurso
     /// ou aos papéis administrativos/operacionais autorizados (SUPPORT, GENERAL_ADMIN).
     /// Qualquer tentativa cruzada por outro usuário gera evento CROSS_ACCESS_DENIED e retorna HTTP 403.

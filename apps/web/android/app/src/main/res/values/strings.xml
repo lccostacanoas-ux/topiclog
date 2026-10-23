@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Topic Log</string>
+    <string name="title_activity_main">Topic Log</string>
+    <string name="package_name">br.com.topiclog.app</string>
+    <string name="custom_url_scheme">br.com.topiclog.app</string>
+</resources>

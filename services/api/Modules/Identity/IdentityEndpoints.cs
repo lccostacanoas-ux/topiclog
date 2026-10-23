@@ -99,6 +99,111 @@ public static class IdentityEndpoints
             return Results.NoContent();
         });
 
+        // Endpoint exclusivo do ambiente local de testes para emissão de tokens de teste assinados e validados (Sandbox)
+        // RESSALVA 01: Rigorosamente restrito ao ambiente de desenvolvimento/testes. Proibido em produção.
+        app.MapPost("/api/v1/auth/sandbox-token", (
+            SandboxTokenRequest? request,
+            HttpContext httpContext,
+            IOptions<FeatureFlagsOptions> featureFlags,
+            SecurityCryptoService crypto) =>
+        {
+            var remoteIp = httpContext.Connection.RemoteIpAddress;
+            bool isLoopback = remoteIp is not null && System.Net.IPAddress.IsLoopback(remoteIp);
+
+            if (!isLoopback ||
+                !string.Equals(featureFlags.Value.EnvironmentMode, "Testing", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Production", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            string role = request?.Role?.ToUpperInvariant() ?? "SENDER";
+            Guid userId;
+            string email;
+            string displayName;
+            HashSet<UserRole> roles;
+
+            if (role == "CARRIER")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000002");
+                email = "transportador.demo@topiclog.com.br";
+                displayName = "Transportador Sandbox (Demo)";
+                roles = [UserRole.CARRIER];
+            }
+            else if (role is "GENERAL_ADMIN" or "ADMIN")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000099");
+                email = "admin.geral@topiclog.com.br";
+                displayName = "Administrador Geral (Demo)";
+                roles = [UserRole.GENERAL_ADMIN];
+            }
+            else if (role is "FINANCIAL_ADMIN" or "FINANCE_ADMIN")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000098");
+                email = "admin.financeiro@topiclog.com.br";
+                displayName = "Administrador Financeiro (Demo)";
+                roles = [UserRole.FINANCIAL_ADMIN, UserRole.FINANCE_ADMIN];
+            }
+            else if (role is "LEGAL_OPERATOR" or "LEGAL")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000097");
+                email = "operador.juridico@topiclog.com.br";
+                displayName = "Operador Jurídico (Demo)";
+                roles = [UserRole.LEGAL_OPERATOR];
+            }
+            else if (role is "COMPLIANCE_AUDITOR" or "AUDITOR")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000096");
+                email = "auditor.compliance@topiclog.com.br";
+                displayName = "Auditor de Compliance (Demo)";
+                roles = [UserRole.COMPLIANCE_AUDITOR];
+            }
+            else if (role is "SUPPORT_OPERATOR" or "SUPPORT")
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000095");
+                email = "operador.suporte@topiclog.com.br";
+                displayName = "Operador de Suporte (Demo)";
+                roles = [UserRole.SUPPORT_OPERATOR, UserRole.SUPPORT];
+            }
+            else
+            {
+                userId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+                email = "remetente.demo@topiclog.com.br";
+                displayName = "Remetente Sandbox (Demo)";
+                roles = [UserRole.SENDER];
+            }
+
+            var dummyUser = new UserEntity
+            {
+                Id = userId,
+                Email = email,
+                PhoneEncrypted = "v1$aes256gcm$demo",
+                PhoneMasked = "(31) 9****-0000",
+                PasswordHash = "v1$pbkdf2$demo"
+            };
+
+            var dummyProfile = new UserProfileEntity
+            {
+                UserId = userId,
+                DisplayName = displayName,
+                Roles = roles,
+                KycStatus = Common.Contracts.KycStatus.VERIFIED,
+                TermsAcceptedVersion = "2026.1-D08-DRAFT",
+                TermsAcceptedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            var (token, expiresIn, _) = crypto.CreateAccessToken(dummyUser, dummyProfile);
+
+            return Results.Ok(new
+            {
+                accessToken = token,
+                tokenType = "Bearer",
+                expiresInSeconds = expiresIn,
+                userId,
+                role
+            });
+        });
+
         app.MapGet("/api/v1/me", async (
             HttpContext httpContext,
             ResourceAuthorizationService authorization,

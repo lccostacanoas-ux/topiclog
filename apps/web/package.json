@@ -5,11 +5,26 @@
   "description": "Topic Log — Marketplace de pequenas encomendas e rotas em Minas Gerais (Ambiente de Testes)",
   "scripts": {
     "dev": "next dev --port 3000",
+    "dev:turbo": "next dev --turbopack --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "cap sync",
+    "cap:sync:android": "cap sync android",
+    "cap:sync:ios": "cap sync ios",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "cap:build:android": "cap build android",
+    "icons:generate": "node ../../scripts/generate-icons.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

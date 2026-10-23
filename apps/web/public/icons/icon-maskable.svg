@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" fill="#0F172A"/>
+  <rect x="56" y="56" width="400" height="400" rx="60" fill="url(#brand_grad_mask)"/>
+  <path d="M165 185H347V223H278V335H234V223H165V185Z" fill="#FFFFFF"/>
+  <circle cx="330" cy="320" r="32" fill="#10B981"/>
+  <path d="M319 320L326 327L342 311" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="brand_grad_mask" x1="56" y1="56" x2="456" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+</svg>

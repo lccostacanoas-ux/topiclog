@@ -15,7 +15,11 @@ public enum UserRole
     RECIPIENT = 2,
     SUPPORT = 3,
     FINANCE_ADMIN = 4,
-    GENERAL_ADMIN = 5
+    GENERAL_ADMIN = 5,
+    FINANCIAL_ADMIN = 6,
+    LEGAL_OPERATOR = 7,
+    COMPLIANCE_AUDITOR = 8,
+    SUPPORT_OPERATOR = 9
 }
 
 public enum UserAccountStatus
@@ -200,3 +204,9 @@ public sealed record PublicUserCardResponse(
     bool IsKycVerified,
     decimal RatingAvg,
     int RatingCount);
+
+/// <summary>
+/// Solicitação de emissão de token de teste para o ambiente Sandbox local (Testing).
+/// </summary>
+public sealed record SandboxTokenRequest(string? Role);
+

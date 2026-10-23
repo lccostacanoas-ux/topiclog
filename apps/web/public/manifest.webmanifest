@@ -1,0 +1,74 @@
+{
+  "name": "Topic Log — Marketplace de Entregas & Encomendas",
+  "short_name": "Topic Log",
+  "description": "Plataforma de logística colaborativa e transporte sob demanda em Minas Gerais.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#2563EB",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Minhas Entregas",
+      "short_name": "Entregas",
+      "description": "Acompanhe e conclua suas entregas ativas",
+      "url": "/entregas",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Encomendas Disponíveis",
+      "short_name": "Encomendas",
+      "description": "Veja o feed de encomendas e oportunidades próximas",
+      "url": "/encomendas",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cadastrar Viagem",
+      "short_name": "Nova Viagem",
+      "description": "Disponibilize espaço ocioso no seu veículo",
+      "url": "/viagens/nova",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["logistics", "transportation", "productivity"],
+  "lang": "pt-BR"
+}

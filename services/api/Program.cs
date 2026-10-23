@@ -6,7 +6,16 @@ using TopicLog.Api.Common.Middleware;
 using TopicLog.Api.Common.Options;
 using TopicLog.Api.Infrastructure.Providers;
 using TopicLog.Api.Modules;
+using TopicLog.Api.Modules.Admin;
+using TopicLog.Api.Modules.Finance;
+using TopicLog.Api.Modules.Fulfillment;
 using TopicLog.Api.Modules.Identity;
+using TopicLog.Api.Modules.Legal;
+using TopicLog.Api.Modules.Matching;
+using TopicLog.Api.Modules.Proposals;
+using TopicLog.Api.Modules.Regions;
+using TopicLog.Api.Modules.Shipments;
+using TopicLog.Api.Modules.Trips;
 using TopicLog.Api.Modules.Verification;
 using TopicLog.Worker;
 using TopicLog.Worker.Services;
@@ -33,6 +42,12 @@ namespace TopicLog.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // Suporte transparente a enums em formato texto (ex: "CAR", "BICYCLE", "DOCUMENTOS")
+            builder.Services.ConfigureHttpJsonOptions(options =>
+            {
+                options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            });
+
             // 1. Configurações tipadas e validadores de inicialização (D01–D17)
             builder.Services
                 .AddOptions<FeatureFlagsOptions>()
@@ -52,9 +67,17 @@ namespace TopicLog.Api
             builder.Services.AddSingleton<IMapsProvider, LocalFreeMapsProvider>();
             builder.Services.AddSingleton<IObjectStorageProvider, LocalDiskObjectStorageProvider>();
 
-            // 3. Módulos de Identidade (PR-01.1) e Verificação KYC / Elegibilidade Bilateral (PR-01.2)
+            // 3. Módulos de Identidade (PR-01.1), Verificação KYC (PR-01.2), Encomendas e Viagens (PR-02), Matching (PR-03), Propostas e Negociação (PR-04)
             builder.Services.AddTopicLogIdentityModule(builder.Configuration);
             builder.Services.AddTopicLogVerificationModule();
+            builder.Services.AddTopicLogShipmentsModule();
+            builder.Services.AddTopicLogTripsModule();
+            builder.Services.AddTopicLogMatchingModule();
+            builder.Services.AddTopicLogFinanceModule();
+            builder.Services.AddTopicLogProposalsModule();
+            builder.Services.AddTopicLogFulfillmentModule();
+            builder.Services.AddTopicLogAdminModule();
+            builder.Services.AddTopicLogLegalModule();
 
             // 4. Worker assíncrono acoplado In-Process para otimizar uso de RAM (~8 GB)
             bool runWorkerInProcess = overrideRunWorkerInProcess
@@ -83,6 +106,37 @@ namespace TopicLog.Api
             MapSystemAndHealthEndpoints(app);
             app.MapTopicLogIdentityEndpoints();
             app.MapTopicLogVerificationEndpoints();
+            app.MapTopicLogShipmentsEndpoints();
+            app.MapTopicLogTripsEndpoints();
+            app.MapTopicLogRegionsEndpoints();
+            app.MapTopicLogMatchingEndpoints();
+            app.MapTopicLogFinanceEndpoints();
+            app.MapTopicLogProposalsEndpoints();
+            app.MapTopicLogFulfillmentEndpoints();
+            app.MapTopicLogAdminEndpoints();
+            app.MapTopicLogLegalEndpoints();
+
+            // Acesso temporário assinado a objetos privados de mídia (D16 / ADR-0006)
+            app.MapGet("/api/v1/private-media", (
+                string key,
+                long expires) =>
+            {
+                long nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                if (expires < nowUnix)
+                {
+                    return Results.Problem(
+                        title: "Link temporário expirado",
+                        detail: "A URL temporária de acesso à foto privada expirou.",
+                        statusCode: StatusCodes.Status410Gone);
+                }
+
+                return Results.Ok(new
+                {
+                    storageKey = key,
+                    validUntilUtc = DateTimeOffset.FromUnixTimeSeconds(expires),
+                    status = "AUTHORIZED_TEMPORARY"
+                });
+            });
 
             return app;
         }

@@ -50,7 +50,7 @@ function readStoredSession(): StoredSessionData | null {
     return null;
   }
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       return null;
     }
@@ -67,8 +67,10 @@ function writeStoredSession(data: StoredSessionData | null): void {
   try {
     if (data) {
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } else {
       window.sessionStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(STORAGE_KEY);
     }
   } catch {
     // Falha silenciosa em navegadores com armazenamento restrito
