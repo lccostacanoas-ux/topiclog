@@ -21,26 +21,41 @@ export default function LoginPage(): React.JSX.Element {
     e.preventDefault();
     setProblem(null);
 
-    if (!email.trim() || !password) {
+    if (!email.trim() || !password.trim()) {
       setProblem({
         title: "Dados incompletos",
         status: 400,
-        detail: "Informe o e-mail e a senha cadastrados."
+        detail: "Informe seu e-mail e senha para entrar."
       });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const result = await login({ email: email.trim(), password });
+      const result = await login({ email: email.trim(), password: password.trim() });
       if (result.ok) {
         router.push("/minha-conta");
       } else {
-        setProblem(result.problem ?? {
-          title: "Falha na autenticação",
-          status: result.status,
-          detail: "Verifique suas credenciais e tente novamente."
-        });
+        const prob = result.problem;
+        if (prob?.ruleCode === "AUTH_INVALID_CREDENTIALS" || result.status === 400 || result.status === 401) {
+          setProblem({
+            title: "E-mail ou senha incorretos",
+            status: result.status,
+            detail: "Verifique o e-mail e a senha informados e tente novamente. Se ainda não possui cadastro, clique em 'Cadastrar gratuitamente'."
+          });
+        } else if (result.status === 423) {
+          setProblem({
+            title: "Tentativas excessivas",
+            status: 423,
+            detail: "Muitas tentativas com senha incorreta. Por segurança, aguarde alguns instantes para tentar novamente."
+          });
+        } else {
+          setProblem(prob ?? {
+            title: "Falha na autenticação",
+            status: result.status,
+            detail: "Não foi possível autenticar. Verifique sua conexão e tente novamente."
+          });
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -51,24 +66,24 @@ export default function LoginPage(): React.JSX.Element {
     <main id="main-content" className="container" style={{ paddingTop: "32px", paddingBottom: "48px" }}>
       <div style={{ maxWidth: "480px", margin: "0 auto" }}>
         <div className="card">
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-primary)" }}>
-            Topic Log • Autenticação Segura
+          <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-primary, #2563EB)" }}>
+            TopicLog • Acesso Seguro
           </span>
-          <h1 style={{ fontSize: "28px", lineHeight: "36px", marginTop: "8px", marginBottom: "8px" }}>
+          <h1 style={{ fontSize: "28px", lineHeight: "36px", marginTop: "8px", marginBottom: "8px", color: "var(--color-brand-deep-navy, #0F172A)" }}>
             Entrar na Conta
           </h1>
-          <p style={{ color: "var(--color-muted)", fontSize: "14px", marginBottom: "20px" }}>
-            Acesso ao marketplace com proteção contra força bruta (PBKDF2-HMAC-SHA256 — DEC-02).
+          <p style={{ color: "var(--color-muted, #64748B)", fontSize: "14px", marginBottom: "20px" }}>
+            Acesse para publicar encomendas, acompanhar entregas e conversar com transportadores.
           </p>
 
           {isAuthenticated && (
             <div style={{ marginBottom: "20px" }}>
               <AlertBanner
                 tone="info"
-                title="Sessão ativa detectada"
-                message="Você já possui uma sessão ativa nesta aba."
+                title="Sessão ativa"
+                message="Você já está conectado nesta sessão."
               />
-              <Link href="/minha-conta" className="btn btn--secondary" style={{ width: "100%" }}>
+              <Link href="/minha-conta" className="btn btn--secondary" style={{ width: "100%", marginTop: "8px" }}>
                 Ir para Minha Conta
               </Link>
             </div>
@@ -77,9 +92,8 @@ export default function LoginPage(): React.JSX.Element {
           {problem && (
             <AlertBanner
               tone={problem.status === 423 ? "warning" : "danger"}
-              title={problem.status === 423 ? "Conta Temporariamente Bloqueada (DEC-02.4)" : problem.title}
+              title={problem.title}
               message={problem.detail}
-              problem={problem}
               onClose={() => setProblem(null)}
             />
           )}
@@ -87,12 +101,12 @@ export default function LoginPage(): React.JSX.Element {
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-group">
               <label htmlFor="login-email" className="form-label">
-                E-mail cadastrado
+                E-mail ou Usuário *
               </label>
               <input
                 id="login-email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
                 className="form-input"
                 placeholder="seu.email@exemplo.com.br"
@@ -103,36 +117,46 @@ export default function LoginPage(): React.JSX.Element {
             </div>
 
             <div className="form-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label htmlFor="login-password" className="form-label">
-                  Senha
-                </label>
+              <label htmlFor="login-password" className="form-label">
+                Senha *
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  className="form-input"
+                  style={{ paddingRight: "44px" }}
+                  placeholder="Sua senha secreta"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  disabled={isSubmitting}
+                />
                 <button
                   type="button"
                   onClick={() => setShowPassword(prev => !prev)}
                   style={{
-                    background: "none",
+                    position: "absolute",
+                    right: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
                     border: "none",
-                    color: "var(--color-primary)",
-                    fontSize: "13px",
+                    color: "#64748B",
+                    fontSize: "18px",
                     cursor: "pointer",
-                    padding: 0
+                    padding: "4px 6px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
                   }}
+                  title={showPassword ? "Ocultar senha" : "Ver senha"}
+                  aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
                 >
-                  {showPassword ? "Ocultar senha" : "Ver senha"}
+                  {showPassword ? "🙈" : "👁️"}
                 </button>
               </div>
-              <input
-                id="login-password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                required
-                className="form-input"
-                placeholder="Sua senha secreta"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                disabled={isSubmitting}
-              />
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "20px" }}>

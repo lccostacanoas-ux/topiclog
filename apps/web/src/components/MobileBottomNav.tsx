@@ -6,17 +6,17 @@ import React from "react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Início", icon: "🏠" },
-  { href: "/feed", label: "Encomendas", icon: "📦" },
   { href: "/encomendas/publicar", label: "Publicar", icon: "➕", isAccent: true },
-  { href: "/minhas-atividades", label: "Atividades", icon: "⚡" },
+  { href: "/minhas-atividades", label: "Acompanhar", icon: "📍" },
+  { href: "/mensagens", label: "Mensagens", icon: "💬" },
   { href: "/minha-conta", label: "Perfil", icon: "👤" }
 ];
 
 export function MobileBottomNav(): React.JSX.Element | null {
   const pathname = usePathname();
 
-  // Ocultar a barra inferior mobile quando dentro do painel administrativo (/admin)
-  if (pathname.startsWith("/admin")) {
+  // Ocultar a barra inferior mobile quando dentro do painel administrativo (/admin) ou no fluxo de publicação (/encomendas/publicar)
+  if (pathname.startsWith("/admin") || pathname.startsWith("/encomendas/publicar")) {
     return null;
   }
 

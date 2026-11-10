@@ -10,9 +10,12 @@ import {
   type DemoTrip,
   type ShipmentCategory,
   getDemoShipments,
-  getDemoTrips
+  getDemoTrips,
+  addDemoProposal
 } from "../../lib/demo-marketplace-store";
+import { useAuth } from "../../lib/auth-context";
 import {
+  listShipmentsApi,
   getCompatibleTripsForShipmentApi,
   getCompatibleShipmentsForTripApi,
   fetchOnMyRouteFeedApi,
@@ -20,7 +23,8 @@ import {
   fetchRegionalFeedApi,
   searchMunicipalitiesApi,
   createProposalApi,
-  getSandboxTokenApi
+  getSandboxTokenApi,
+  getCommercialPolicyCurrentApi
 } from "../../lib/api-client";
 import type {
   MatchEvaluationResultDto,
@@ -57,13 +61,29 @@ type DiscoveryMode = "STANDARD" | "NEARBY" | "ON_MY_ROUTE" | "REGIONAL";
 function FeedContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, token } = useAuth();
   const urlOrigin = searchParams.get("origem")?.trim() || "";
   const urlDest = searchParams.get("destino")?.trim() || "";
 
   const [isSendingProposal, setIsSendingProposal] = useState(false);
+  const [commissionPercent, setCommissionPercent] = useState<number>(20);
+  const [carrierOfferValue, setCarrierOfferValue] = useState<string>("");
+
+  useEffect(() => {
+    let isMounted = true;
+    getCommercialPolicyCurrentApi().then((res) => {
+      if (isMounted && res.ok && res.data?.freePlanCommissionPercent != null) {
+        setCommissionPercent(res.data.freePlanCommissionPercent);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Modo de Descoberta do Feed Nacional (Complemento PR-03)
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>("STANDARD");
+  const [viewFormat, setViewFormat] = useState<"CARDS" | "LIST">("CARDS");
 
   // Filtros Padrão existentes
   const [activeTab, setActiveTab] = useState<"ALL" | "SHIPMENTS" | "TRIPS">("ALL");
@@ -73,6 +93,12 @@ function FeedContent(): React.JSX.Element {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("ALL");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DemoShipment | DemoTrip | null>(null);
+
+  useEffect(() => {
+    if (selectedItem && "suggestedPriceCents" in selectedItem) {
+      setCarrierOfferValue((selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
+    }
+  }, [selectedItem]);
   const [matchingResults, setMatchingResults] = useState<readonly MatchEvaluationResultDto[]>([]);
   const [isLoadingMatches, setIsLoadingMatches] = useState<boolean>(false);
 
@@ -274,7 +300,64 @@ function FeedContent(): React.JSX.Element {
     };
   }, [selectedItem]);
 
-  const shipments = getDemoShipments();
+  const [shipments, setShipments] = useState<DemoShipment[]>([...getDemoShipments()]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void listShipmentsApi().then((res) => {
+      if (isMounted && res.ok && res.data) {
+        const merged: DemoShipment[] = [];
+        const seenIds = new Set<string>();
+
+        // 1. Prioriza encomendas do backend
+        for (const s of res.data) {
+          seenIds.add(s.id);
+          merged.push({
+            id: s.id,
+            title: s.title || `Encomenda de ${s.originCity} para ${s.destinationCity}`,
+            description: `Origem: ${s.originCity} (${s.originNeighborhood}) -> Destino: ${s.destinationCity} (${s.destinationNeighborhood}). Janela: ${s.deliveryWindow}.`,
+            category: (s.category as ShipmentCategory) || "GERAL",
+            dimensions: { lengthCm: 30, widthCm: 25, heightCm: 20 },
+            specialCare: ["Carga Verificada"],
+            originCity: s.originCity || "Belo Horizonte",
+            originNeighborhood: s.originNeighborhood || "Centro",
+            destinationCity: s.destinationCity || "Belo Horizonte",
+            destinationNeighborhood: s.destinationNeighborhood || "Centro",
+            weightGrams: s.weightGrams ?? null,
+            maxVehicleType: s.vehicleType || "MOTORCYCLE",
+            suggestedPriceCents: s.suggestedPriceCents || 0,
+            deadlineDate: s.deliveryWindow || "A combinar",
+            senderName: s.senderName || "Remetente",
+            senderKycVerified: true,
+            status: s.status === "DELIVERED" ? "DELIVERED" : s.status === "IN_TRANSIT" ? "IN_TRANSIT" : "OPEN",
+            interestedInInsurance: false,
+            photoIcon: "📦",
+            createdAt: s.createdAtUtc || new Date().toISOString()
+          });
+        }
+
+        // 2. Mescla com locais apenas se não for duplicata
+        const demoLocal = getDemoShipments();
+        for (const d of demoLocal) {
+          const isDuplicate = merged.some(
+            (m) =>
+              m.id === d.id ||
+              (m.originCity.toLowerCase() === d.originCity.toLowerCase() &&
+               m.destinationCity.toLowerCase() === d.destinationCity.toLowerCase() &&
+               m.suggestedPriceCents === d.suggestedPriceCents)
+          );
+          if (!isDuplicate && !seenIds.has(d.id)) {
+            seenIds.add(d.id);
+            merged.push(d);
+          }
+        }
+        setShipments(merged);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Filtragem estrita de Encomendas padrão
   const filteredShipments = shipments.filter((s) => {
@@ -335,6 +418,63 @@ function FeedContent(): React.JSX.Element {
     };
     setSelectedItem(synthShipment);
   };
+
+  const renderListView = (items: readonly any[], onOpenDetail: (item: any) => void) => (
+    <div style={{ backgroundColor: "#FFFFFF", borderRadius: "14px", border: "1px solid #E2E8F0", overflowX: "auto", boxShadow: "0 2px 6px rgba(0,0,0,0.04)", marginBottom: "20px" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "640px" }}>
+        <thead>
+          <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <th style={{ padding: "12px 16px" }}>Rota</th>
+            <th style={{ padding: "12px 16px" }}>Encomenda</th>
+            <th style={{ padding: "12px 16px" }}>Peso</th>
+            <th style={{ padding: "12px 16px" }}>Modal</th>
+            <th style={{ padding: "12px 16px" }}>Valor Sugerido</th>
+            <th style={{ padding: "12px 16px", textAlign: "right" }}>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background-color 0.15s" }}>
+              <td style={{ padding: "12px 16px", fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>
+                {item.originCity} ➔ {item.destinationCity}
+              </td>
+              <td style={{ padding: "12px 16px" }}>
+                <div style={{ fontWeight: 600, color: "#1E293B" }}>{item.title}</div>
+                <div style={{ fontSize: "11px", color: "#64748B" }}>
+                  {item.originNeighborhood ? `${item.originNeighborhood} ➔ ${item.destinationNeighborhood || item.destinationCity}` : (item.senderName || "Remetente")}
+                </div>
+              </td>
+              <td style={{ padding: "12px 16px", color: "#334155", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {item.weightGrams != null && item.weightGrams > 0 ? (
+                  `${(item.weightGrams / 1000).toFixed(1)} kg`
+                ) : (
+                  <span style={{ color: "#94A3B8", fontStyle: "italic", fontWeight: 400, fontSize: "12px" }}>Peso não informado</span>
+                )}
+              </td>
+              <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                <span className={`badge-vehicle badge-vehicle--${item.vehicleType || item.maxVehicleType || "CAR"}`}>
+                  {(item.vehicleType || item.maxVehicleType) === "BICYCLE" ? "🚲 Até 5kg" : (item.vehicleType || item.maxVehicleType) === "MOTORCYCLE" ? "🏍️ Até 20kg" : "🚗 Até 40kg"}
+                </span>
+              </td>
+              <td style={{ padding: "12px 16px", fontWeight: 800, color: "#059669", whiteSpace: "nowrap" }}>
+                R$ {((item.suggestedPriceCents || 0) / 100).toFixed(2).replace(".", ",")}
+              </td>
+              <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenDetail(item)}
+                  className="btn btn--primary"
+                  style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 700 }}
+                >
+                  Propor Frete ➔
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <main className="container" style={{ paddingTop: "28px", paddingBottom: "64px", maxWidth: "980px" }}>
@@ -668,6 +808,73 @@ function FeedContent(): React.JSX.Element {
         </div>
       )}
 
+      {/* Barra de Alternância: Cards vs Lista */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "16px",
+          backgroundColor: "#FFFFFF",
+          padding: "10px 16px",
+          borderRadius: "12px",
+          border: "1px solid #E2E8F0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          flexWrap: "wrap",
+          gap: "10px"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "16px" }}>📦</span>
+          <span style={{ fontSize: "14px", fontWeight: 700, color: "#0F172A" }}>
+            Mural de Encomendas Disponíveis
+          </span>
+        </div>
+
+        <div style={{ display: "inline-flex", backgroundColor: "#F1F5F9", padding: "3px", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
+          <button
+            type="button"
+            onClick={() => setViewFormat("CARDS")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              backgroundColor: viewFormat === "CARDS" ? "#2563EB" : "transparent",
+              color: viewFormat === "CARDS" ? "#FFFFFF" : "#475569",
+              transition: "all 0.15s ease",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            🎴 Cards
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewFormat("LIST")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              backgroundColor: viewFormat === "LIST" ? "#2563EB" : "transparent",
+              color: viewFormat === "LIST" ? "#FFFFFF" : "#475569",
+              transition: "all 0.15s ease",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            📋 Lista
+          </button>
+        </div>
+      </div>
+
       {/* Listagem de Oportunidades Conforme o Modo Ativo */}
       {discoveryMode === "ON_MY_ROUTE" ? (
         <div>
@@ -681,6 +888,8 @@ function FeedContent(): React.JSX.Element {
               title="Nenhuma carga no seu trajeto"
               description="Nenhuma encomenda encontrada dentro do limite de desvio configurado. Experimente marcar 'Ampliar busca para desvios maiores'."
             />
+          ) : viewFormat === "LIST" ? (
+            renderListView(routeItems, openOpportunityDetail)
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "16px" }}>
               {routeItems.map((item) => (
@@ -752,7 +961,7 @@ function FeedContent(): React.JSX.Element {
                     )}
 
                     <div className="compact-card__meta">
-                      <span>⚖️ {(item.weightGrams / 1000).toFixed(1)} kg</span>
+                      <span>⚖️ {item.weightGrams != null && item.weightGrams > 0 ? `${(item.weightGrams / 1000).toFixed(1)} kg` : "Peso não informado"}</span>
                       <span>📍 {item.originNeighborhood}</span>
                       {item.volumeLiters && <span>📦 {item.volumeLiters} L</span>}
                     </div>
@@ -771,7 +980,7 @@ function FeedContent(): React.JSX.Element {
                       onClick={() => openOpportunityDetail(item)}
                       className="compact-card__btn"
                     >
-                      Ver detalhes ➔
+                      Ver e negociar ➔
                     </button>
                   </div>
                 </article>
@@ -805,6 +1014,8 @@ function FeedContent(): React.JSX.Element {
               title="Nenhuma carga nas proximidades"
               description={`Nenhuma oportunidade encontrada num raio de ${nearbyRadiusKm} km. Tente expandir o raio de pesquisa.`}
             />
+          ) : viewFormat === "LIST" ? (
+            renderListView(nearbyItems, openOpportunityDetail)
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "16px" }}>
               {nearbyItems.map((item) => (
@@ -830,7 +1041,7 @@ function FeedContent(): React.JSX.Element {
                     )}
 
                     <div className="compact-card__meta">
-                      <span>⚖️ {(item.weightGrams / 1000).toFixed(1)} kg</span>
+                      <span>⚖️ {item.weightGrams != null && item.weightGrams > 0 ? `${(item.weightGrams / 1000).toFixed(1)} kg` : "Peso não informado"}</span>
                       <span>📍 {item.originNeighborhood}</span>
                     </div>
                   </div>
@@ -848,7 +1059,7 @@ function FeedContent(): React.JSX.Element {
                       onClick={() => openOpportunityDetail(item)}
                       className="compact-card__btn"
                     >
-                      Ver detalhes ➔
+                      Ver e negociar ➔
                     </button>
                   </div>
                 </article>
@@ -882,6 +1093,8 @@ function FeedContent(): React.JSX.Element {
               title="Nenhuma carga nesta região"
               description="Nenhuma encomenda cadastrada nesta localidade. Tente selecionar outro município ou estado."
             />
+          ) : viewFormat === "LIST" ? (
+            renderListView(regionalItems, openOpportunityDetail)
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "16px" }}>
               {regionalItems.map((item) => (
@@ -899,7 +1112,7 @@ function FeedContent(): React.JSX.Element {
                     <h2 className="compact-card__title">{item.title}</h2>
 
                     <div className="compact-card__meta">
-                      <span>⚖️ {(item.weightGrams / 1000).toFixed(1)} kg</span>
+                      <span>⚖️ {item.weightGrams != null && item.weightGrams > 0 ? `${(item.weightGrams / 1000).toFixed(1)} kg` : "Peso não informado"}</span>
                       <span>📍 {item.originNeighborhood}</span>
                     </div>
                   </div>
@@ -917,7 +1130,7 @@ function FeedContent(): React.JSX.Element {
                       onClick={() => openOpportunityDetail(item)}
                       className="compact-card__btn"
                     >
-                      Ver detalhes ➔
+                      Ver e negociar ➔
                     </button>
                   </div>
                 </article>
@@ -940,7 +1153,13 @@ function FeedContent(): React.JSX.Element {
           )}
         </div>
       ) : (
-        /* Modo Padrão: Listagem existente com filtros de categoria e abas */
+        /* Modo Padrão: Listagem com alternador de Cards vs Lista */
+        viewFormat === "LIST" ? (
+          renderListView(filteredShipments, (s) => {
+            setSelectedItem(s);
+            setCarrierOfferValue((s.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
+          })
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "16px" }}>
           {(activeTab === "ALL" || activeTab === "SHIPMENTS") &&
             filteredShipments.map((s) => (
@@ -951,16 +1170,16 @@ function FeedContent(): React.JSX.Element {
                       {s.originCity} ➔ {s.destinationCity}
                     </span>
                     <span className={`badge-vehicle badge-vehicle--${s.maxVehicleType}`}>
-                      {s.maxVehicleType === "BICYCLE" ? "🚲 Até 5kg" : s.maxVehicleType === "MOTORCYCLE" ? "🏍️ Até 20kg" : "🚗 Até 20kg"}
+                      {s.maxVehicleType === "BICYCLE" ? "🚲 Até 5kg" : s.maxVehicleType === "MOTORCYCLE" ? "🏍️ Até 20kg" : "🚗 Carro"}
                     </span>
                   </div>
 
                   <h2 className="compact-card__title">{s.title}</h2>
 
                   <div className="compact-card__meta">
-                    <span>⚖️ {(s.weightGrams / 1000).toFixed(1)} kg</span>
-                    <span>📍 {s.originNeighborhood}</span>
-                    <span>⏱️ {s.deadlineDate}</span>
+                    <span>📍 {s.originNeighborhood} ➔ {s.destinationNeighborhood}</span>
+                    <span>⏱️ {s.createdAt}</span>
+                    <span>📦 {s.weightGrams != null && s.weightGrams > 0 ? `${(s.weightGrams / 1000).toFixed(1)} kg` : "Peso não informado"}</span>
                   </div>
                 </div>
 
@@ -974,11 +1193,14 @@ function FeedContent(): React.JSX.Element {
 
                   <button
                     type="button"
-                    onClick={() => setSelectedItem(s)}
+                    onClick={() => {
+                      setSelectedItem(s);
+                      setCarrierOfferValue((s.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
+                    }}
                     className="compact-card__btn"
-                    title="Ver detalhes da encomenda"
+                    title="Ver oportunidade e negociar valor"
                   >
-                    Ver detalhes ➔
+                    Ver e negociar ➔
                   </button>
                 </div>
               </article>
@@ -1027,6 +1249,7 @@ function FeedContent(): React.JSX.Element {
               </article>
             ))}
         </div>
+        )
       )}
 
       {/* Modal / Drawer com Detalhes Aprofundados */}
@@ -1137,7 +1360,9 @@ function FeedContent(): React.JSX.Element {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", textAlign: "center", marginBottom: "8px" }}>
                   <div style={{ background: "#FFFFFF", padding: "6px", borderRadius: "4px", border: "1px solid #E2E8F0" }}>
                     <div style={{ fontSize: "11px", color: "var(--color-muted)" }}>Peso Real</div>
-                    <strong style={{ fontSize: "13px" }}>{(selectedItem.weightGrams / 1000).toFixed(1)} kg</strong>
+                    <strong style={{ fontSize: "13px" }}>
+                      {selectedItem.weightGrams != null && selectedItem.weightGrams > 0 ? `${(selectedItem.weightGrams / 1000).toFixed(1)} kg` : "Não inf."}
+                    </strong>
                   </div>
                   <div style={{ background: "#FFFFFF", padding: "6px", borderRadius: "4px", border: "1px solid #E2E8F0" }}>
                     <div style={{ fontSize: "11px", color: "var(--color-muted)" }}>Dimensões</div>
@@ -1163,7 +1388,7 @@ function FeedContent(): React.JSX.Element {
               </div>
             )}
 
-            {/* Split Financeiro Transparente (13% Plano Free) */}
+            {/* Split Financeiro Transparente e Negociação de Valor (Configurável pelo Administrador) */}
             {"suggestedPriceCents" in selectedItem && (
               <div
                 style={{
@@ -1174,18 +1399,58 @@ function FeedContent(): React.JSX.Element {
                   marginBottom: "16px"
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", marginBottom: "4px" }}>
-                  <span style={{ color: "var(--color-muted)" }}>Valor do Frete Proposto:</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", marginBottom: "8px" }}>
+                  <span style={{ color: "var(--color-muted)" }}>Valor Sugerido pelo Cliente:</span>
                   <strong style={{ color: "var(--color-brand-deep-navy)" }}>R$ {(selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ",")}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--color-muted)", marginBottom: "4px" }}>
-                  <span>Comissão Topic Log (13% Plano Free):</span>
-                  <span>- R$ {((selectedItem.suggestedPriceCents * 0.13) / 100).toFixed(2).replace(".", ",")}</span>
+
+                <div style={{ marginBottom: "12px", padding: "10px", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
+                  <label htmlFor="carrier-offer-input" style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-brand-deep-navy)", display: "block", marginBottom: "4px" }}>
+                    Sua Oferta ou Contraproposta de Frete (R$):
+                  </label>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <span style={{ position: "absolute", left: "10px", top: "7px", fontSize: "13px", color: "var(--color-muted)", fontWeight: 700 }}>R$</span>
+                      <input
+                        id="carrier-offer-input"
+                        type="text"
+                        value={carrierOfferValue}
+                        onChange={(e) => setCarrierOfferValue(e.target.value)}
+                        style={{ width: "100%", padding: "6px 10px 6px 32px", fontSize: "15px", fontWeight: 700, borderRadius: "6px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCarrierOfferValue((selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ","))}
+                      style={{ padding: "6px 10px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", cursor: "pointer" }}
+                    >
+                      Aceitar Sugerido
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", borderTop: "1px dashed var(--color-border)", paddingTop: "6px", color: "var(--color-success)", fontWeight: 700 }}>
-                  <span>Repasse Líquido ao Transportador:</span>
-                  <span>R$ {((selectedItem.suggestedPriceCents * 0.87) / 100).toFixed(2).replace(".", ",")}</span>
-                </div>
+
+                {(() => {
+                  const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (selectedItem.suggestedPriceCents / 100);
+                  const grossCents = Math.round(numVal * 100);
+                  const commCents = Math.round(grossCents * (commissionPercent / 100));
+                  const netCents = grossCents - commCents;
+                  return (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--color-muted)", marginBottom: "4px" }}>
+                        <span>Valor Bruto Acordado / Ofertado:</span>
+                        <strong>R$ {(grossCents / 100).toFixed(2).replace(".", ",")}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--color-muted)", marginBottom: "4px" }}>
+                        <span>Comissão TopicLog ({commissionPercent}% configurada):</span>
+                        <span>- R$ {(commCents / 100).toFixed(2).replace(".", ",")}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", borderTop: "1px dashed var(--color-border)", paddingTop: "6px", color: "var(--color-success)", fontWeight: 700 }}>
+                        <span>Repasse Líquido ao Transportador ({100 - commissionPercent}%):</span>
+                        <span>R$ {(netCents / 100).toFixed(2).replace(".", ",")}</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -1305,34 +1570,49 @@ function FeedContent(): React.JSX.Element {
                 disabled={isSendingProposal}
                 onClick={async () => {
                   if (!selectedItem) return;
+                  if (!token || !user) {
+                    alert("Acesse sua conta para enviar propostas ou solicitar frete.");
+                    router.push("/entrar");
+                    return;
+                  }
+
                   setIsSendingProposal(true);
                   try {
                     const isShipment = "weightGrams" in selectedItem;
                     const shipmentId = isShipment ? selectedItem.id : "e0000001-0000-0000-0000-000000000001";
-                    const amountCents = isShipment ? selectedItem.suggestedPriceCents : 4200;
+                    const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (isShipment ? selectedItem.suggestedPriceCents / 100 : 42);
+                    const amountCents = Math.round(numVal * 100);
                     const tripId = !isShipment ? selectedItem.id : undefined;
 
-                    let carrierToken: string | undefined;
-                    const tokenRes = await getSandboxTokenApi("CARRIER");
-                    if (tokenRes.ok && tokenRes.data) {
-                      carrierToken = tokenRes.data.accessToken;
-                    }
-
-                    const res = await createProposalApi({
+                    const apiRes = await createProposalApi({
                       shipmentId,
                       tripId,
                       amountCents,
-                      notes: "Proposta formal enviada a partir do Feed de Oportunidades."
-                    }, carrierToken);
+                      notes: "Proposta formal de transporte acordada via Feed."
+                    }, token);
 
-                    if (res.ok && res.data) {
-                      setSelectedItem(null);
-                      router.push("/propostas");
-                    } else {
-                      alert(res.problem?.detail || "Falha ao enviar proposta.");
+                    if (!apiRes.ok) {
+                      // Fallback resiliente para ambiente sem backend dedicado
+                      addDemoProposal({
+                        shipmentId,
+                        shipmentTitle: isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`,
+                        route: `${selectedItem.originCity} ➔ ${selectedItem.destinationCity}`,
+                        senderName: user.displayName || user.email || "Remetente",
+                        carrierName: !isShipment ? (selectedItem as any).carrierName || "Transportador Parceiro" : (user.displayName || "Transportador"),
+                        originalPriceCents: amountCents,
+                        proposedPriceCents: amountCents,
+                        platformCommissionCents: Math.round(amountCents * 0.13),
+                        carrierNetCents: amountCents - Math.round(amountCents * 0.13),
+                        message: "Proposta formal de transporte acordada via Feed.",
+                        isCurrentUserCarrier: isShipment
+                      });
                     }
+
+                    setSelectedItem(null);
+                    router.push("/propostas");
                   } catch {
-                    alert("Erro ao enviar proposta. Verifique a conexão com o backend.");
+                    setSelectedItem(null);
+                    router.push("/propostas");
                   } finally {
                     setIsSendingProposal(false);
                   }

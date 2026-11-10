@@ -49,21 +49,6 @@ export function AlertBanner({
           {effectiveMessage && (
             <p style={{ margin: "6px 0 0 0" }}>{effectiveMessage}</p>
           )}
-
-          {(ruleCode || correlationId) && (
-            <div style={{ marginTop: "6px", fontSize: "12px", opacity: 0.9 }}>
-              {ruleCode && (
-                <span style={{ marginRight: "12px" }}>
-                  Código: <code>{ruleCode}</code>
-                </span>
-              )}
-              {correlationId && (
-                <span>
-                  ID de Correlação: <code>{correlationId}</code>
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
         {onClose && (

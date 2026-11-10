@@ -1404,4 +1404,711 @@ a:focus {
   }
 }
 
+/* ============================================================================
+   PADRÃO VISUAL DO FLUXO DE PUBLICAÇÃO DE ENCOMENDA TOPICLOG
+   ============================================================================ */
+
+.uber-flow-container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) 120px var(--space-3);
+}
+
+@media (min-width: 640px) {
+  .uber-flow-container {
+    padding: var(--space-5) var(--space-4) 100px var(--space-4);
+  }
+}
+
+/* Barra Superior de Progresso dos Passos */
+.uber-step-header {
+  margin-bottom: var(--space-4);
+}
+
+.uber-progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.uber-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1D4ED8 0%, #059669 100%);
+  border-radius: var(--radius-full);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.uber-step-indicators {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.uber-step-indicator--active {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.uber-step-indicator--done {
+  color: var(--color-success);
+}
+
+/* Cartões Principais do Fluxo */
+.uber-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-4);
+  transition: border-color 0.15s ease;
+}
+
+@media (min-width: 640px) {
+  .uber-card {
+    padding: var(--space-5);
+  }
+}
+
+.uber-card-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-brand-deep-navy);
+  margin: 0 0 var(--space-2) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.uber-card-subtitle {
+  font-size: 13px;
+  color: var(--color-muted);
+  margin: 0 0 var(--space-4) 0;
+  line-height: 1.4;
+}
+
+/* Timeline Vertical de Rota (Padrão Uber / 99) */
+.uber-route-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-left: 28px;
+  margin: var(--space-3) 0;
+}
+
+.uber-route-timeline::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 18px;
+  bottom: 24px;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #059669 0px,
+    #059669 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.uber-route-stop {
+  position: relative;
+}
+
+.uber-route-dot {
+  position: absolute;
+  left: -28px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.uber-route-dot--origin {
+  background-color: #ECFDF5;
+  border: 3px solid #059669;
+}
+
+.uber-route-dot--dest {
+  border-radius: 4px;
+  background-color: #0F172A;
+  border: 3px solid #0F172A;
+}
+
+/* Chips Rápidos de Cidades e Ações */
+.uber-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.uber-quick-chip {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.uber-quick-chip:hover {
+  background: #EFF6FF;
+  border-color: #BFDBFE;
+  color: var(--color-primary);
+}
+
+.uber-quick-chip--active {
+  background: #EFF6FF;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+/* Grid de Categorias com Ícones Amplos */
+.uber-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 480px) {
+  .uber-category-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.uber-category-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 84px;
+}
+
+.uber-category-btn:hover {
+  border-color: var(--color-primary-light);
+  background: #F8FAFC;
+}
+
+.uber-category-btn--selected {
+  border-color: var(--color-primary);
+  background: #EFF6FF;
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.uber-category-btn-icon {
+  font-size: 26px;
+  margin-bottom: 4px;
+}
+
+.uber-category-btn-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+/* Presets de Tamanho (Envelope, Caixa P, Mochila, Caixa M) */
+.uber-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: var(--space-3);
+}
+
+@media (min-width: 520px) {
+  .uber-presets-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.uber-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.uber-preset-btn:hover {
+  border-color: var(--color-primary-light);
+  background: #F8FAFC;
+}
+
+.uber-preset-btn--selected {
+  border-color: var(--color-primary);
+  background: #EFF6FF;
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.uber-preset-icon {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.uber-preset-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.uber-preset-dims {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* Cards de Modalidade (Moto, Carro, Bike) Padrão Uber/99 */
+.uber-vehicles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: var(--space-4);
+}
+
+.uber-vehicle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  gap: 12px;
+}
+
+.uber-vehicle-row:hover {
+  border-color: var(--color-primary-light);
+  background: #F8FAFC;
+}
+
+.uber-vehicle-row--selected {
+  border-color: var(--color-primary);
+  background: #EFF6FF;
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.uber-vehicle-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.uber-vehicle-row--selected .uber-vehicle-icon-wrap {
+  background: #DBEAFE;
+}
+
+.uber-vehicle-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.uber-vehicle-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.uber-vehicle-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-brand-deep-navy);
+}
+
+.uber-vehicle-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #ECFDF5;
+  color: #065F46;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+}
+
+.uber-vehicle-desc {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+.uber-vehicle-price-box {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.uber-vehicle-price {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--color-brand-deep-navy);
+}
+
+.uber-vehicle-net {
+  font-size: 11px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+/* Dock Inferior Fixo de Ação (Padrão Uber / 99) */
+.uber-action-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #FFFFFF;
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 1000;
+}
+
+.uber-action-dock-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.uber-dock-summary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.uber-dock-summary-label {
+  font-size: 11px;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.uber-dock-summary-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.uber-dock-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.uber-btn-back {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uber-btn-back:hover {
+  background: var(--color-border);
+}
+
+.uber-btn-primary {
+  background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3);
+}
+
+.uber-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(29, 78, 216, 0.4);
+}
+
+.uber-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ============================================================================
+   MAPA INTERATIVO E ENTRADA DE ENDEREÇO COMPLETO TOPICLOG
+   ============================================================================ */
+.uber-map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 250px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  background-color: #E2E8F0;
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .uber-map-wrapper {
+    height: 300px;
+  }
+}
+
+.uber-map-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  color: #FFFFFF;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.uber-map-recenter {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: #FFFFFF;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.uber-connected-inputs {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 28px;
+  margin: var(--space-3) 0;
+}
+
+.uber-connected-inputs::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 24px;
+  bottom: 24px;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #059669 0px,
+    #059669 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.uber-address-row {
+  position: relative;
+}
+
+.uber-address-dot {
+  position: absolute;
+  left: -28px;
+  top: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uber-address-dot--origin {
+  background-color: #ECFDF5;
+  border: 3px solid #059669;
+}
+
+.uber-address-dot--dest {
+  border-radius: 4px;
+  background-color: #0F172A;
+  border: 3px solid #0F172A;
+}
+
+.uber-address-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-brand-deep-navy);
+  background-color: #FFFFFF;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.uber-address-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.uber-price-stepper-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: var(--space-3) 0;
+}
+
+.uber-terms-box {
+  background-color: #F8FAFC;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+/* =====================================================================
+   Correção global estrita para mapas interativos Leaflet (evita tiles desalinhados)
+   ===================================================================== */
+.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+}
+
+.leaflet-container img.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+  width: 256px !important;
+  height: 256px !important;
+}
+
+.leaflet-tile-container {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  pointer-events: none;
+}
+
+.leaflet-tile {
+  position: absolute !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* =====================================================================
+   Tailwind CSS Utilities Complementares para Landing Page e Componentes
+   ===================================================================== */
+.flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.flex-row { flex-direction: row; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+.px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.text-xs { font-size: 0.75rem; line-height: 1rem; }
+.text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+.text-base { font-size: 1rem; line-height: 1.5rem; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.rounded-lg { border-radius: 0.5rem; }
+.rounded-xl { border-radius: 0.75rem; }
+.rounded-full { border-radius: 9999px; }
+.shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+.shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
+.transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+@media (min-width: 640px) {
+  .sm\:gap-4 { gap: 1rem; }
+  .sm\:text-base { font-size: 1rem; line-height: 1.5rem; }
+}
+
+
+
 

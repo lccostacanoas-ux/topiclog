@@ -282,25 +282,33 @@ export interface AddressInputPayload {
   readonly neighborhood: string;
   readonly streetAndNumber?: string;
   readonly postalCode?: string;
+  readonly latitude?: number | null;
+  readonly longitude?: number | null;
+  readonly formattedAddress?: string;
+  readonly complement?: string;
+  readonly provider?: string;
 }
 
 export interface CreateShipmentPayload {
-  readonly title: string;
-  readonly description: string;
-  readonly category: ShipmentCategoryCode;
-  readonly vehicleType: VehicleTypeCode;
-  readonly weightGrams: number;
-  readonly dimensionsLengthCm: number;
-  readonly dimensionsWidthCm: number;
-  readonly dimensionsHeightCm: number;
-  readonly declaredValueCents: number;
+  readonly title?: string;
+  readonly description?: string;
+  readonly category?: ShipmentCategoryCode;
+  readonly vehicleType?: VehicleTypeCode;
+  readonly weightGrams?: number | null;
+  readonly dimensionsLengthCm?: number;
+  readonly dimensionsWidthCm?: number;
+  readonly dimensionsHeightCm?: number;
+  readonly declaredValueCents?: number;
   readonly suggestedPriceCents: number;
   readonly specialCareNotes?: readonly string[];
   readonly origin: AddressInputPayload;
   readonly destination: AddressInputPayload;
   readonly pickupWindow?: string;
   readonly deliveryWindow?: string;
-  readonly interestedInInsurance: boolean;
+  readonly interestedInInsurance?: boolean;
+  readonly notes?: string;
+  readonly acceptedTerms?: boolean;
+  readonly legalTermsVersion?: string;
 }
 
 export interface ShipmentAddressDto {
@@ -330,7 +338,7 @@ export interface ShipmentDetailDto {
   readonly description: string;
   readonly category: string;
   readonly vehicleType: VehicleTypeCode;
-  readonly weightGrams: number;
+  readonly weightGrams?: number | null;
   readonly dimensionsLengthCm: number;
   readonly dimensionsWidthCm: number;
   readonly dimensionsHeightCm: number;
@@ -354,7 +362,7 @@ export interface ShipmentSummaryDto {
   readonly title: string;
   readonly category: string;
   readonly vehicleType: VehicleTypeCode;
-  readonly weightGrams: number;
+  readonly weightGrams?: number | null;
   readonly suggestedPriceCents: number;
   readonly originCity: string;
   readonly originNeighborhood: string;
@@ -409,6 +417,7 @@ export interface TripSummaryDto {
   readonly vehicleModel: string;
   readonly originCity: string;
   readonly destinationCity: string;
+  readonly intermediateStops?: readonly string[];
   readonly stopCount: number;
   readonly departureDate: string;
   readonly departureTime: string;
@@ -458,7 +467,7 @@ export interface NearbyShipmentOpportunityDto {
   readonly title: string;
   readonly category: string;
   readonly vehicleType: string;
-  readonly weightGrams: number;
+  readonly weightGrams?: number | null;
   readonly suggestedPriceCents: number;
   readonly originCity: string;
   readonly originNeighborhood: string;
@@ -504,7 +513,7 @@ export interface OpportunityFeedItemDto {
   readonly title: string;
   readonly category: string;
   readonly vehicleType: string;
-  readonly weightGrams: number;
+  readonly weightGrams?: number | null;
   readonly volumeLiters?: number | null;
   readonly suggestedPriceCents: number;
   readonly originCity: string;

@@ -20,7 +20,6 @@ export default function MyAccountPage(): React.JSX.Element {
 
   const [publicCard, setPublicCard] = useState<PublicUserCardResponse | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [problem, setProblem] = useState<ProblemDetailsDto | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -93,26 +92,6 @@ export default function MyAccountPage(): React.JSX.Element {
     }
   };
 
-  const handleManualRefresh = async () => {
-    setProblem(null);
-    setSuccessMessage(null);
-    setIsRefreshing(true);
-    try {
-      const ok = await refresh();
-      if (ok) {
-        setSuccessMessage("Sessão renovada com sucesso (Rotação de Refresh Token — DEC-02.4)!");
-      } else {
-        setProblem({
-          title: "Sessão expirada",
-          status: 401,
-          detail: "A sessão não pôde ser renovada. Faça login novamente."
-        });
-      }
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <main id="main-content" className="container" style={{ paddingTop: "32px", paddingBottom: "48px" }}>
@@ -150,7 +129,7 @@ export default function MyAccountPage(): React.JSX.Element {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div>
             <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-primary)" }}>
-              Topic Log • Minha Conta (PR-01)
+              TopicLog • Minha Conta
             </span>
             <h1 style={{ fontSize: "28px", lineHeight: "36px", margin: "6px 0 0 0" }}>
               Olá, {user.displayName}
@@ -158,14 +137,8 @@ export default function MyAccountPage(): React.JSX.Element {
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <StatusPill
-              label={`KYC: ${user.kycStatus}`}
-              tone={
-                user.kycStatus === "VERIFIED"
-                  ? "success"
-                  : user.kycStatus === "REJECTED"
-                  ? "danger"
-                  : "warning"
-              }
+              label={user.kycStatus === "VERIFIED" ? "Identidade Confirmada" : "Cadastro Ativo"}
+              tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
             />
           </div>
         </div>
@@ -185,53 +158,53 @@ export default function MyAccountPage(): React.JSX.Element {
         />
       )}
 
-      {/* Destaque de Permissões e KYC Progressivo (D05) */}
-      <section className="grid-two" style={{ marginBottom: "24px" }} aria-label="Status de navegação e contratação">
+      {/* Painéis de Status e Verificação da Conta */}
+      <section className="grid-two" style={{ marginBottom: "24px" }} aria-label="Status da conta e segurança">
         <div className="card" style={{ borderLeft: "4px solid var(--color-success)" }}>
           <h2 style={{ fontSize: "18px", marginTop: 0, marginBottom: "8px" }}>
-            Navegação na Plataforma (D05)
+            Envio de Encomendas
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "14px", margin: "0 0 12px 0" }}>
-            Você pode explorar livremente o feed de encomendas e viagens em todo o estado de Minas Gerais.
+            Você pode publicar pedidos de transporte e receber propostas de motoristas para qualquer localidade de Minas Gerais.
           </p>
-          <StatusPill label="Navegação Liberada (Sem KYC obrigatório)" tone="success" />
+          <StatusPill label="Envios Liberados na Plataforma" tone="success" />
         </div>
 
         <div
           className="card"
           style={{
-            borderLeft: `4px solid ${user.canContractDelivery ? "var(--color-success)" : "var(--color-warning)"}`
+            borderLeft: `4px solid ${user.kycStatus === "VERIFIED" ? "var(--color-success)" : "#3B82F6"}`
           }}
         >
           <h2 style={{ fontSize: "18px", marginTop: 0, marginBottom: "8px" }}>
-            Contratação de Entregas (D05)
+            Verificação de Identidade
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "14px", margin: "0 0 12px 0" }}>
-            {user.canContractDelivery
-              ? "Sua conta cumpriu os 4 checks obrigatórios e está liberada para contratações bilaterais."
-              : "A contratação bilateral exige verificação obrigatória de identidade de ambas as partes."}
+            {user.kycStatus === "VERIFIED"
+              ? "Sua identidade foi confirmada e sua conta possui selo de confiança na plataforma."
+              : "Seus dados básicos estão ativos. Você pode enviar seus documentos para obter o selo de perfil verificado quando desejar."}
           </p>
           <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill
-              label={user.canContractDelivery ? "Contratação Habilitada" : "Bloqueada até Conclusão do KYC"}
-              tone={user.canContractDelivery ? "success" : "warning"}
+              label={user.kycStatus === "VERIFIED" ? "Perfil com Selo Verificado" : "Cadastro Básico Concluído"}
+              tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
             />
-            {!user.canContractDelivery && (
+            {user.kycStatus !== "VERIFIED" && (
               <Link href="/verificacao-kyc" className="btn btn--secondary" style={{ padding: "4px 12px", fontSize: "13px" }}>
-                Completar Verificação
+                Verificar Documentos
               </Link>
             )}
           </div>
         </div>
       </section>
 
-      {/* Dados Privados vs. Cartão Público (Minimização LGPD) */}
+      {/* Meus Dados vs. Perfil Público */}
       <div className="grid-two" style={{ marginBottom: "24px" }}>
-        {/* Painel de Perfil Privado */}
+        {/* Painel de Dados Cadastrais */}
         <section className="card" aria-labelledby="private-profile-heading">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
             <h2 id="private-profile-heading" style={{ fontSize: "20px", margin: 0 }}>
-              Perfil Privado (ABAC)
+              Meus Dados Cadastrais
             </h2>
             <button
               type="button"
@@ -247,11 +220,11 @@ export default function MyAccountPage(): React.JSX.Element {
             <div style={{ fontSize: "14px", lineHeight: "24px" }}>
               <p><strong>Nome:</strong> {user.displayName}</p>
               <p><strong>E-mail:</strong> {user.email}</p>
-              <p><strong>Telefone mascarado:</strong> {user.phoneMasked} <span style={{ color: "var(--color-muted)", fontSize: "12px" }}>(Criptografado)</span></p>
-              <p><strong>CPF mascarado:</strong> {user.cpfMasked ?? "Não informado ainda"}</p>
+              <p><strong>Telefone:</strong> {user.phoneMasked}</p>
+              <p><strong>CPF:</strong> {user.cpfMasked ?? "Não informado"}</p>
               <p><strong>Município:</strong> {user.city} - {user.stateUf}</p>
               <p>
-                <strong>Papéis cadastrados:</strong>{" "}
+                <strong>Meu Perfil:</strong>{" "}
                 {user.roles.map(r => (
                   <span
                     key={r}
@@ -266,12 +239,9 @@ export default function MyAccountPage(): React.JSX.Element {
                       fontSize: "12px"
                     }}
                   >
-                    {r}
+                    {r === "SENDER" ? "Remetente" : r === "CARRIER" ? "Transportador" : "Destinatário"}
                   </span>
                 ))}
-              </p>
-              <p style={{ color: "var(--color-muted)", fontSize: "12px", marginTop: "12px" }}>
-                Termos aceitos: versão <code>{user.termsAcceptedVersion}</code> em {new Date(user.termsAcceptedAtUtc).toLocaleString("pt-BR")}.
               </p>
             </div>
           ) : (
@@ -335,7 +305,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       checked={editRoles.includes("SENDER")}
                       onChange={() => handleRoleToggle("SENDER")}
                     />
-                    Remetente (SENDER)
+                    Remetente (Enviar encomendas)
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
                     <input
@@ -343,7 +313,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       checked={editRoles.includes("CARRIER")}
                       onChange={() => handleRoleToggle("CARRIER")}
                     />
-                    Transportador (CARRIER)
+                    Transportador (Realizar transportes)
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
                     <input
@@ -351,7 +321,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       checked={editRoles.includes("RECIPIENT")}
                       onChange={() => handleRoleToggle("RECIPIENT")}
                     />
-                    Destinatário (RECIPIENT)
+                    Destinatário (Receber)
                   </label>
                 </div>
               </fieldset>
@@ -373,14 +343,13 @@ export default function MyAccountPage(): React.JSX.Element {
           )}
         </section>
 
-        {/* Pré-visualização do Cartão Público Mínimo (Minimização LGPD) */}
+        {/* Pré-visualização do Perfil Público (Privacidade LGPD) */}
         <section className="card" aria-labelledby="public-card-heading">
           <h2 id="public-card-heading" style={{ fontSize: "20px", marginTop: 0, marginBottom: "8px" }}>
-            Cartão Público Mínimo (LGPD)
+            Como outros usuários veem você (Perfil Público)
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "13px", marginBottom: "16px" }}>
-            Demonstração de segurança perceptível (04-Design-System.md Seção 8): é exatamente assim que
-            outros usuários veem seu perfil no marketplace. <strong>E-mail, telefone e CPF jamais aparecem.</strong>
+            Para garantir sua privacidade conforme a LGPD, seu e-mail, telefone particular e CPF <strong>nunca são exibidos</strong> publicamente. Apenas seu primeiro nome, cidade e reputação ficam visíveis.
           </p>
 
           {publicCard ? (
@@ -395,7 +364,7 @@ export default function MyAccountPage(): React.JSX.Element {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <strong style={{ fontSize: "16px" }}>{publicCard.abbreviatedDisplayName}</strong>
                 <StatusPill
-                  label={publicCard.isKycVerified ? "Verificado" : "Não verificado"}
+                  label={publicCard.isKycVerified ? "Identidade Verificada" : "Não verificado"}
                   tone={publicCard.isKycVerified ? "success" : "neutral"}
                 />
               </div>
@@ -405,50 +374,42 @@ export default function MyAccountPage(): React.JSX.Element {
               </p>
 
               <p style={{ margin: "4px 0", fontSize: "13px" }}>
-                Papéis públicos: {publicCard.publicRoles.join(", ")}
+                Papéis na plataforma: {publicCard.publicRoles.map(r => r === "SENDER" ? "Remetente" : r === "CARRIER" ? "Transportador" : "Destinatário").join(", ")}
               </p>
 
-              <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--color-primary)", fontWeight: 600 }}>
-                Avaliação: ★ {Number(publicCard.ratingAvg).toFixed(2)} ({publicCard.ratingCount} entregas)
-              </p>
+              {publicCard.ratingCount > 0 ? (
+                <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--color-primary)", fontWeight: 600 }}>
+                  Avaliação: ★ {Number(publicCard.ratingAvg).toFixed(2)} ({publicCard.ratingCount} entregas avaliadas)
+                </p>
+              ) : (
+                <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--color-muted)" }}>
+                  Avaliação: Ainda sem avaliações (as estrelas serão exibidas após as primeiras entregas e interações)
+                </p>
+              )}
             </div>
           ) : (
-            <p style={{ color: "var(--color-muted)" }}>Carregando cartão público...</p>
+            <p style={{ color: "var(--color-muted)" }}>Carregando dados do perfil...</p>
           )}
         </section>
       </div>
 
-      {/* Controle de Sessão e Segurança */}
+      {/* Segurança da Conta e Encerramento de Sessão */}
       <section className="card">
         <h2 style={{ fontSize: "18px", marginTop: 0, marginBottom: "8px" }}>
-          Gerenciamento de Sessão Criptográfica (DEC-02)
+          Segurança da Conta
         </h2>
         <p style={{ color: "var(--color-muted)", fontSize: "14px", marginBottom: "16px" }}>
-          Sessão assinada via JWT HMAC-SHA256 com rotação de refresh tokens e detecção automática de reuso.
+          Sua conta está conectada de forma segura com proteção de dados e autenticação criptográfica.
         </p>
 
         <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
           <button
             type="button"
-            className="btn btn--secondary"
-            onClick={() => void handleManualRefresh()}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? "Renovando sessão..." : "Testar Renovação (Refresh Token)"}
-          </button>
-          <button
-            type="button"
-            className="btn btn--outline"
-            onClick={() => void reloadProfile()}
-          >
-            Sincronizar Dados com Backend
-          </button>
-          <button
-            type="button"
             className="btn btn--danger"
             onClick={() => void logout()}
+            style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
           >
-            Encerrar Sessão
+            🚪 Sair da Conta (Encerrar Sessão)
           </button>
         </div>
       </section>

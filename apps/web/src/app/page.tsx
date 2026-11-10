@@ -4,14 +4,131 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
-import { getDemoShipments } from "../lib/demo-marketplace-store";
+import { getDemoShipments, getRatingsSummary, type RatingsSummary } from "../lib/demo-marketplace-store";
+
+function renderStars(rating: number) {
+  return (
+    <div style={{ display: "inline-flex", gap: "2px", alignItems: "center" }} aria-label={`${rating} de 5 estrelas`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={`star-${star}`}
+          style={{
+            fontSize: "16px",
+            color: star <= rating ? "#F59E0B" : "#CBD5E1",
+            lineHeight: 1
+          }}
+        >
+          ★
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface FaqItem {
+  readonly id: string;
+  readonly category: "TODAS" | "REMETENTE" | "TRANSPORTADOR" | "PAGAMENTO" | "SEGURANCA";
+  readonly categoryBadge: string;
+  readonly question: string;
+  readonly answer: string;
+}
+
+const FAQ_ITEMS: readonly FaqItem[] = [
+  {
+    id: "faq-1",
+    category: "TODAS",
+    categoryBadge: "Geral",
+    question: "O que é a Topic Log e como funciona a plataforma?",
+    answer: "A Topic Log é um marketplace colaborativo de logística que conecta pessoas e empresas precisando enviar encomendas a motoristas e viajantes que já vão fazer aquele trajeto com espaço disponível no veículo (carros, motos, utilitários ou vans). O remetente anuncia o pacote, os transportadores enviam propostas e a negociação é fechada com total agilidade, economia e segurança dentro da plataforma."
+  },
+  {
+    id: "faq-2",
+    category: "SEGURANCA",
+    categoryBadge: "Segurança",
+    question: "Como funciona a confirmação da entrega por senha?",
+    answer: "A entrega na Topic Log é 100% segura e validada exclusivamente por senha/código. Ao despachar a encomenda, um código de liberação único é gerado no sistema. Quando o transportador entrega o pacote no destino, o destinatário informa esse código para validação imediata no aplicativo, comprovando a conclusão sem necessidade de fotos ou burocracia."
+  },
+  {
+    id: "faq-3",
+    category: "PAGAMENTO",
+    categoryBadge: "Pagamentos",
+    question: "Como é garantido o pagamento do frete e o repasse ao transportador?",
+    answer: "O remetente realiza o pagamento de forma protegida pela plataforma no momento da contratação (via Pix ou cartão). O valor do frete fica em custódia segura e é liberado diretamente para o transportador no exato instante em que a entrega é confirmada com o código seguro no destino. O transportador tem garantia absoluta de recebimento e o remetente tem garantia de entrega."
+  },
+  {
+    id: "faq-4",
+    category: "PAGAMENTO",
+    categoryBadge: "Políticas & Taxas",
+    question: "Como funcionam as taxas e repasses da plataforma?",
+    answer: "A Topic Log opera com políticas comerciais claras e atualizadas centralmente pelas configurações da plataforma, sem tarifas surpresas ou cobranças ocultas. Antes de aceitar qualquer proposta ou confirmar um envio, o demonstrativo financeiro completo é exibido na tela, detalhando o valor bruto do frete, as taxas do serviço e o repasse líquido exato."
+  },
+  {
+    id: "faq-5",
+    category: "TRANSPORTADOR",
+    categoryBadge: "Transportadores",
+    question: "Quantos volumes e quanto peso o transportador pode levar?",
+    answer: "O transportador pode levar quantos volumes e encomendas couberem no seu veículo e quanto peso suportar o seu trajeto. A plataforma permite agregar múltiplos pedidos de remetentes diferentes em uma mesma viagem, otimizando o seu ganho financeiro."
+  },
+  {
+    id: "faq-6",
+    category: "REMETENTE",
+    categoryBadge: "Remetentes",
+    question: "Qual o limite de peso e volumes por envio para o remetente?",
+    answer: "O remetente pode enviar encomendas de no máximo 20 kg e exatamente 1 volume por pedido. O campo de peso no cadastro é opcional (deixe em branco se não souber o peso exato, desde que dentro do limite de 20 kg). Caso possua mais de uma encomenda ou pacote, basta cadastrar um pedido para cada volume."
+  },
+  {
+    id: "faq-7",
+    category: "REMETENTE",
+    categoryBadge: "Remetentes",
+    question: "Quais tipos de itens podem ser transportados?",
+    answer: "São aceitas pequenas e médias encomendas legais e seguras: documentos, eletrônicos, autopeças, vestuário, mercadorias para revenda, itens domésticos e alimentos não perecíveis embalados. É estritamente proibido o transporte de itens ilícitos, perigosos, inflamáveis, armas ou cargas proibidas por lei."
+  },
+  {
+    id: "faq-8",
+    category: "SEGURANCA",
+    categoryBadge: "Segurança",
+    question: "Como é avaliada a procedência e confiança dos usuários?",
+    answer: "Todos os usuários passam por verificação cadastral obrigatória com validação de CPF e identidade. Além disso, a plataforma disponibiliza o histórico público de viagens realizadas, selo de verificação e a quantidade de estrelas atribuídas após a conclusão de entregas e interações reais."
+  }
+];
 
 export default function HomePage(): React.JSX.Element {
   const router = useRouter();
   const { user } = useAuth();
-  const displayName = user?.displayName ? user.displayName.split(" ")[0] : "Luiz";
+  const displayName = user?.displayName ? user.displayName.split(" ")[0] : null;
   const recentShipments = getDemoShipments().slice(0, 3);
-  const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [ratingsSummary, setRatingsSummary] = useState<RatingsSummary>({
+    carrierCount: 0,
+    carrierAvg: 0,
+    senderCount: 0,
+    senderAvg: 0,
+    totalCount: 0
+  });
+  const [openFaqId, setOpenFaqId] = useState<string | null>("faq-1");
+  const [faqFilter, setFaqFilter] = useState<string>("TODAS");
+
+  const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
+  const isSender = Boolean(user?.roles?.includes("SENDER"));
+  const hasBothRoles = isCarrier && isSender;
+  const [activeRole, setActiveRole] = useState<"CARRIER" | "SENDER">(
+    user?.roles?.includes("CARRIER") ? "CARRIER" : "SENDER"
+  );
+
+  React.useEffect(() => {
+    setRatingsSummary(getRatingsSummary());
+  }, []);
+
+  React.useEffect(() => {
+    if (user?.roles?.includes("CARRIER")) {
+      setActiveRole("CARRIER");
+    } else if (user?.roles?.includes("SENDER")) {
+      setActiveRole("SENDER");
+    }
+  }, [user?.roles]);
+
+  const filteredFaqItems = faqFilter === "TODAS"
+    ? FAQ_ITEMS
+    : FAQ_ITEMS.filter((f) => f.category === faqFilter || f.category === "TODAS");
 
   return (
     <main
@@ -22,8 +139,8 @@ export default function HomePage(): React.JSX.Element {
         paddingBottom: "88px"
       }}
     >
-      <div className="container" style={{ maxWidth: "560px", padding: "16px 16px 24px 16px" }}>
-        {/* Saudação Superior Padrão CDT / Meu INSS */}
+      <div className="container" style={{ maxWidth: "860px", padding: "20px 16px 32px 16px", margin: "0 auto" }}>
+        {/* Saudação Superior */}
         <section style={{ marginBottom: "20px" }}>
           <h1
             style={{
@@ -34,386 +151,315 @@ export default function HomePage(): React.JSX.Element {
               letterSpacing: "-0.5px"
             }}
           >
-            Olá, {displayName}
+            {displayName ? `Olá, ${displayName}` : "Bem-vindo à Topic Log"}
           </h1>
           <p style={{ margin: 0, fontSize: "14px", color: "#64748B", fontWeight: 500 }}>
-            Marketplace de Encomendas & Rotas • Minas Gerais
+            {user
+              ? `Conectado como ${activeRole === "CARRIER" ? "Transportador" : "Remetente"} • Minas Gerais`
+              : "Marketplace de Encomendas & Rotas • Minas Gerais"}
           </p>
+
+          {hasBothRoles && (
+            <div style={{ marginTop: "12px", display: "inline-flex", backgroundColor: "#E2E8F0", padding: "3px", borderRadius: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setActiveRole("CARRIER")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "none",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  backgroundColor: activeRole === "CARRIER" ? "#2563EB" : "transparent",
+                  color: activeRole === "CARRIER" ? "#FFFFFF" : "#475569",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                🚚 Painel do Transportador
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRole("SENDER")}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "none",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  backgroundColor: activeRole === "SENDER" ? "#2563EB" : "transparent",
+                  color: activeRole === "SENDER" ? "#FFFFFF" : "#475569",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                📦 Painel do Remetente
+              </button>
+            </div>
+          )}
         </section>
 
+        {/* Card de Acesso para Visitantes Não Logados */}
+        {!user && (
+          <div
+            style={{
+              backgroundColor: "#FFFFFF",
+              border: "1px solid #CBD5E1",
+              borderRadius: "14px",
+              padding: "14px 18px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+              gap: "12px",
+              flexWrap: "wrap"
+            }}
+          >
+            <div>
+              <div style={{ fontSize: "14px", fontWeight: 700, color: "#0F172A" }}>
+                Você ainda não está conectado
+              </div>
+              <div style={{ fontSize: "12px", color: "#64748B" }}>
+                Acesse sua conta para publicar e acompanhar encomendas
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <Link
+                href="/entrar"
+                className="btn btn--primary"
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  textDecoration: "none"
+                }}
+              >
+                Entrar
+              </Link>
+              <Link
+                href="/cadastro"
+                className="btn btn--outline"
+                style={{
+                  padding: "8px 14px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  backgroundColor: "#FFFFFF"
+                }}
+              >
+                Cadastrar
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* =========================================================================
-            1. GRANDES CARDS DE AÇÃO VISUAL (ESTILO CDT - CARTEIRA DIGITAL DE TRÂNSITO)
+            1. BOTÕES DE AÇÃO PRINCIPAL (HERO / CTA COMPACTO E LADO A LADO)
            ========================================================================= */}
         <section
+          className="flex flex-row items-center gap-3 sm:gap-4 flex-wrap"
           style={{
             display: "flex",
-            flexDirection: "column",
-            gap: "14px",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
             marginBottom: "28px"
           }}
-          aria-label="Serviços Principais Topic Log"
+          aria-label="Ações Principais Topic Log"
         >
-          {/* Card 1: CONDUTOR / ENVIAR ENCOMENDA (Verde Esmeralda) */}
-          <Link
-            href="/encomendas/publicar"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "linear-gradient(135deg, #059669 0%, #10B981 100%)",
-              borderRadius: "18px",
-              padding: "20px 22px",
-              textDecoration: "none",
-              color: "#FFFFFF",
-              boxShadow: "0 10px 20px -5px rgba(5, 150, 105, 0.4)",
-              position: "relative",
-              overflow: "hidden",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease"
-            }}
-          >
-            {/* Efeito de onda suave no fundo (Padrão CDT) */}
-            <svg
-              style={{
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                top: 0,
-                width: "60%",
-                height: "100%",
-                opacity: 0.15,
-                pointerEvents: "none"
-              }}
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              fill="none"
-            >
-              <path
-                d="M50 0 C 80 50, 120 20, 200 100 L 200 0 Z"
-                fill="#FFFFFF"
-              />
-              <path
-                d="M0 100 C 60 70, 140 90, 200 40 L 200 100 Z"
-                fill="#FFFFFF"
-              />
-            </svg>
-
-            <div style={{ position: "relative", zIndex: 2, maxWidth: "68%" }}>
-              <span
+          {activeRole === "CARRIER" ? (
+            <>
+              {/* Botão 1 Transportador: MURAL DE ENCOMENDAS */}
+              <Link
+                href="/feed"
+                id="btn-cta-mural"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "20px",
-                  fontWeight: 900,
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  lineHeight: "1.2",
-                  textTransform: "uppercase"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #059669 0%, #10B981 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)"
                 }}
               >
-                ENVIAR ENCOMENDA
-              </span>
-              <span
+                <span>🚚</span>
+                <span>Mural de Encomendas</span>
+              </Link>
+
+              {/* Botão 2 Transportador: CADASTRAR VIAGEM */}
+              <Link
+                href="/viagens/cadastrar"
+                id="btn-cta-cadastrar-viagem"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "13px",
-                  opacity: 0.95,
-                  fontWeight: 500,
-                  display: "block",
-                  marginTop: "6px",
-                  lineHeight: "1.3"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.3)"
                 }}
               >
-                Despache mercadorias e pacotes leves
-              </span>
-            </div>
+                <span>🗺️</span>
+                <span>Cadastrar Minha Viagem</span>
+              </Link>
 
-            {/* Ícone 3D em relevo à direita */}
-            <div
-              style={{
-                width: "58px",
-                height: "58px",
-                borderRadius: "16px",
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "28px",
-                position: "relative",
-                zIndex: 2,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-              }}
-            >
-              📦
-            </div>
-          </Link>
-
-          {/* Card 2: VEÍCULOS / SOU TRANSPORTADOR (Amarelo Dourado / Âmbar) */}
-          <Link
-            href="/viagens/cadastrar"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "linear-gradient(135deg, #D97706 0%, #F59E0B 100%)",
-              borderRadius: "18px",
-              padding: "20px 22px",
-              textDecoration: "none",
-              color: "#FFFFFF",
-              boxShadow: "0 10px 20px -5px rgba(217, 119, 6, 0.4)",
-              position: "relative",
-              overflow: "hidden",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease"
-            }}
-          >
-            <svg
-              style={{
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                top: 0,
-                width: "60%",
-                height: "100%",
-                opacity: 0.15,
-                pointerEvents: "none"
-              }}
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              fill="none"
-            >
-              <path
-                d="M30 0 C 70 60, 110 30, 200 90 L 200 0 Z"
-                fill="#FFFFFF"
-              />
-              <path
-                d="M10 100 C 70 80, 130 95, 200 50 L 200 100 Z"
-                fill="#FFFFFF"
-              />
-            </svg>
-
-            <div style={{ position: "relative", zIndex: 2, maxWidth: "68%" }}>
-              <span
+              {/* Botão 3 Transportador: MINHAS PROPOSTAS */}
+              <Link
+                href="/propostas"
+                id="btn-cta-propostas"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "20px",
-                  fontWeight: 900,
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  lineHeight: "1.2",
-                  textTransform: "uppercase"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(30, 64, 175, 0.3)"
                 }}
               >
-                TRANSPORTADOR
-              </span>
-              <span
+                <span>🤝</span>
+                <span>Minhas Propostas</span>
+              </Link>
+
+              {/* Botão 4 Transportador: CHAT E MENSAGENS */}
+              <Link
+                href="/mensagens"
+                id="btn-cta-mensagens"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "13px",
-                  opacity: 0.95,
-                  fontWeight: 500,
-                  display: "block",
-                  marginTop: "6px",
-                  lineHeight: "1.3"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#1E293B",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)"
                 }}
               >
-                Cadastre viagens e monetize trajetos em MG
-              </span>
-            </div>
-
-            <div
-              style={{
-                width: "58px",
-                height: "58px",
-                borderRadius: "16px",
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "28px",
-                position: "relative",
-                zIndex: 2,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-              }}
-            >
-              🚗
-            </div>
-          </Link>
-
-          {/* Card 3: INFRAÇÕES / MINHAS ATIVIDADES (Azul Royal) */}
-          <Link
-            href="/minhas-atividades"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)",
-              borderRadius: "18px",
-              padding: "20px 22px",
-              textDecoration: "none",
-              color: "#FFFFFF",
-              boxShadow: "0 10px 20px -5px rgba(30, 64, 175, 0.4)",
-              position: "relative",
-              overflow: "hidden",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease"
-            }}
-          >
-            <svg
-              style={{
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                top: 0,
-                width: "60%",
-                height: "100%",
-                opacity: 0.15,
-                pointerEvents: "none"
-              }}
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              fill="none"
-            >
-              <path
-                d="M40 0 C 80 40, 130 10, 200 80 L 200 0 Z"
-                fill="#FFFFFF"
-              />
-              <path
-                d="M0 100 C 80 60, 150 70, 200 30 L 200 100 Z"
-                fill="#FFFFFF"
-              />
-            </svg>
-
-            <div style={{ position: "relative", zIndex: 2, maxWidth: "68%" }}>
-              <span
+                <span>💬</span>
+                <span>Chat & Mensagens</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              {/* Botão 1 Remetente: ENVIAR ENCOMENDA */}
+              <Link
+                href="/encomendas/publicar"
+                id="btn-cta-enviar"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "20px",
-                  fontWeight: 900,
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  lineHeight: "1.2",
-                  textTransform: "uppercase"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #059669 0%, #10B981 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)"
                 }}
               >
-                MINHAS ATIVIDADES
-              </span>
-              <span
+                <span>📦</span>
+                <span>Enviar Encomenda</span>
+              </Link>
+
+              {/* Botão 2 Remetente: MINHAS ENCOMENDAS */}
+              <Link
+                href="/encomendas"
+                id="btn-cta-encomendas"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "13px",
-                  opacity: 0.95,
-                  fontWeight: 500,
-                  display: "block",
-                  marginTop: "6px",
-                  lineHeight: "1.3"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.3)"
                 }}
               >
-                Acompanhe entregas ativas e código D16
-              </span>
-            </div>
+                <span>📍</span>
+                <span>Minhas Encomendas</span>
+              </Link>
 
-            <div
-              style={{
-                width: "58px",
-                height: "58px",
-                borderRadius: "16px",
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "28px",
-                position: "relative",
-                zIndex: 2,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-              }}
-            >
-              ⚡
-            </div>
-          </Link>
-
-          {/* Card 4: EDUCAÇÃO / COMPROVAÇÃO DE ENTREGA (Azul Celeste) */}
-          <Link
-            href="/minhas-atividades"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "linear-gradient(135deg, #0284C7 0%, #38BDF8 100%)",
-              borderRadius: "18px",
-              padding: "20px 22px",
-              textDecoration: "none",
-              color: "#FFFFFF",
-              boxShadow: "0 10px 20px -5px rgba(2, 132, 199, 0.4)",
-              position: "relative",
-              overflow: "hidden",
-              transition: "transform 0.15s ease, box-shadow 0.15s ease"
-            }}
-          >
-            <svg
-              style={{
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                top: 0,
-                width: "60%",
-                height: "100%",
-                opacity: 0.15,
-                pointerEvents: "none"
-              }}
-              viewBox="0 0 200 100"
-              preserveAspectRatio="none"
-              fill="none"
-            >
-              <path
-                d="M60 0 C 90 50, 140 20, 200 70 L 200 0 Z"
-                fill="#FFFFFF"
-              />
-              <path
-                d="M20 100 C 80 50, 140 80, 200 20 L 200 100 Z"
-                fill="#FFFFFF"
-              />
-            </svg>
-
-            <div style={{ position: "relative", zIndex: 2, maxWidth: "68%" }}>
-              <span
+              {/* Botão 3 Remetente: PROPOSTAS RECEBIDAS */}
+              <Link
+                href="/propostas"
+                id="btn-cta-propostas"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "20px",
-                  fontWeight: 900,
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  lineHeight: "1.2",
-                  textTransform: "uppercase"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 6px rgba(30, 64, 175, 0.3)"
                 }}
               >
-                CONFIRMAR ENTREGA
-              </span>
-              <span
+                <span>🤝</span>
+                <span>Propostas Recebidas</span>
+              </Link>
+
+              {/* Botão 4 Remetente: CHAT E MENSAGENS */}
+              <Link
+                href="/mensagens"
+                id="btn-cta-mensagens"
+                className="px-4 py-2 text-sm sm:text-base flex items-center gap-2 font-bold rounded-lg shadow-sm transition"
                 style={{
-                  fontSize: "13px",
-                  opacity: 0.95,
-                  fontWeight: 500,
-                  display: "block",
-                  marginTop: "6px",
-                  lineHeight: "1.3"
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#1E293B",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)"
                 }}
               >
-                Fotografe o pacote e valide o código D16
-              </span>
-            </div>
-
-            <div
-              style={{
-                width: "58px",
-                height: "58px",
-                borderRadius: "16px",
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                backdropFilter: "blur(4px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "28px",
-                position: "relative",
-                zIndex: 2,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-              }}
-            >
-              📸
-            </div>
-          </Link>
+                <span>💬</span>
+                <span>Chat & Mensagens</span>
+              </Link>
+            </>
+          )}
         </section>
 
         {/* =========================================================================
@@ -438,289 +484,718 @@ export default function HomePage(): React.JSX.Element {
               gap: "12px"
             }}
           >
-            {/* Serviço 1: Feed de Cargas */}
-            <Link
-              href="/feed"
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: "14px",
-                padding: "16px 14px",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-                border: "1px solid #E2E8F0"
-              }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  backgroundColor: "#EFF6FF",
-                  color: "#2563EB",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "18px",
-                  flexShrink: 0
-                }}
-              >
-                📁
-              </div>
-              <div>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
-                  Feed de Cargas
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                  Oportunidades
-                </span>
-              </div>
-            </Link>
+            {activeRole === "CARRIER" ? (
+              <>
+                {/* Serviço 1: Mural de Fretes */}
+                <Link
+                  href="/feed"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    🚚
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Mural de Fretes
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Catálogo de cargas
+                    </span>
+                  </div>
+                </Link>
 
-            {/* Serviço 2: Extrato e Repasses */}
-            <Link
-              href="/minha-conta"
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: "14px",
-                padding: "16px 14px",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-                border: "1px solid #E2E8F0"
-              }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  backgroundColor: "#EFF6FF",
-                  color: "#2563EB",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "18px",
-                  flexShrink: 0
-                }}
-              >
-                💰
-              </div>
-              <div>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
-                  Extrato & Saldo
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                  Comissão 13%
-                </span>
-              </div>
-            </Link>
+                {/* Serviço 2: Cadastrar Viagem */}
+                <Link
+                  href="/viagens/cadastrar"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    🗺️
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Cadastrar Viagem
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Rotas e caronas
+                    </span>
+                  </div>
+                </Link>
 
-            {/* Serviço 3: Verificação KYC */}
-            <Link
-              href="/perfil"
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: "14px",
-                padding: "16px 14px",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-                border: "1px solid #E2E8F0",
-                position: "relative"
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: "8px",
-                  right: "8px",
-                  backgroundColor: "#10B981",
-                  color: "#FFFFFF",
-                  fontSize: "9px",
-                  fontWeight: 800,
-                  padding: "2px 6px",
-                  borderRadius: "6px"
-                }}
-              >
-                OK
-              </span>
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  backgroundColor: "#EFF6FF",
-                  color: "#2563EB",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "18px",
-                  flexShrink: 0
-                }}
-              >
-                🛡️
-              </div>
-              <div>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
-                  Validar KYC
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                  Documentos & Face
-                </span>
-              </div>
-            </Link>
+                {/* Serviço 3: Minha Conta & Perfil */}
+                <Link
+                  href="/minha-conta"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    👤
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Minha Conta
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Perfil & Veículo
+                    </span>
+                  </div>
+                </Link>
 
-            {/* Serviço 4: Propostas e Negociação */}
-            <Link
-              href="/propostas"
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: "14px",
-                padding: "16px 14px",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-                border: "1px solid #E2E8F0"
-              }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  backgroundColor: "#EFF6FF",
-                  color: "#2563EB",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "18px",
-                  flexShrink: 0
-                }}
-              >
-                🤝
-              </div>
-              <div>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
-                  Propostas
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                  Negociação Ativa
-                </span>
-              </div>
-            </Link>
+                {/* Serviço 4: Enviar Encomenda */}
+                <Link
+                  href="/encomendas/publicar"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    📦
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Enviar Encomenda
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Alternar p/ remetente
+                    </span>
+                  </div>
+                </Link>
+              </>
+            ) : (
+              <>
+                {/* Serviço 1: Publicar Encomenda */}
+                <Link
+                  href="/encomendas/publicar"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    📦
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Enviar Encomenda
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Novo pedido com mapa
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Serviço 2: Minha Conta & Perfil */}
+                <Link
+                  href="/minha-conta"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    👤
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Minha Conta
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Perfil & Segurança
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Serviço 3: Verificação de Identidade */}
+                <Link
+                  href="/verificacao-kyc"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    🛡️
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Verificação Segura
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Documento & Proteção
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Serviço 4: Termos de Uso e Regras */}
+                <Link
+                  href="/termos"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    padding: "16px 14px",
+                    textDecoration: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      backgroundColor: "#EFF6FF",
+                      color: "#2563EB",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0
+                    }}
+                  >
+                    📜
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#1E293B", display: "block", lineHeight: "1.2" }}>
+                      Termos & Regras
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Itens Proibidos & Limites
+                    </span>
+                  </div>
+                </Link>
+              </>
+            )}
           </div>
         </section>
 
         {/* =========================================================================
-            3. PRECISA DE AJUDA? (ESTILO ASSISTENTE HELÔ - MEU INSS)
+            3. SEÇÃO DE REPUTAÇÃO E AVALIAÇÕES EM ESTRELAS (APARECE QUANDO HOUVER INTERAÇÃO)
            ========================================================================= */}
-        <section style={{ marginBottom: "28px" }}>
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: 700,
-              color: "#334155",
-              margin: "0 0 14px 0"
-            }}
-          >
-            Precisa de ajuda?
-          </h2>
-
-          <div
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "16px",
-              padding: "18px",
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.05)",
-              border: "1px solid #E2E8F0"
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "12px" }}>
-              {/* Avatar da Assistente Virtual */}
-              <div
-                style={{
-                  width: "52px",
-                  height: "52px",
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "26px",
-                  color: "#FFFFFF",
-                  flexShrink: 0,
-                  boxShadow: "0 4px 10px rgba(37, 99, 235, 0.25)"
-                }}
-              >
-                👩‍💼
-              </div>
-              <div>
-                <span style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", display: "block" }}>
-                  Converse com a Sofia
-                </span>
-                <p style={{ margin: "2px 0 0 0", fontSize: "13px", color: "#64748B", lineHeight: "1.3" }}>
-                  Olá, sou a assistente virtual da Topic Log. Dúvidas sobre fretes, entregas ou repasse?
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSupportModalOpen(true)}
+        <section style={{ marginBottom: "32px" }} aria-label="Avaliações e Reputação Topic Log">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+            <h2
               style={{
-                width: "100%",
-                backgroundColor: "transparent",
-                border: "none",
-                color: "#2563EB",
-                fontWeight: 700,
-                fontSize: "14px",
+                fontSize: "19px",
+                fontWeight: 800,
+                color: "#0F172A",
+                margin: 0,
+                letterSpacing: "-0.3px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "flex-end",
-                gap: "6px",
-                cursor: "pointer",
-                padding: "8px 0"
+                gap: "8px"
               }}
             >
-              <span>Iniciar Atendimento</span>
-              <span style={{ fontSize: "16px" }}>›</span>
-            </button>
+              <span>⭐</span>
+              <span>Avaliações em Estrelas</span>
+            </h2>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534", backgroundColor: "#DCFCE7", padding: "3px 10px", borderRadius: "12px" }}>
+              ✓ Reputação por Interação Real
+            </span>
+          </div>
+          <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#64748B" }}>
+            Média de estrelas atribuídas mutuamente a transportadores e remetentes com base nas entregas e interações realizadas.
+          </p>
+
+          {ratingsSummary.totalCount === 0 ? (
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "14px",
+                padding: "24px 20px",
+                border: "1px dashed #CBD5E1",
+                textAlign: "center",
+                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)"
+              }}
+            >
+              <div style={{ fontSize: "28px", marginBottom: "8px" }}>⭐</div>
+              <div style={{ fontSize: "15px", fontWeight: 700, color: "#1E293B", marginBottom: "6px" }}>
+                Ainda sem avaliações registradas
+              </div>
+              <p style={{ fontSize: "13px", color: "#64748B", margin: 0, maxWidth: "540px", marginLeft: "auto", marginRight: "auto", lineHeight: "1.5" }}>
+                A quantidade de estrelas atribuídas a Transportadores e Remetentes será exibida aqui automaticamente assim que houver a conclusão de entregas e interações na plataforma.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: "14px"
+              }}
+            >
+              {/* Card Transportador */}
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "14px",
+                  padding: "20px 22px",
+                  border: "1px solid #E2E8F0",
+                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between"
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                    <div
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "50%",
+                        backgroundColor: "#D1FAE5",
+                        color: "#065F46",
+                        fontWeight: 800,
+                        fontSize: "20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0
+                      }}
+                    >
+                      🚚
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                        Transportadores
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#64748B" }}>
+                        Estrelas concedidas por remetentes
+                      </span>
+                    </div>
+                  </div>
+
+                  {ratingsSummary.carrierCount > 0 ? (
+                    <div style={{ marginTop: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                        {renderStars(Math.round(ratingsSummary.carrierAvg))}
+                        <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                          {ratingsSummary.carrierAvg.toFixed(1)} <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#047857" }}>
+                        ★ {ratingsSummary.carrierCount} {ratingsSummary.carrierCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "13px", color: "#64748B", fontStyle: "italic", marginTop: "10px" }}>
+                      Ainda sem avaliações de entregas realizadas.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card Remetente */}
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "14px",
+                  padding: "20px 22px",
+                  border: "1px solid #E2E8F0",
+                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between"
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                    <div
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "50%",
+                        backgroundColor: "#DBEAFE",
+                        color: "#1E40AF",
+                        fontWeight: 800,
+                        fontSize: "20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0
+                      }}
+                    >
+                      📦
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                        Remetentes
+                      </div>
+                      <span style={{ fontSize: "12px", color: "#64748B" }}>
+                        Estrelas concedidas por transportadores
+                      </span>
+                    </div>
+                  </div>
+
+                  {ratingsSummary.senderCount > 0 ? (
+                    <div style={{ marginTop: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                        {renderStars(Math.round(ratingsSummary.senderAvg))}
+                        <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                          {ratingsSummary.senderAvg.toFixed(1)} <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1D4ED8" }}>
+                        ★ {ratingsSummary.senderCount} {ratingsSummary.senderCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "13px", color: "#64748B", fontStyle: "italic", marginTop: "10px" }}>
+                      Ainda sem avaliações de encomendas enviadas.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* =========================================================================
+            4. TIRE SUAS DÚVIDAS (FAQ / PERGUNTAS FREQUENTES)
+           ========================================================================= */}
+        <section style={{ marginBottom: "32px" }}>
+          <div style={{ marginBottom: "16px" }}>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "#2563EB", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Central de Dúvidas
+            </span>
+            <h2
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                color: "#0F172A",
+                margin: "4px 0 6px 0"
+              }}
+            >
+              Tire suas dúvidas
+            </h2>
+            <p style={{ color: "#64748B", fontSize: "14px", margin: 0 }}>
+              Confira as respostas para as principais dúvidas sobre fretes, prazos, confirmação de entrega e pagamentos.
+            </p>
           </div>
 
-          {/* Outros Canais de Ajuda */}
-          <Link
-            href="/mensagens"
+          {/* Filtros por Categoria */}
+          <div
             style={{
-              marginTop: "10px",
-              backgroundColor: "#FFFFFF",
+              display: "flex",
+              gap: "8px",
+              overflowX: "auto",
+              paddingBottom: "8px",
+              marginBottom: "16px",
+              scrollbarWidth: "none"
+            }}
+          >
+            {[
+              { id: "TODAS", label: "Todas as dúvidas" },
+              { id: "REMETENTE", label: "📦 Remetentes" },
+              { id: "TRANSPORTADOR", label: "🚗 Transportadores" },
+              { id: "PAGAMENTO", label: "💳 Pagamentos & Taxas" },
+              { id: "SEGURANCA", label: "🛡️ Confirmação por Senha" }
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFaqFilter(f.id)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "9999px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  border: `1.5px solid ${faqFilter === f.id ? "#2563EB" : "#E2E8F0"}`,
+                  backgroundColor: faqFilter === f.id ? "#EFF6FF" : "#FFFFFF",
+                  color: faqFilter === f.id ? "#1D4ED8" : "#475569",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Lista de Itens do FAQ em Accordion */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {filteredFaqItems.map((faq) => {
+              const isOpen = openFaqId === faq.id;
+              return (
+                <div
+                  key={faq.id}
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: "14px",
+                    border: `1px solid ${isOpen ? "#93C5FD" : "#E2E8F0"}`,
+                    boxShadow: isOpen ? "0 4px 12px rgba(37, 99, 235, 0.08)" : "0 1px 3px rgba(0, 0, 0, 0.03)",
+                    overflow: "hidden",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqId(isOpen ? null : faq.id)}
+                    aria-expanded={isOpen}
+                    style={{
+                      width: "100%",
+                      padding: "16px 18px",
+                      background: "transparent",
+                      border: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      cursor: "pointer",
+                      textAlign: "left"
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#2563EB",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.4px"
+                        }}
+                      >
+                        {faq.categoryBadge}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 700,
+                          color: isOpen ? "#1D4ED8" : "#0F172A",
+                          lineHeight: "1.4"
+                        }}
+                      >
+                        {faq.question}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        backgroundColor: isOpen ? "#EFF6FF" : "#F1F5F9",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: isOpen ? "#2563EB" : "#64748B",
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        transition: "transform 0.2s ease",
+                        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)"
+                      }}
+                    >
+                      ▾
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      style={{
+                        padding: "0 18px 18px 18px",
+                        fontSize: "14px",
+                        lineHeight: "1.6",
+                        color: "#475569",
+                        borderTop: "1px solid #F1F5F9",
+                        paddingTop: "12px"
+                      }}
+                    >
+                      {faq.answer}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Card de Contato / Suporte Direto */}
+          <div
+            style={{
+              marginTop: "16px",
+              backgroundColor: "#F8FAFC",
               borderRadius: "14px",
               padding: "16px 18px",
-              textDecoration: "none",
+              border: "1px solid #E2E8F0",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
-              border: "1px solid #E2E8F0"
+              gap: "14px",
+              flexWrap: "wrap"
             }}
           >
-            <span style={{ fontSize: "14px", fontWeight: 700, color: "#1E293B" }}>
-              Outros canais de Ajuda
-            </span>
-            <span style={{ fontSize: "18px", color: "#94A3B8" }}>›</span>
-          </Link>
+            <div>
+              <strong style={{ fontSize: "14px", color: "#0F172A", display: "block" }}>
+                Ainda tem alguma dúvida específica?
+              </strong>
+              <span style={{ fontSize: "13px", color: "#64748B" }}>
+                Converse diretamente com outros usuários ou acione nossa central de mensagens.
+              </span>
+            </div>
+            <Link
+              href="/mensagens"
+              className="btn btn--outline"
+              style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}
+            >
+              Ir para Mensagens →
+            </Link>
+          </div>
         </section>
 
         {/* =========================================================================
-            4. RODAPÉ INSTITUCIONAL (ESTILO CARTEIRA DIGITAL DE TRÂNSITO)
+            5. RODAPÉ INSTITUCIONAL (ESTILO CARTEIRA DIGITAL DE TRÂNSITO)
            ========================================================================= */}
         <footer
           style={{
@@ -746,7 +1221,7 @@ export default function HomePage(): React.JSX.Element {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ fontSize: "14px" }}>🛡️</span>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>SEGURANÇA D16</span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>SENHA DE ENTREGA</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ fontSize: "14px" }}>🔺</span>
@@ -758,146 +1233,6 @@ export default function HomePage(): React.JSX.Element {
           </p>
         </footer>
       </div>
-
-      {/* Modal de Atendimento com a Assistente Virtual */}
-      {supportModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.75)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "center",
-            padding: "16px"
-          }}
-          onClick={() => setSupportModalOpen(false)}
-        >
-          <div
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "20px",
-              padding: "20px",
-              maxWidth: "480px",
-              width: "100%",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-              color: "#0F172A"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "24px" }}>👩‍💼</span>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800 }}>Atendimento Topic Log</h3>
-                  <span style={{ fontSize: "12px", color: "#10B981", fontWeight: 700 }}>● Online Agora</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSupportModalOpen(false)}
-                style={{ background: "transparent", border: "none", color: "#64748B", fontSize: "18px", cursor: "pointer" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ backgroundColor: "#F8FAFC", borderRadius: "12px", padding: "14px", marginBottom: "16px", fontSize: "13px", color: "#334155", lineHeight: "1.5" }}>
-              <p style={{ margin: "0 0 8px 0" }}>
-                <strong>Olá, {displayName}!</strong>
-              </p>
-              <p style={{ margin: 0 }}>
-                Como posso ajudar você hoje? Selecione um dos tópicos mais frequentes ou envie uma mensagem direta:
-              </p>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setSupportModalOpen(false);
-                  router.push("/minhas-atividades");
-                }}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 14px",
-                  borderRadius: "10px",
-                  border: "1px solid #E2E8F0",
-                  backgroundColor: "#FFFFFF",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "#1E293B",
-                  cursor: "pointer"
-                }}
-              >
-                📸 Como funciona a comprovação de entrega D16?
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSupportModalOpen(false);
-                  router.push("/minha-conta");
-                }}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 14px",
-                  borderRadius: "10px",
-                  border: "1px solid #E2E8F0",
-                  backgroundColor: "#FFFFFF",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "#1E293B",
-                  cursor: "pointer"
-                }}
-              >
-                💰 Prazos e taxas de repasse ao transportador (13%)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSupportModalOpen(false);
-                  router.push("/perfil");
-                }}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 14px",
-                  borderRadius: "10px",
-                  border: "1px solid #E2E8F0",
-                  backgroundColor: "#FFFFFF",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "#1E293B",
-                  cursor: "pointer"
-                }}
-              >
-                🛡️ Verificação de identidade e biometria (KYC)
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSupportModalOpen(false)}
-              style={{
-                width: "100%",
-                backgroundColor: "#2563EB",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "10px",
-                padding: "12px",
-                fontWeight: 700,
-                fontSize: "14px",
-                cursor: "pointer"
-              }}
-            >
-              Fechar Atendimento
-            </button>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

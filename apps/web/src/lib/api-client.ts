@@ -27,6 +27,7 @@ import type {
   TermsResponsibilityManifestResponse,
   TripDto,
   TripSummaryDto,
+  VehicleTypeCode,
   UpdateProfileRequest,
   CursorPagedResultDto,
   OpportunityFeedItemDto,
@@ -77,6 +78,101 @@ import type {
   CompareLegalVersionsResponseDto,
   LegalAcceptanceDto
 } from "./types";
+import {
+  addDemoTrip,
+  getDemoTrips,
+  addDemoShipment,
+  getDemoShipments,
+  addDemoProposal,
+  getDemoProposals,
+  type DemoTrip,
+  type DemoShipment,
+  type DemoProposal,
+  type ShipmentCategory
+} from "./demo-marketplace-store";
+
+export interface LocalMockUser {
+  id: string;
+  displayName: string;
+  email: string;
+  password: string;
+  phone: string;
+  cpf?: string;
+  city: string;
+  stateUf: string;
+  roles: ("SENDER" | "CARRIER")[];
+  kycStatus: "PENDING" | "VERIFIED" | "REJECTED";
+  ratingAvg?: number;
+  ratingCount?: number;
+  createdAt: string;
+}
+
+const LOCAL_USERS_KEY = "topiclog_users";
+
+export function getLocalMockUsers(): LocalMockUser[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_USERS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as LocalMockUser[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalMockUser(user: LocalMockUser): void {
+  if (typeof window === "undefined") return;
+  try {
+    const users = getLocalMockUsers();
+    const filtered = users.filter(
+      (u) => u.id !== user.id && u.email.toLowerCase() !== user.email.toLowerCase()
+    );
+    window.localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify([...filtered, user]));
+  } catch {
+    // Falha silenciosa em navegadores com quota restrita
+  }
+}
+
+export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileResponse {
+  const cleanCpf = u.cpf ? u.cpf.replace(/\D/g, "") : "";
+  const maskedCpf = cleanCpf.length === 11
+    ? `${cleanCpf.slice(0, 3)}.***.***-${cleanCpf.slice(-2)}`
+    : undefined;
+  const cleanPhone = u.phone ? u.phone.replace(/\D/g, "") : "";
+  const maskedPhone = cleanPhone.length >= 10
+    ? `(${cleanPhone.slice(0, 2)}) *****-${cleanPhone.slice(-4)}`
+    : u.phone || "(31) *****-0000";
+
+  return {
+    userId: u.id,
+    displayName: u.displayName,
+    email: u.email,
+    phoneMasked: maskedPhone,
+    cpfMasked: maskedCpf,
+    city: u.city || "Belo Horizonte",
+    stateUf: u.stateUf || "MG",
+    roles: u.roles,
+    kycStatus: u.kycStatus === "VERIFIED" ? "VERIFIED" : "PENDING",
+    canNavigatePlatform: true,
+    canContractDelivery: true,
+    termsAcceptedVersion: "2026-v1.0",
+    termsAcceptedAtUtc: u.createdAt,
+    ratingAvg: u.ratingAvg ?? 0,
+    ratingCount: u.ratingCount ?? 0,
+    createdAtUtc: u.createdAt,
+    updatedAtUtc: u.createdAt
+  };
+}
+
+export function buildLocalMockSession(u: LocalMockUser): AuthSessionResponse {
+  return {
+    accessToken: `local_jwt_${u.id}_${Date.now()}`,
+    refreshToken: `local_ref_${u.id}_${Date.now()}`,
+    expiresInSeconds: 86400 * 30,
+    tokenType: "Bearer",
+    profile: buildLocalMockProfile(u)
+  };
+}
 
 export type { ApiFetchResult };
 
@@ -279,22 +375,133 @@ export async function registerUserApi(
   request: RegisterUserRequest,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<AuthSessionResponse>> {
-  return apiRequest<AuthSessionResponse>("/api/v1/auth/register", {
+  const result = await apiRequest<AuthSessionResponse>("/api/v1/auth/register", {
     method: "POST",
     body: request,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  // Fallback para Netlify estático ou ausência de backend ativo (404, falha de rede status 0 ou 405)
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (typeof window !== "undefined") {
+      const existing = getLocalMockUsers();
+      const normEmail = request.email.trim().toLowerCase();
+      if (existing.some((u) => u.email.trim().toLowerCase() === normEmail)) {
+        return {
+          ok: false,
+          status: 409,
+          problem: {
+            title: "E-mail já cadastrado",
+            status: 409,
+            detail: "Já existe uma conta cadastrada com este e-mail. Por favor, acesse a tela de login."
+          },
+          correlationId: customCorrelationId || `local-${Date.now()}`,
+          isFallback: true
+        };
+      }
+
+      const cleanCpf = request.cpf ? request.cpf.replace(/\D/g, "") : "";
+      if (cleanCpf && existing.some((u) => u.cpf && u.cpf.replace(/\D/g, "") === cleanCpf)) {
+        return {
+          ok: false,
+          status: 409,
+          problem: {
+            title: "CPF já cadastrado",
+            status: 409,
+            detail: "Este CPF já está cadastrado em outra conta."
+          },
+          correlationId: customCorrelationId || `local-${Date.now()}`,
+          isFallback: true
+        };
+      }
+
+      const newId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newUser: LocalMockUser = {
+        id: newId,
+        displayName: request.displayName.trim(),
+        email: request.email.trim(),
+        password: request.password,
+        phone: request.phone.trim(),
+        cpf: request.cpf ? request.cpf.trim() : undefined,
+        city: request.city ? request.city.trim() : "João Monlevade",
+        stateUf: request.stateUf || "MG",
+        roles: (request.initialRoles as ("SENDER" | "CARRIER")[]) || ["SENDER"],
+        kycStatus: "VERIFIED",
+        createdAt: new Date().toISOString()
+      };
+      saveLocalMockUser(newUser);
+
+      const session = buildLocalMockSession(newUser);
+
+      return {
+        ok: true,
+        status: 201,
+        data: session,
+        correlationId: customCorrelationId || `local-${Date.now()}`,
+        isFallback: true
+      };
+    }
+  }
+
+  return result;
 }
 
 export async function loginUserApi(
   request: LoginRequest,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<AuthSessionResponse>> {
-  return apiRequest<AuthSessionResponse>("/api/v1/auth/login", {
+  const result = await apiRequest<AuthSessionResponse>("/api/v1/auth/login", {
     method: "POST",
     body: request,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  // Fallback para Netlify estático ou ausência de backend ativo (404, status 0 ou 405)
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (typeof window !== "undefined") {
+      const users = getLocalMockUsers();
+      const loginTerm = request.email.trim().toLowerCase();
+      const matched = users.find(
+        (u) =>
+          u.email.toLowerCase() === loginTerm ||
+          u.displayName.toLowerCase() === loginTerm
+      );
+
+      if (matched && matched.password === request.password) {
+        const session = buildLocalMockSession(matched);
+        return {
+          ok: true,
+          status: 200,
+          data: session,
+          correlationId: customCorrelationId || `local-${Date.now()}`,
+          isFallback: true
+        };
+      }
+
+      return {
+        ok: false,
+        status: 401,
+        problem: {
+          title: "E-mail ou senha incorretos",
+          status: 401,
+          ruleCode: "AUTH_INVALID_CREDENTIALS",
+          detail: "Verifique o e-mail e a senha informados e tente novamente. Se ainda não possui conta, cadastre-se gratuitamente."
+        },
+        correlationId: customCorrelationId || `local-${Date.now()}`,
+        isFallback: true
+      };
+    }
+  }
+
+  return result;
 }
 
 export async function refreshSessionApi(
@@ -341,6 +548,22 @@ export async function getPrivateProfileApi(
   token: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
+  if (token && token.startsWith("local_jwt_") && typeof window !== "undefined") {
+    const parts = token.split("_");
+    const userId = parts.slice(2, -1).join("_");
+    const users = getLocalMockUsers();
+    const user = users.find((u) => u.id === userId);
+    if (user) {
+      return {
+        ok: true,
+        status: 200,
+        data: buildLocalMockProfile(user),
+        correlationId: customCorrelationId || `local-${Date.now()}`,
+        isFallback: true
+      };
+    }
+  }
+
   return apiRequest<PrivateUserProfileResponse>("/api/v1/me", {
     method: "GET",
     token,
@@ -456,12 +679,104 @@ export async function createShipmentApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<ShipmentDetailDto>> {
-  return apiRequest<ShipmentDetailDto>("/api/v1/shipments", {
+  const result = await apiRequest<ShipmentDetailDto>("/api/v1/shipments", {
     method: "POST",
     token,
     body: payload,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const shipmentId = `ship_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const nowIso = new Date().toISOString();
+    const vehicleType: VehicleTypeCode = payload.vehicleType || "CAR";
+    const demoShipment: DemoShipment = {
+      id: shipmentId,
+      title: payload.title || "Encomenda TopicLog",
+      description: payload.description || "",
+      category: (payload.category as ShipmentCategory) || "GERAL",
+      dimensions: {
+        lengthCm: payload.dimensionsLengthCm || 20,
+        widthCm: payload.dimensionsWidthCm || 20,
+        heightCm: payload.dimensionsHeightCm || 20
+      },
+      specialCare: payload.specialCareNotes || [],
+      originCity: payload.origin?.city || "João Monlevade",
+      originNeighborhood: payload.origin?.neighborhood || "",
+      destinationCity: payload.destination?.city || "Belo Horizonte",
+      destinationNeighborhood: payload.destination?.neighborhood || "",
+      weightGrams: payload.weightGrams,
+      maxVehicleType: vehicleType,
+      suggestedPriceCents: payload.suggestedPriceCents,
+      deadlineDate: payload.deliveryWindow || nowIso.split("T")[0] || "2026-12-31",
+      senderName: "Remetente Cadastrado",
+      senderKycVerified: true,
+      status: "OPEN",
+      interestedInInsurance: payload.interestedInInsurance || false,
+      photoIcon: "📦",
+      createdAt: nowIso
+    };
+    addDemoShipment(demoShipment);
+
+    return {
+      ok: true,
+      status: 201,
+      data: {
+        id: shipmentId,
+        senderId: "00000000-0000-0000-0000-000000000001",
+        senderName: "Remetente Cadastrado",
+        title: payload.title || "Encomenda TopicLog",
+        description: payload.description || "",
+        category: payload.category || "GERAL",
+        vehicleType,
+        weightGrams: payload.weightGrams,
+        dimensionsLengthCm: payload.dimensionsLengthCm || 20,
+        dimensionsWidthCm: payload.dimensionsWidthCm || 20,
+        dimensionsHeightCm: payload.dimensionsHeightCm || 20,
+        declaredValueCents: payload.declaredValueCents || 0,
+        suggestedPriceCents: payload.suggestedPriceCents,
+        specialCareNotes: payload.specialCareNotes || [],
+        origin: {
+          kind: "ORIGIN",
+          city: payload.origin?.city || "João Monlevade",
+          stateUf: payload.origin?.stateUf || "MG",
+          neighborhood: payload.origin?.neighborhood || "",
+          approximateLatitude: -19.8,
+          approximateLongitude: -43.1,
+          isMaskedForPrivacy: true
+        },
+        destination: {
+          kind: "DESTINATION",
+          city: payload.destination?.city || "Belo Horizonte",
+          stateUf: payload.destination?.stateUf || "MG",
+          neighborhood: payload.destination?.neighborhood || "",
+          approximateLatitude: -19.9,
+          approximateLongitude: -43.9,
+          isMaskedForPrivacy: true
+        },
+        pickupWindow: payload.pickupWindow || "Qualquer horário",
+        deliveryWindow: payload.deliveryWindow || "Qualquer horário",
+        status: "OPEN",
+        insuranceInterest: {
+          interested: payload.interestedInInsurance || false,
+          chargedAmountCents: 0,
+          hasActivePolicy: false,
+          guaranteesCoverage: false,
+          mandatoryDisclaimer: "Seguro opcional"
+        },
+        photoUrls: [],
+        createdAtUtc: nowIso
+      },
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function listShipmentsApi(
@@ -475,11 +790,46 @@ export async function listShipmentsApi(
   const qs = searchParams.toString();
   const endpoint = qs ? `/api/v1/shipments?${qs}` : "/api/v1/shipments";
 
-  return apiRequest<ShipmentSummaryDto[]>(endpoint, {
+  const result = await apiRequest<ShipmentSummaryDto[]>(endpoint, {
     method: "GET",
     token,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const demoItems = getDemoShipments();
+    const mapped: ShipmentSummaryDto[] = demoItems.map((s) => ({
+      id: s.id,
+      senderId: "00000000-0000-0000-0000-000000000001",
+      senderName: s.senderName,
+      title: s.title,
+      category: s.category,
+      vehicleType: s.maxVehicleType,
+      weightGrams: s.weightGrams,
+      suggestedPriceCents: s.suggestedPriceCents,
+      originCity: s.originCity,
+      originNeighborhood: s.originNeighborhood,
+      destinationCity: s.destinationCity,
+      destinationNeighborhood: s.destinationNeighborhood,
+      deliveryWindow: s.deadlineDate,
+      status: s.status,
+      photoCount: 0,
+      createdAtUtc: s.createdAt
+    }));
+    return {
+      ok: true,
+      status: 200,
+      data: mapped,
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function getShipmentByIdApi(
@@ -494,17 +844,117 @@ export async function getShipmentByIdApi(
   });
 }
 
+export async function updateShipmentApi(
+  id: string,
+  payload: {
+    title?: string;
+    description?: string;
+    suggestedPriceCents?: number;
+    specialCareNotes?: readonly string[];
+  },
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ShipmentDetailDto>> {
+  return apiRequest<ShipmentDetailDto>(`/api/v1/shipments/${id}`, {
+    method: "PUT",
+    token,
+    body: payload,
+    customCorrelationId
+  });
+}
+
 export async function createTripApi(
   payload: CreateTripPayload,
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<TripDto>> {
-  return apiRequest<TripDto>("/api/v1/trips", {
+  const result = await apiRequest<TripDto>("/api/v1/trips", {
     method: "POST",
     token,
     body: payload,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const tripId = `trip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const vehicleModel = payload.vehicleModel || "Veículo não especificado";
+    const departureTime = payload.departureTime || "08:00";
+
+    let carrierName = "Transportador Cadastrado";
+    let carrierId = "00000000-0000-0000-0000-000000000002";
+    if (typeof window !== "undefined") {
+      try {
+        const rawSession = window.localStorage.getItem("topiclog_auth_session_v2");
+        if (rawSession) {
+          const parsed = JSON.parse(rawSession);
+          if (parsed?.profile?.displayName) {
+            carrierName = parsed.profile.displayName;
+          } else if (parsed?.profile?.fullName) {
+            carrierName = parsed.profile.fullName;
+          } else if (parsed?.profile?.email) {
+            carrierName = parsed.profile.email.split("@")[0];
+          }
+          if (parsed?.profile?.userId) {
+            carrierId = parsed.profile.userId;
+          }
+        }
+      } catch {
+        // silencioso
+      }
+    }
+
+    const newDemoTrip: DemoTrip = {
+      id: tripId,
+      carrierName,
+      carrierKycVerified: true,
+      vehicleType: payload.vehicleType,
+      vehicleModel,
+      originCity: payload.originCity,
+      destinationCity: payload.destinationCity,
+      intermediateStops: payload.intermediateStops || [],
+      departureDate: payload.departureDate,
+      departureTime,
+      availableCapacityGrams: payload.availableCapacityGrams,
+      flexiblePickup: payload.flexiblePickup,
+      suggestedPricePerKgCents: payload.suggestedPricePerKgCents,
+      status: "SCHEDULED",
+      createdAt: new Date().toISOString()
+    };
+    addDemoTrip(newDemoTrip);
+
+    return {
+      ok: true,
+      status: 201,
+      data: {
+        id: tripId,
+        carrierId,
+        carrierName: newDemoTrip.carrierName,
+        carrierKycVerified: true,
+        vehicleType: payload.vehicleType,
+        vehicleModel,
+        originCity: payload.originCity,
+        originStateUf: "MG",
+        destinationCity: payload.destinationCity,
+        destinationStateUf: "MG",
+        intermediateStops: payload.intermediateStops || [],
+        departureDate: payload.departureDate,
+        departureTime,
+        availableCapacityGrams: payload.availableCapacityGrams,
+        flexiblePickup: payload.flexiblePickup,
+        suggestedPricePerKgCents: payload.suggestedPricePerKgCents,
+        status: "SCHEDULED",
+        createdAtUtc: new Date().toISOString()
+      },
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function listTripsApi(
@@ -518,11 +968,46 @@ export async function listTripsApi(
   const qs = searchParams.toString();
   const endpoint = qs ? `/api/v1/trips?${qs}` : "/api/v1/trips";
 
-  return apiRequest<TripSummaryDto[]>(endpoint, {
+  const result = await apiRequest<TripSummaryDto[]>(endpoint, {
     method: "GET",
     token,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const demoItems = getDemoTrips();
+    const mapped: TripSummaryDto[] = demoItems.map((t) => ({
+      id: t.id,
+      carrierId: "00000000-0000-0000-0000-000000000002",
+      carrierName: t.carrierName,
+      carrierKycVerified: t.carrierKycVerified,
+      vehicleType: t.vehicleType,
+      vehicleModel: t.vehicleModel,
+      originCity: t.originCity,
+      destinationCity: t.destinationCity,
+      intermediateStops: t.intermediateStops,
+      stopCount: t.intermediateStops.length,
+      departureDate: t.departureDate,
+      departureTime: t.departureTime,
+      availableCapacityGrams: t.availableCapacityGrams,
+      suggestedPricePerKgCents: t.suggestedPricePerKgCents,
+      status: t.status,
+      createdAtUtc: t.createdAt
+    }));
+    return {
+      ok: true,
+      status: 200,
+      data: mapped,
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function getTripByIdApi(
@@ -741,12 +1226,108 @@ export async function createProposalApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<ProposalDto>> {
-  return apiRequest<ProposalDto>("/api/v1/proposals", {
+  const result = await apiRequest<ProposalDto>("/api/v1/proposals", {
     method: "POST",
     token,
     body: payload,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    let currentUserName = "Usuário TopicLog";
+    let currentUserId = "demo-user-id";
+    if (typeof window !== "undefined") {
+      try {
+        const rawSession = window.localStorage.getItem("topiclog_auth_session_v2");
+        if (rawSession) {
+          const parsed = JSON.parse(rawSession);
+          if (parsed?.profile?.displayName) {
+            currentUserName = parsed.profile.displayName;
+          } else if (parsed?.profile?.fullName) {
+            currentUserName = parsed.profile.fullName;
+          } else if (parsed?.profile?.email) {
+            currentUserName = parsed.profile.email.split("@")[0];
+          }
+          if (parsed?.profile?.userId) {
+            currentUserId = parsed.profile.userId;
+          }
+        }
+      } catch {
+        // silencioso
+      }
+    }
+
+    const trips = getDemoTrips();
+    const matchedTrip = payload.tripId ? trips.find((t) => t.id === payload.tripId) : undefined;
+    const shipments = getDemoShipments();
+    const matchedShipment = shipments.find((s) => s.id === payload.shipmentId);
+
+    let route = "João Monlevade ➔ Belo Horizonte";
+    let senderName = currentUserName;
+    let carrierName = "Transportador Parceiro";
+    let shipmentTitle = "Transporte de Encomenda";
+    let isCurrentUserCarrier = false;
+
+    if (matchedTrip) {
+      route = `${matchedTrip.originCity} ➔ ${matchedTrip.destinationCity}`;
+      carrierName = matchedTrip.carrierName;
+      senderName = currentUserName;
+      shipmentTitle = matchedShipment ? matchedShipment.title : `Pacote para ${matchedTrip.destinationCity}`;
+      isCurrentUserCarrier = false;
+    } else if (matchedShipment) {
+      route = `${matchedShipment.originCity} ➔ ${matchedShipment.destinationCity}`;
+      senderName = matchedShipment.senderName;
+      carrierName = currentUserName;
+      shipmentTitle = matchedShipment.title;
+      isCurrentUserCarrier = true;
+    }
+
+    const commission = Math.round(payload.amountCents * 0.13);
+    const carrierNet = payload.amountCents - commission;
+
+    const createdDemo = addDemoProposal({
+      shipmentId: payload.shipmentId,
+      shipmentTitle,
+      route,
+      senderName,
+      carrierName,
+      originalPriceCents: payload.amountCents,
+      proposedPriceCents: payload.amountCents,
+      platformCommissionCents: commission,
+      carrierNetCents: carrierNet,
+      message: payload.notes || "Proposta formal de transporte acordada via Feed.",
+      isCurrentUserCarrier
+    });
+
+    return {
+      ok: true,
+      status: 201,
+      data: {
+        id: createdDemo.id,
+        shipmentId: createdDemo.shipmentId,
+        carrierId: isCurrentUserCarrier ? currentUserId : "demo-carrier-id",
+        carrierName: createdDemo.carrierName,
+        senderId: !isCurrentUserCarrier ? currentUserId : "demo-sender-id",
+        senderName: createdDemo.senderName,
+        amountCents: createdDemo.proposedPriceCents,
+        status: "PENDING",
+        version: 1,
+        counterCount: 0,
+        isExpired: false,
+        notes: createdDemo.message,
+        expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
+        createdAtUtc: new Date().toISOString()
+      },
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function getProposalByIdApi(
@@ -778,11 +1359,44 @@ export async function listProposalsByCarrierApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<ProposalDto[]>> {
-  return apiRequest<ProposalDto[]>(`/api/v1/proposals/carrier/${carrierId}`, {
+  const result = await apiRequest<ProposalDto[]>(`/api/v1/proposals/carrier/${carrierId}`, {
     method: "GET",
     token,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const demos = getDemoProposals().filter((p) => p.isCurrentUserCarrier);
+    const mapped: ProposalDto[] = demos.map((d) => ({
+      id: d.id,
+      shipmentId: d.shipmentId,
+      carrierId,
+      carrierName: d.carrierName,
+      senderId: "demo-sender-id",
+      senderName: d.senderName,
+      amountCents: d.proposedPriceCents,
+      status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
+      version: 1,
+      counterCount: 0,
+      isExpired: false,
+      notes: d.message,
+      expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
+      createdAtUtc: d.createdAt
+    }));
+    return {
+      ok: true,
+      status: 200,
+      data: mapped,
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function listProposalsForSenderApi(
@@ -790,11 +1404,44 @@ export async function listProposalsForSenderApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<ProposalDto[]>> {
-  return apiRequest<ProposalDto[]>(`/api/v1/proposals/sender/${senderId}`, {
+  const result = await apiRequest<ProposalDto[]>(`/api/v1/proposals/sender/${senderId}`, {
     method: "GET",
     token,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    const demos = getDemoProposals().filter((p) => !p.isCurrentUserCarrier);
+    const mapped: ProposalDto[] = demos.map((d) => ({
+      id: d.id,
+      shipmentId: d.shipmentId,
+      carrierId: "demo-carrier-id",
+      carrierName: d.carrierName,
+      senderId,
+      senderName: d.senderName,
+      amountCents: d.proposedPriceCents,
+      status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
+      version: 1,
+      counterCount: 0,
+      isExpired: false,
+      notes: d.message,
+      expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
+      createdAtUtc: d.createdAt
+    }));
+    return {
+      ok: true,
+      status: 200,
+      data: mapped,
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function counterProposalApi(

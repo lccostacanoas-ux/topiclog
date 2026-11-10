@@ -89,26 +89,22 @@ export default function CadastrarViagemPage(): React.JSX.Element {
   const isSubmittingRef = useRef(false);
 
   const [vehicleType, setVehicleType] = useState<VehicleTypeCode>("CAR");
-  const [vehicleModel, setVehicleModel] = useState("Renault Duster (Porta-malas livre)");
-  const [originCity, setOriginCity] = useState("João Monlevade");
-  const [destinationCity, setDestinationCity] = useState("Belo Horizonte");
-  const [stopsList, setStopsList] = useState<IntermediateStopItem[]>([
-    { name: "Barão de Cocais", ibgeCode: "3105400", stateUf: "MG" },
-    { name: "Caeté", ibgeCode: "3110004", stateUf: "MG" }
-  ]);
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [originCity, setOriginCity] = useState("");
+  const [destinationCity, setDestinationCity] = useState("");
+  const [stopsList, setStopsList] = useState<IntermediateStopItem[]>([]);
   const [newStopInput, setNewStopInput] = useState("");
-  const [departureDate, setDepartureDate] = useState("Amanhã (14/10)");
+  const [departureDate, setDepartureDate] = useState("");
   const [departureTime, setDepartureTime] = useState("08:00");
-  const [availableKg, setAvailableKg] = useState("15");
+  const [availableKg, setAvailableKg] = useState("");
   const [flexiblePickup, setFlexiblePickup] = useState(true);
-  const [pricePerKgReais, setPricePerKgReais] = useState("8,00");
+  const [tripPriceReais, setTripPriceReais] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const maxAllowedCapacityKg = vehicleType === "BICYCLE" ? 5 : 20;
   const parsedCapacityKg = parseFloat(availableKg.replace(",", "."));
-  const isCapacityOverLimit = !isNaN(parsedCapacityKg) && parsedCapacityKg > maxAllowedCapacityKg;
 
   const handleAddStop = (cityToAdd?: string) => {
     const raw = (cityToAdd ?? newStopInput).trim();
@@ -147,34 +143,55 @@ export default function CadastrarViagemPage(): React.JSX.Element {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (isNaN(parsedCapacityKg) || parsedCapacityKg <= 0) {
-      setErrorMsg("Informe uma capacidade disponível válida maior que zero.");
+    if (!originCity.trim()) {
+      setErrorMsg("Informe a cidade de origem (saída) da viagem.");
       return;
     }
 
-    if (parsedCapacityKg > maxAllowedCapacityKg) {
-      setErrorMsg(`A capacidade máxima para ${vehicleType === "BICYCLE" ? "Bicicleta" : "Moto/Carro"} é de ${maxAllowedCapacityKg} kg (D04).`);
+    if (!destinationCity.trim()) {
+      setErrorMsg("Informe a cidade de destino (chegada) da viagem.");
+      return;
+    }
+
+    if (!vehicleModel.trim()) {
+      setErrorMsg("Informe o modelo do veículo (ex.: Hyundai HB20, Fiat Strada, Chevrolet Onix...).");
+      return;
+    }
+
+    if (!departureDate.trim()) {
+      setErrorMsg("Informe a data prevista de saída da viagem.");
+      return;
+    }
+
+    if (isNaN(parsedCapacityKg) || parsedCapacityKg <= 0) {
+      setErrorMsg("Informe uma capacidade disponível válida maior que zero em kg.");
+      return;
+    }
+
+    const cleanPrice = parseFloat(tripPriceReais.replace(",", ".").replace(/[^0-9.]/g, ""));
+    if (isNaN(cleanPrice) || cleanPrice <= 0) {
+      setErrorMsg("Informe o valor do frete da viagem em Reais.");
       return;
     }
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
 
-    const pricePerKgCents = Math.round(parseFloat(pricePerKgReais.replace(",", ".").replace(/[^0-9.]/g, "")) * 100) || 800;
+    const tripPriceCents = Math.round(cleanPrice * 100);
     const stringStops = stopsList.map((s) => s.name);
 
     try {
       const payload: CreateTripPayload = {
         vehicleType,
-        vehicleModel: vehicleModel.trim() || "Veículo cadastrado padrão",
-        originCity,
-        destinationCity,
+        vehicleModel: vehicleModel.trim(),
+        originCity: originCity.trim(),
+        destinationCity: destinationCity.trim(),
         intermediateStops: stringStops,
         departureDate,
         departureTime,
         availableCapacityGrams: Math.round(parsedCapacityKg * 1000),
         flexiblePickup,
-        suggestedPricePerKgCents: pricePerKgCents
+        suggestedPricePerKgCents: tripPriceCents
       };
 
       const result = await createTripApi(payload, token ?? undefined);
@@ -187,26 +204,11 @@ export default function CadastrarViagemPage(): React.JSX.Element {
         return;
       }
 
-      // Sincroniza com a persistência de demonstração local para o fluxo do protótipo
-      addDemoTrip({
-        carrierName: user ? `${user.displayName} (${vehicleType === "BICYCLE" ? "Bike" : vehicleType === "MOTORCYCLE" ? "Moto" : "Carro"})` : "Transportador Demo BH",
-        carrierKycVerified: user?.kycStatus === "VERIFIED",
-        vehicleType,
-        vehicleModel: vehicleModel.trim() || "Veículo não especificado",
-        originCity,
-        destinationCity,
-        intermediateStops: stringStops,
-        departureDate,
-        departureTime,
-        availableCapacityGrams: Math.round(parsedCapacityKg * 1000),
-        flexiblePickup,
-        suggestedPricePerKgCents: pricePerKgCents
-      });
-
-      setSuccessMsg("Viagem cadastrada com sucesso no backend da Topic Log! Sua rota já está disponível para receber encomendas no Feed.");
+      setSuccessMsg("Viagem publicada com sucesso! Sua rota já está disponível no feed da Topic Log.");
+      setShowSuccessModal(true);
       setTimeout(() => {
-        router.push("/feed");
-      }, 1200);
+        router.push("/viagens");
+      }, 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Falha inesperada ao registrar viagem.";
       setErrorMsg(msg);
@@ -242,11 +244,30 @@ export default function CadastrarViagemPage(): React.JSX.Element {
       )}
 
       <form onSubmit={handleSubmit} className="card" style={{ padding: "28px", boxShadow: "var(--shadow-md)" }}>
-        {/* Bloco 1: Veículo e Modal */}
+        {/* Bloco 1: Veículo, Modal e Capacidade */}
         <fieldset style={{ border: "none", padding: 0, margin: "0 0 28px 0" }}>
           <legend style={{ fontSize: "17px", fontWeight: 700, marginBottom: "16px", borderBottom: "1px solid var(--color-border)", width: "100%", paddingBottom: "8px", color: "var(--color-brand-deep-navy)" }}>
-            1. Modal de Transporte e Capacidade Ociosa (D03 / D04)
+            1. Modal de Transporte & Capacidade Disponível
           </legend>
+
+          {/* Destaque de Volumes e Peso Livres para o Transportador */}
+          <div
+            style={{
+              backgroundColor: "#F0FDF4",
+              border: "1.5px solid #BBF7D0",
+              borderRadius: "10px",
+              padding: "12px 16px",
+              marginBottom: "18px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px"
+            }}
+          >
+            <span style={{ fontSize: "24px", flexShrink: 0 }}>📦</span>
+            <div style={{ fontSize: "12px", color: "#166534", lineHeight: "1.4" }}>
+              <strong>Volumes Ilimitados & Peso Conforme seu Veículo:</strong> Como transportador, você pode levar quantas encomendas e volumes couberem no seu veículo e suportar o seu trajeto. Defina abaixo a sua capacidade estimada em kg.
+            </div>
+          </div>
 
           {/* Cards Visuais de Seleção de Modal */}
           <div className="form-group">
@@ -256,29 +277,23 @@ export default function CadastrarViagemPage(): React.JSX.Element {
             <div className="vehicle-selector-grid">
               <div
                 className={`vehicle-card-option ${vehicleType === "CAR" ? "vehicle-card-option--selected" : ""}`}
-                onClick={() => {
-                  setVehicleType("CAR");
-                  setVehicleModel("Carro de Passeio / Utilitário");
-                }}
+                onClick={() => setVehicleType("CAR")}
                 role="button"
                 tabIndex={0}
               >
                 <div>
                   <span style={{ fontSize: "28px" }}>🚗</span>
                   <div style={{ fontWeight: 700, fontSize: "15px", marginTop: "4px" }}>Carro de Passeio</div>
-                  <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>Porta-malas livre</div>
+                  <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>Porta-malas / Utilitário</div>
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "#1E40AF", marginTop: "8px" }}>
-                  Capacidade máx: 20 kg (D04)
+                  Volumes Ilimitados • Peso Livre
                 </div>
               </div>
 
               <div
                 className={`vehicle-card-option ${vehicleType === "MOTORCYCLE" ? "vehicle-card-option--selected" : ""}`}
-                onClick={() => {
-                  setVehicleType("MOTORCYCLE");
-                  setVehicleModel("Moto com Baú Reforçado");
-                }}
+                onClick={() => setVehicleType("MOTORCYCLE")}
                 role="button"
                 tabIndex={0}
               >
@@ -288,17 +303,13 @@ export default function CadastrarViagemPage(): React.JSX.Element {
                   <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>Baú ou mochila cargueira</div>
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "#92400E", marginTop: "8px" }}>
-                  Capacidade máx: 20 kg (D04)
+                  Múltiplos Volumes • Conforme Baú
                 </div>
               </div>
 
               <div
                 className={`vehicle-card-option ${vehicleType === "BICYCLE" ? "vehicle-card-option--selected" : ""}`}
-                onClick={() => {
-                  setVehicleType("BICYCLE");
-                  setVehicleModel("Bicicleta Urbana Cargueira");
-                  if (parsedCapacityKg > 5) setAvailableKg("5");
-                }}
+                onClick={() => setVehicleType("BICYCLE")}
                 role="button"
                 tabIndex={0}
               >
@@ -308,7 +319,7 @@ export default function CadastrarViagemPage(): React.JSX.Element {
                   <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>Alforjes e bolsas</div>
                 </div>
                 <div style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", marginTop: "8px" }}>
-                  Capacidade máx: 5 kg (D04)
+                  Múltiplos Volumes • Conforme Alforjes
                 </div>
               </div>
             </div>
@@ -322,7 +333,7 @@ export default function CadastrarViagemPage(): React.JSX.Element {
               <input
                 id="trip-model"
                 type="text"
-                placeholder="Ex: Fiat Strada (caçamba coberta), Honda CG 160..."
+                placeholder="Ex: Fiat Strada (caçamba coberta), Renault Duster, Honda CG 160..."
                 value={vehicleModel}
                 onChange={(e) => setVehicleModel(e.target.value)}
                 className="form-control"
@@ -331,19 +342,19 @@ export default function CadastrarViagemPage(): React.JSX.Element {
 
             <div className="form-group">
               <label htmlFor="trip-capacity" className="form-label">
-                Capacidade Disponível para Cargas (kg) *
+                Capacidade Estimada para Cargas (kg) *
               </label>
               <input
                 id="trip-capacity"
                 type="text"
                 required
-                placeholder="Ex: 15"
+                placeholder="Ex: 50, 100, 200..."
                 value={availableKg}
                 onChange={(e) => setAvailableKg(e.target.value)}
-                className={`form-control ${isCapacityOverLimit ? "form-control--error" : ""}`}
+                className="form-control"
               />
-              <span style={{ fontSize: "11px", color: isCapacityOverLimit ? "var(--color-danger)" : "var(--color-muted)" }}>
-                Limite regulamentar permitido: <strong>{maxAllowedCapacityKg} kg</strong> (D04)
+              <span style={{ fontSize: "11px", color: "var(--color-muted)" }}>
+                💡 Você define sua própria capacidade disponível em kg para agregar encomendas no trajeto.
               </span>
             </div>
           </div>
@@ -366,12 +377,20 @@ export default function CadastrarViagemPage(): React.JSX.Element {
                 onChange={(e) => setOriginCity(e.target.value)}
                 className="form-control"
               >
-                <option value="João Monlevade">João Monlevade (Piloto 1)</option>
-                <option value="Belo Horizonte">Belo Horizonte (Piloto 2)</option>
+                <option value="">-- Selecione a cidade de partida --</option>
+                <option value="João Monlevade">João Monlevade</option>
+                <option value="Belo Horizonte">Belo Horizonte</option>
                 <option value="Ipatinga">Ipatinga</option>
                 <option value="Itabira">Itabira</option>
                 <option value="Nova Era">Nova Era</option>
                 <option value="Ouro Preto">Ouro Preto</option>
+                <option value="Contagem">Contagem</option>
+                <option value="Betim">Betim</option>
+                <option value="Barão de Cocais">Barão de Cocais</option>
+                <option value="Caeté">Caeté</option>
+                <option value="Sabará">Sabará</option>
+                <option value="São Paulo">São Paulo</option>
+                <option value="Rio de Janeiro">Rio de Janeiro</option>
               </select>
             </div>
 
@@ -385,12 +404,20 @@ export default function CadastrarViagemPage(): React.JSX.Element {
                 onChange={(e) => setDestinationCity(e.target.value)}
                 className="form-control"
               >
-                <option value="Belo Horizonte">Belo Horizonte (Piloto 2)</option>
-                <option value="João Monlevade">João Monlevade (Piloto 1)</option>
+                <option value="">-- Selecione a cidade de chegada --</option>
+                <option value="Belo Horizonte">Belo Horizonte</option>
+                <option value="João Monlevade">João Monlevade</option>
                 <option value="Ipatinga">Ipatinga</option>
                 <option value="Itabira">Itabira</option>
                 <option value="Nova Era">Nova Era</option>
                 <option value="Ouro Preto">Ouro Preto</option>
+                <option value="Contagem">Contagem</option>
+                <option value="Betim">Betim</option>
+                <option value="Barão de Cocais">Barão de Cocais</option>
+                <option value="Caeté">Caeté</option>
+                <option value="Sabará">Sabará</option>
+                <option value="São Paulo">São Paulo</option>
+                <option value="Rio de Janeiro">Rio de Janeiro</option>
               </select>
             </div>
           </div>
@@ -534,7 +561,7 @@ export default function CadastrarViagemPage(): React.JSX.Element {
               </div>
             ) : (
               <div style={{ fontSize: "11px", color: "var(--color-muted)", fontStyle: "italic" }}>
-                Nenhuma parada intermediária adicionada (viagem direta de {originCity} para {destinationCity}).
+                Nenhuma parada intermediária adicionada {originCity && destinationCity ? `(viagem direta de ${originCity} para ${destinationCity})` : ""}.
               </div>
             )}
           </div>
@@ -576,15 +603,15 @@ export default function CadastrarViagemPage(): React.JSX.Element {
             </div>
 
             <div className="form-group">
-              <label htmlFor="trip-price-kg" className="form-label">
-                Estimativa por kg (R$) *
+              <label htmlFor="trip-price" className="form-label">
+                Valor do Frete da Viagem (R$) *
               </label>
               <input
-                id="trip-price-kg"
+                id="trip-price"
                 type="text"
-                placeholder="Ex: 8,00"
-                value={pricePerKgReais}
-                onChange={(e) => setPricePerKgReais(e.target.value)}
+                placeholder="Ex: 50,00"
+                value={tripPriceReais}
+                onChange={(e) => setTripPriceReais(e.target.value)}
                 className="form-control"
               />
             </div>
@@ -617,12 +644,89 @@ export default function CadastrarViagemPage(): React.JSX.Element {
             type="submit"
             className="btn btn--primary"
             disabled={isSubmitting}
-            style={{ padding: "12px 28px", fontSize: "15px", fontWeight: 700, opacity: isSubmitting ? 0.7 : 1, cursor: isSubmitting ? "not-allowed" : "pointer" }}
+            style={{
+              padding: "12px 28px",
+              fontSize: "15px",
+              fontWeight: 700,
+              opacity: isSubmitting ? 0.7 : 1,
+              cursor: isSubmitting ? "not-allowed" : "pointer"
+            }}
           >
-            {isSubmitting ? "Cadastrando Viagem na API..." : "Publicar Viagem no Feed →"}
+            {isSubmitting ? "Publicando..." : "Publicar Viagem no Feed →"}
           </button>
         </div>
       </form>
+
+      {/* Modal de Confirmação de Viagem */}
+      {showSuccessModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.75)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px"
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: "460px",
+              width: "100%",
+              textAlign: "center",
+              padding: "32px 24px",
+              borderRadius: "20px",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              border: "1px solid #10B981"
+            }}
+          >
+            <div
+              style={{
+                width: "64px",
+                height: "64px",
+                borderRadius: "50%",
+                backgroundColor: "#DCFCE7",
+                color: "#16A34A",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "32px",
+                margin: "0 auto 16px auto"
+              }}
+            >
+              🚗
+            </div>
+            <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", margin: "0 0 8px 0" }}>
+              Viagem publicada com sucesso!
+            </h2>
+            <p style={{ fontSize: "14px", color: "#64748B", margin: "0 0 24px 0", lineHeight: "1.5" }}>
+              Sua rota de <strong>{originCity}</strong> para <strong>{destinationCity}</strong> já está visível para remetentes enviarem solicitações e propostas de frete.
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+              <Link
+                href="/feed"
+                className="btn btn--primary"
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
+              >
+                Ver no Feed
+              </Link>
+              <Link
+                href="/viagens"
+                className="btn btn--outline"
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 600 }}
+              >
+                Minhas Viagens
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

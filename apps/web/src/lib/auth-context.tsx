@@ -43,12 +43,49 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "topiclog_auth_session_v1";
+const STORAGE_KEY = "topiclog_auth_session_v2";
+const RESET_KEY = "topiclog_clean_state_v20261110_prod";
+
+function performInitialCleanIfNeeded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!window.localStorage.getItem(RESET_KEY)) {
+      const keys = [
+        "topiclog_auth_session_v1",
+        "topiclog_auth_session_v2",
+        "topiclog_clean_state_v20261106",
+        "topiclog_users",
+        "topiclog_community_ratings_v1",
+        "topiclog_user_shipments_v4",
+        "topiclog_user_shipments_v3",
+        "topiclog_user_shipments_v2",
+        "topiclog_user_shipments",
+        "topiclog_user_trips_v4",
+        "topiclog_user_trips_v3",
+        "topiclog_user_trips",
+        "topiclog_user_proposals_v4",
+        "topiclog_user_proposals_v3",
+        "topiclog_user_proposals",
+        "topiclog_user_chats_v4",
+        "topiclog_user_chats_v3",
+        "topiclog_user_chats"
+      ];
+      for (const k of keys) {
+        window.localStorage.removeItem(k);
+        window.sessionStorage.removeItem(k);
+      }
+      window.localStorage.setItem(RESET_KEY, "done");
+    }
+  } catch {
+    // ignore
+  }
+}
 
 function readStoredSession(): StoredSessionData | null {
   if (typeof window === "undefined") {
     return null;
   }
+  performInitialCleanIfNeeded();
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -87,17 +124,6 @@ export function AuthProvider({
   const [refreshTokenVal, setRefreshTokenVal] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Inicializa sessão a partir de sessionStorage
-  useEffect(() => {
-    const stored = readStoredSession();
-    if (stored) {
-      setToken(stored.token);
-      setRefreshTokenVal(stored.refreshToken);
-      setUser(stored.profile);
-    }
-    setIsLoading(false);
-  }, []);
-
   const handleSessionSuccess = useCallback((session: AuthSessionResponse) => {
     setToken(session.accessToken);
     setRefreshTokenVal(session.refreshToken);
@@ -108,6 +134,42 @@ export function AuthProvider({
       profile: session.profile
     });
   }, []);
+
+  // Inicializa sessão a partir do armazenamento local e valida em background
+  useEffect(() => {
+    const stored = readStoredSession();
+    if (stored) {
+      setToken(stored.token);
+      setRefreshTokenVal(stored.refreshToken);
+      setUser(stored.profile);
+
+      // Validação não-bloqueante em segundo plano:
+      // se o token foi invalidado (ex: rotação de chaves no backend ou expiração),
+      // tenta renovar silenciosamente com refresh token; se falhar, limpa sessão obsoleta.
+      void (async () => {
+        try {
+          const profileCheck = await getPrivateProfileApi(stored.token);
+          if (profileCheck.status === 401) {
+            if (stored.refreshToken) {
+              const refreshRes = await refreshSessionApi({ refreshToken: stored.refreshToken });
+              if (refreshRes.ok && refreshRes.data) {
+                handleSessionSuccess(refreshRes.data);
+                return;
+              }
+            }
+            // Sessão definitivamente inválida: limpa estado residual
+            setToken(null);
+            setRefreshTokenVal(null);
+            setUser(null);
+            writeStoredSession(null);
+          }
+        } catch {
+          // Mantém estado offline/sem rede se a requisição falhar por rede
+        }
+      })();
+    }
+    setIsLoading(false);
+  }, [handleSessionSuccess]);
 
   const login = useCallback(
     async (credentials: LoginRequest): Promise<ApiFetchResult<AuthSessionResponse>> => {

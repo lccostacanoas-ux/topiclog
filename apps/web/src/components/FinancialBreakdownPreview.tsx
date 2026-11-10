@@ -3,9 +3,9 @@ import { StatusPill } from "./StatusPill";
 
 export interface FinancialBreakdownPreviewProps {
   readonly transportAmountCents: number;
-  readonly freeCommissionRate: number;
-  readonly premiumCommissionRate: number;
-  readonly premiumMonthlyPriceCents: number;
+  readonly freeCommissionRate?: number;
+  readonly premiumCommissionRate?: number;
+  readonly premiumMonthlyPriceCents?: number;
 }
 
 function formatBrlFromCents(cents: number): string {
@@ -18,68 +18,46 @@ function formatBrlFromCents(cents: number): string {
 
 /**
  * Componente FinancialBreakdown conforme 04-Design-System.md (Seção 4, 5 e 6)
- * e Decisões Vinculantes D10, D11, D12, D16 e D17.
+ * Modelo oficial: Alíquota única de 20% sobre fretes realizados, sem taxas de mensalidade.
  */
 export function FinancialBreakdownPreview({
   transportAmountCents,
-  freeCommissionRate,
-  premiumCommissionRate,
-  premiumMonthlyPriceCents
+  freeCommissionRate = 0.20
 }: FinancialBreakdownPreviewProps): React.JSX.Element {
-  const freeCommissionCents = Math.round(transportAmountCents * freeCommissionRate);
-  const freeCarrierReceivesCents = transportAmountCents - freeCommissionCents;
-
-  const premiumCommissionCents = Math.round(transportAmountCents * premiumCommissionRate);
-  const premiumCarrierReceivesCents = transportAmountCents - premiumCommissionCents;
+  const commissionRatePercent = Math.round(freeCommissionRate * 100);
+  const commissionCents = Math.round(transportAmountCents * freeCommissionRate);
+  const carrierReceivesCents = transportAmountCents - commissionCents;
 
   return (
     <section className="card" aria-labelledby="financial-preview-heading">
       <h2 id="financial-preview-heading" style={{ marginTop: 0, fontSize: "20px", lineHeight: "28px" }}>
-        Transparência Financeira e Microtextos Oficiais (Simulação em Centavos)
+        Transparência Financeira e Repasse Líquido (Alíquota Única de 20%)
       </h2>
       <p style={{ color: "var(--color-muted)", marginTop: "4px" }}>
-        A Topic Log absorve as taxas ordinárias do gateway (Pix, débito, crédito, parcelamento e transferência — D12).
-        O remetente paga exatamente o mesmo <strong>Valor do transporte</strong> em qualquer método habilitado.
+        A Topic Log opera sem mensalidades fixas. A taxa da plataforma é de 20% retida por frete realizado,
+        e todas as taxas de intermediação bancária (Pix, cartão e débito) são 100% absorvidas pela plataforma.
       </p>
 
-      <div className="grid-two" style={{ marginTop: "16px" }}>
+      <div style={{ marginTop: "16px", maxWidth: "480px" }}>
         <div className="card" style={{ backgroundColor: "var(--color-background)" }}>
-          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Plano Gratuito Inicial (Comissão 13% — D10)</h3>
+          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% de Taxa Única)</h3>
           <dl style={{ margin: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Valor do transporte:</dt>
+              <dt>Valor bruto do frete:</dt>
               <dd style={{ fontWeight: 600, margin: 0 }}>{formatBrlFromCents(transportAmountCents)}</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Comissão da plataforma (13%):</dt>
-              <dd style={{ margin: 0 }}>- {formatBrlFromCents(freeCommissionCents)}</dd>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--color-border)" }}>
-              <dt style={{ fontWeight: 700 }}>Você receberá:</dt>
-              <dd style={{ fontWeight: 700, color: "var(--color-success)", margin: 0 }}>
-                {formatBrlFromCents(freeCarrierReceivesCents)}
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="card" style={{ backgroundColor: "var(--color-background)" }}>
-          <h3 style={{ marginTop: 0, fontSize: "16px" }}>
-            Pacote Premium Inicial ({formatBrlFromCents(premiumMonthlyPriceCents)}/mês e 7% — D11)
-          </h3>
-          <dl style={{ margin: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Valor do transporte:</dt>
-              <dd style={{ fontWeight: 600, margin: 0 }}>{formatBrlFromCents(transportAmountCents)}</dd>
+              <dt>Comissão da plataforma ({commissionRatePercent}%):</dt>
+              <dd style={{ margin: 0, color: "var(--color-danger, #EF4444)" }}>- {formatBrlFromCents(commissionCents)}</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Comissão da plataforma (7%):</dt>
-              <dd style={{ margin: 0 }}>- {formatBrlFromCents(premiumCommissionCents)}</dd>
+              <dt>Taxas de intermediação / Pix:</dt>
+              <dd style={{ margin: 0, color: "var(--color-success)" }}>R$ 0,00 (absorvidas)</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--color-border)" }}>
-              <dt style={{ fontWeight: 700 }}>Você receberá:</dt>
-              <dd style={{ fontWeight: 700, color: "var(--color-success)", margin: 0 }}>
-                {formatBrlFromCents(premiumCarrierReceivesCents)}
+              <dt style={{ fontWeight: 700 }}>Transportador recebe líquido:</dt>
+              <dd style={{ fontWeight: 700, color: "var(--color-success)", margin: 0, fontSize: "18px" }}>
+                {formatBrlFromCents(carrierReceivesCents)}
               </dd>
             </div>
           </dl>

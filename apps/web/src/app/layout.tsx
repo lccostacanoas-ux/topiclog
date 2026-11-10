@@ -7,6 +7,7 @@ import { CapacitorInit } from "../components/CapacitorInit";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { InstallAppPrompt } from "../components/InstallAppPrompt";
 import { MobileBottomNav } from "../components/MobileBottomNav";
+import "leaflet/dist/leaflet.css";
 import "../styles/tokens.css";
 
 export const metadata: Metadata = {
@@ -62,17 +63,9 @@ export default function RootLayout({
         <a href="#main-content" className="skip-link">
           Pular para o conteúdo principal
         </a>
-        <div className="env-banner" role="region" aria-label="Aviso de ambiente de testes">
-          <div className="container">
-            <strong>Ambiente de Testes (Sandbox — D14):</strong> Nenhuma transação financeira real, apólice de seguro
-            ou promessa comercial ativa está habilitada nesta fase. Nome de trabalho <strong>Topic Log</strong> (domínio
-            pretendido <code>www.topiclog.com.br</code> sujeito a verificação de registro/INPI — D01).
-          </div>
-        </div>
         <AuthProvider>
           <NavigationHeader />
           <main id="main-content">{children}</main>
-          <InstallAppPrompt />
           <MobileBottomNav />
         </AuthProvider>
       </body>

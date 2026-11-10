@@ -10,12 +10,11 @@ export function NavigationHeader(): React.JSX.Element {
   const { user, isAuthenticated, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const displayName: string = user?.displayName?.split(" ")[0] || "Luiz";
-  const isAdmin = Boolean(user?.roles?.some((r) => r === "GENERAL_ADMIN" || r === "FINANCIAL_ADMIN" || r === "SUPPORT"));
-
-  if (pathname?.startsWith("/admin")) {
-    return <></>;
-  }
+  const displayName: string = user?.displayName?.split(" ")[0] || "Topic Log";
+  const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
+  const isSender = Boolean(user?.roles?.includes("SENDER"));
+  const isCarrierOnly = isCarrier && !isSender;
+  const isSenderOnly = isSender && !isCarrier;
 
   const isLinkActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -81,72 +80,94 @@ export function NavigationHeader(): React.JSX.Element {
             </Link>
           </div>
 
-          {/* Notificações + Foto Avatar */}
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-            <button
-              type="button"
-              onClick={() => setNotificationsOpen(true)}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                position: "relative",
-                padding: "6px",
-                display: "flex",
-                alignItems: "center"
-              }}
-              aria-label="Ver notificações"
-            >
-              <span style={{ fontSize: "22px" }}>🔔</span>
-              <span
-                style={{
-                  position: "absolute",
-                  top: "2px",
-                  right: "0px",
-                  backgroundColor: "#DC2626",
-                  color: "#FFFFFF",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  borderRadius: "50%",
-                  width: "18px",
-                  height: "18px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "2px solid #0F172A"
-                }}
-              >
-                3
-              </span>
-            </button>
+          {/* Notificações + Foto Avatar (Apenas se autenticado) */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {isAuthenticated && user ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen(true)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    position: "relative",
+                    padding: "6px",
+                    display: "flex",
+                    alignItems: "center"
+                  }}
+                  aria-label="Ver notificações"
+                >
+                  <span style={{ fontSize: "22px" }}>🔔</span>
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "2px",
+                      right: "0px",
+                      backgroundColor: "#DC2626",
+                      color: "#FFFFFF",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      borderRadius: "50%",
+                      width: "18px",
+                      height: "18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "2px solid #0F172A"
+                    }}
+                  >
+                    3
+                  </span>
+                </button>
 
-            <Link
-              href="/minha-conta"
-              style={{
-                display: "block",
-                textDecoration: "none"
-              }}
-              aria-label="Meu Perfil"
-            >
-              <div
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)",
-                  border: "2px solid #FFFFFF",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#FFFFFF",
-                  fontWeight: 800,
-                  fontSize: "14px",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.3)"
-                }}
-              >
-                {(displayName || "L").charAt(0).toUpperCase()}
+                <Link
+                  href="/minha-conta"
+                  style={{
+                    display: "block",
+                    textDecoration: "none"
+                  }}
+                  aria-label="Meu Perfil"
+                >
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      background: "linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)",
+                      border: "2px solid #FFFFFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#FFFFFF",
+                      fontWeight: 800,
+                      fontSize: "14px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.3)"
+                    }}
+                  >
+                    {user.displayName.charAt(0).toUpperCase()}
+                  </div>
+                </Link>
+              </>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Link
+                  href="/entrar"
+                  style={{
+                    color: "#FFFFFF",
+                    textDecoration: "none",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-full)",
+                    backgroundColor: "rgba(255, 255, 255, 0.12)",
+                    border: "1px solid rgba(255, 255, 255, 0.25)"
+                  }}
+                >
+                  Entrar
+                </Link>
               </div>
-            </Link>
+            )}
           </div>
         </div>
 
@@ -191,11 +212,11 @@ export function NavigationHeader(): React.JSX.Element {
           </div>
         </Link>
 
-        {/* Navegação Desktop Completa */}
+        {/* Navegação Desktop Completa Adaptativa por Papel */}
         <nav
           aria-label="Navegação principal"
           className="desktop-nav"
-          style={{ alignItems: "center", gap: "18px" }}
+          style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "nowrap" }}
         >
           <Link
             href="/"
@@ -205,68 +226,226 @@ export function NavigationHeader(): React.JSX.Element {
               fontSize: "14px",
               fontWeight: isLinkActive("/") && pathname === "/" ? 700 : 500,
               padding: "6px 4px",
+              whiteSpace: "nowrap",
               borderBottom: isLinkActive("/") && pathname === "/" ? "2px solid #38BDF8" : "2px solid transparent",
               transition: "color 0.15s ease, border-color 0.15s ease"
             }}
           >
             Início
           </Link>
-          <Link
-            href="/feed"
-            style={{
-              color: isLinkActive("/feed") ? "#FFFFFF" : "#CBD5E1",
-              textDecoration: "none",
-              fontSize: "14px",
-              fontWeight: isLinkActive("/feed") ? 700 : 500,
-              padding: "6px 4px",
-              borderBottom: isLinkActive("/feed") ? "2px solid #38BDF8" : "2px solid transparent",
-              transition: "color 0.15s ease, border-color 0.15s ease"
-            }}
-          >
-            Oportunidades
-          </Link>
-          <Link
-            href="/viagens/cadastrar"
-            style={{
-              color: isLinkActive("/viagens") ? "#FFFFFF" : "#CBD5E1",
-              textDecoration: "none",
-              fontSize: "14px",
-              fontWeight: isLinkActive("/viagens") ? 700 : 500,
-              padding: "6px 4px",
-              borderBottom: isLinkActive("/viagens") ? "2px solid #38BDF8" : "2px solid transparent",
-              transition: "color 0.15s ease, border-color 0.15s ease"
-            }}
-          >
-            Minhas Viagens
-          </Link>
-          <Link
-            href="/propostas"
-            style={{
-              color: isLinkActive("/propostas") ? "#FFFFFF" : "#CBD5E1",
-              textDecoration: "none",
-              fontSize: "14px",
-              fontWeight: isLinkActive("/propostas") ? 700 : 500,
-              padding: "6px 4px",
-              borderBottom: isLinkActive("/propostas") ? "2px solid #38BDF8" : "2px solid transparent",
-              transition: "color 0.15s ease, border-color 0.15s ease"
-            }}
-          >
-            Propostas
-          </Link>
-          <Link
-            href="/minhas-atividades"
-            style={{
-              color: isLinkActive("/minhas-atividades") ? "#FFFFFF" : "#CBD5E1",
-              textDecoration: "none",
-              fontSize: "14px",
-              fontWeight: isLinkActive("/minhas-atividades") ? 700 : 500,
-              padding: "6px 4px",
-              borderBottom: isLinkActive("/minhas-atividades") ? "2px solid #38BDF8" : "2px solid transparent",
-              transition: "color 0.15s ease, border-color 0.15s ease"
-            }}
-          >
-            Atividades
-          </Link>
+
+          {isCarrierOnly ? (
+            <>
+              {/* Menu do Transportador: Leci */}
+              <Link
+                href="/feed"
+                id="header-mural-fretes"
+                style={{
+                  color: isLinkActive("/feed") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/feed") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/feed") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Encomendas
+              </Link>
+              <Link
+                href="/viagens"
+                style={{
+                  color: isLinkActive("/viagens") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/viagens") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/viagens") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Viagens
+              </Link>
+              <Link
+                href="/propostas"
+                style={{
+                  color: isLinkActive("/propostas") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/propostas") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/propostas") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Minhas Propostas
+              </Link>
+            </>
+          ) : isSenderOnly ? (
+            <>
+              {/* Menu do Remetente */}
+              <Link
+                href="/encomendas"
+                style={{
+                  color: isLinkActive("/encomendas") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/encomendas") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/encomendas") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Minhas Encomendas
+              </Link>
+              <Link
+                href="/viagens"
+                style={{
+                  color: isLinkActive("/viagens") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/viagens") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/viagens") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Viagens
+              </Link>
+              <Link
+                href="/minhas-atividades"
+                style={{
+                  color: isLinkActive("/minhas-atividades") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/minhas-atividades") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/minhas-atividades") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Rastrear Encomenda
+              </Link>
+              <Link
+                href="/propostas"
+                style={{
+                  color: isLinkActive("/propostas") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/propostas") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/propostas") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Propostas
+              </Link>
+            </>
+          ) : isCarrier && isSender ? (
+            <>
+              {/* Usuário com Ambos os Papéis */}
+              <Link
+                href="/encomendas"
+                style={{
+                  color: isLinkActive("/encomendas") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/encomendas") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/encomendas") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Minhas Encomendas
+              </Link>
+              <Link
+                href="/feed"
+                style={{
+                  color: isLinkActive("/feed") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/feed") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/feed") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Encomendas
+              </Link>
+              <Link
+                href="/viagens"
+                style={{
+                  color: isLinkActive("/viagens") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/viagens") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/viagens") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Viagens
+              </Link>
+              <Link
+                href="/propostas"
+                style={{
+                  color: isLinkActive("/propostas") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/propostas") ? 700 : 500,
+                  padding: "6px 4px",
+                  whiteSpace: "nowrap",
+                  borderBottom: isLinkActive("/propostas") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Propostas
+              </Link>
+            </>
+          ) : (
+            <>
+              {/* Não logado */}
+              <Link
+                href="/feed"
+                style={{
+                  color: isLinkActive("/feed") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/feed") ? 700 : 500,
+                  padding: "6px 4px",
+                  borderBottom: isLinkActive("/feed") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Encomendas
+              </Link>
+              <Link
+                href="/viagens"
+                style={{
+                  color: isLinkActive("/viagens") ? "#FFFFFF" : "#CBD5E1",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: isLinkActive("/viagens") ? 700 : 500,
+                  padding: "6px 4px",
+                  borderBottom: isLinkActive("/viagens") ? "2px solid #38BDF8" : "2px solid transparent",
+                  transition: "color 0.15s ease, border-color 0.15s ease"
+                }}
+              >
+                Mural de Viagens
+              </Link>
+            </>
+          )}
+
           <Link
             href="/mensagens"
             style={{
@@ -275,6 +454,7 @@ export function NavigationHeader(): React.JSX.Element {
               fontSize: "14px",
               fontWeight: isLinkActive("/mensagens") ? 700 : 500,
               padding: "6px 4px",
+              whiteSpace: "nowrap",
               borderBottom: isLinkActive("/mensagens") ? "2px solid #38BDF8" : "2px solid transparent",
               transition: "color 0.15s ease, border-color 0.15s ease"
             }}
@@ -285,46 +465,41 @@ export function NavigationHeader(): React.JSX.Element {
 
         {/* Ações Rápidas & Autenticação */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {/* Botão Destaque: Publicar Encomenda */}
-          <Link
-            href="/encomendas/publicar"
-            className="btn btn--primary header-cta-btn"
-            style={{
-              padding: "8px 16px",
-              fontSize: "13px",
-              fontWeight: 700,
-              borderRadius: "var(--radius-full)",
-              backgroundColor: "#2563EB",
-              boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)"
-            }}
-          >
-            + Publicar Encomenda
-          </Link>
+          {/* Botão Destaque Contextual */}
+          {isCarrierOnly ? (
+            <Link
+              href="/viagens/cadastrar"
+              className="btn btn--primary header-cta-btn"
+              style={{
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 700,
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "#059669",
+                boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)"
+              }}
+            >
+              + Cadastrar Viagem
+            </Link>
+          ) : (
+            <Link
+              href="/encomendas/publicar"
+              className="btn btn--primary header-cta-btn"
+              style={{
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 700,
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "#2563EB",
+                boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)"
+              }}
+            >
+              + Publicar Encomenda
+            </Link>
+          )}
 
           {isAuthenticated && user ? (
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              {isAdmin && (
-                <Link
-                  href="/admin"
-                  id="header-admin-link"
-                  style={{
-                    color: "#F59E0B",
-                    textDecoration: "none",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    padding: "5px 10px",
-                    borderRadius: "var(--radius-full)",
-                    backgroundColor: "rgba(245, 158, 11, 0.12)",
-                    border: "1px solid rgba(245, 158, 11, 0.35)",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px"
-                  }}
-                  title="Painel Administrativo Topic Log"
-                >
-                  🛡️ Painel Admin
-                </Link>
-              )}
               <Link
                 href="/minha-conta"
                 style={{
@@ -500,7 +675,7 @@ export function NavigationHeader(): React.JSX.Element {
 
               <div style={{ backgroundColor: "#0F172A", padding: "12px", borderRadius: "12px", borderLeft: "4px solid #38BDF8" }}>
                 <div style={{ fontSize: "13px", fontWeight: 700, color: "#38BDF8", marginBottom: "2px" }}>
-                  🛡️ Documentação KYC Homologada
+                  🛡️ Identidade e Documentação Confirmadas
                 </div>
                 <div style={{ fontSize: "12px", color: "#E2E8F0" }}>
                   Seu perfil está apto e autorizado para realizar fretes em Minas Gerais.
@@ -510,10 +685,10 @@ export function NavigationHeader(): React.JSX.Element {
 
               <div style={{ backgroundColor: "#0F172A", padding: "12px", borderRadius: "12px", borderLeft: "4px solid #F59E0B" }}>
                 <div style={{ fontSize: "13px", fontWeight: 700, color: "#F59E0B", marginBottom: "2px" }}>
-                  📸 Lembrete de Segurança (D16)
+                  🔐 Lembrete de Segurança
                 </div>
                 <div style={{ fontSize: "12px", color: "#E2E8F0" }}>
-                  Na entrega, tire a foto do pacote e peça o código confidencial de 4 dígitos para liberação do repasse.
+                  Na entrega, solicite a senha/código confidencial de 4 dígitos para liberação imediata do repasse.
                 </div>
                 <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>Hoje</div>
               </div>
@@ -568,62 +743,139 @@ export function NavigationHeader(): React.JSX.Element {
           >
             🏠 Início
           </Link>
-          <Link
-            href="/feed"
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              color: "#FFFFFF",
-              textDecoration: "none",
-              fontSize: "15px",
-              fontWeight: 600,
-              padding: "10px 0",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
-            }}
-          >
-            🔍 Oportunidades no Feed
-          </Link>
-          <Link
-            href="/viagens/cadastrar"
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              color: "#FFFFFF",
-              textDecoration: "none",
-              fontSize: "15px",
-              fontWeight: 600,
-              padding: "10px 0",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
-            }}
-          >
-            🚗 Cadastrar Minha Viagem
-          </Link>
-          <Link
-            href="/minhas-atividades"
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              color: "#FFFFFF",
-              textDecoration: "none",
-              fontSize: "15px",
-              fontWeight: 600,
-              padding: "10px 0",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
-            }}
-          >
-            📦 Minhas Atividades & Entregas
-          </Link>
-          <Link
-            href="/propostas"
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              color: "#FFFFFF",
-              textDecoration: "none",
-              fontSize: "15px",
-              fontWeight: 600,
-              padding: "10px 0",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
-            }}
-          >
-            🤝 Propostas e Negociações
-          </Link>
+          {isCarrierOnly ? (
+            <>
+              <Link
+                href="/feed"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                🚚 Mural de Encomendas
+              </Link>
+              <Link
+                href="/viagens"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                🛣️ Mural de Viagens
+              </Link>
+              <Link
+                href="/viagens/cadastrar"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#34D399",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                ➕ Cadastrar Nova Viagem
+              </Link>
+              <Link
+                href="/propostas"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                🤝 Minhas Propostas
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/encomendas"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                📦 Minhas Encomendas
+              </Link>
+              <Link
+                href="/encomendas/publicar"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#60A5FA",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                ➕ Publicar Encomenda
+              </Link>
+              <Link
+                href="/viagens"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                🛣️ Mural de Viagens
+              </Link>
+              <Link
+                href="/minhas-atividades"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                📍 Acompanhe sua Encomenda
+              </Link>
+              <Link
+                href="/propostas"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#FFFFFF",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  padding: "10px 0",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
+                }}
+              >
+                🤝 Propostas e Negociações
+              </Link>
+            </>
+          )}
           <Link
             href="/mensagens"
             onClick={() => setMobileMenuOpen(false)}
@@ -652,25 +904,56 @@ export function NavigationHeader(): React.JSX.Element {
           >
             👤 Minha Conta & Perfil
           </Link>
-          {isAdmin && (
-            <Link
-              href="/admin"
-              id="mobile-admin-link"
-              onClick={() => setMobileMenuOpen(false)}
+
+          {isAuthenticated && user ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                logout();
+              }}
               style={{
-                color: "#F59E0B",
-                textDecoration: "none",
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                color: "#EF4444",
                 fontSize: "15px",
-                fontWeight: 700,
+                fontWeight: 600,
                 padding: "10px 0",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px"
+                textAlign: "left",
+                cursor: "pointer",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.06)"
               }}
             >
-              🛡️ Painel Administrativo
-            </Link>
+              🚪 Sair da Conta
+            </button>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+              <Link
+                href="/entrar"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#38BDF8",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 700
+                }}
+              >
+                🔑 Entrar na Conta
+              </Link>
+              <Link
+                href="/cadastro"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  color: "#34D399",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  fontWeight: 700
+                }}
+              >
+                ✨ Criar Conta Gratuita
+              </Link>
+            </div>
           )}
 
           <div style={{ paddingTop: "8px", display: "flex", gap: "10px" }}>
@@ -678,17 +961,9 @@ export function NavigationHeader(): React.JSX.Element {
               href="/encomendas/publicar"
               onClick={() => setMobileMenuOpen(false)}
               className="btn btn--primary btn--touch"
-              style={{ flex: 1, fontSize: "14px", fontWeight: 700 }}
+              style={{ flex: 1, fontSize: "14px", fontWeight: 700, textAlign: "center" }}
             >
-              + Enviar Carga
-            </Link>
-            <Link
-              href="/viagens/cadastrar"
-              onClick={() => setMobileMenuOpen(false)}
-              className="btn btn--secondary btn--touch"
-              style={{ flex: 1, fontSize: "14px", fontWeight: 700 }}
-            >
-              + Nova Viagem
+              + Publicar Encomenda
             </Link>
           </div>
         </div>
