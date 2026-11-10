@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import {
   listShipmentsApi,
-  updateShipmentApi
+  updateShipmentApi,
+  deleteShipmentApi
 } from "../../lib/api-client";
 import type { ShipmentSummaryDto } from "../../lib/types";
 import {
@@ -198,6 +199,23 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       setErrorMessage("Erro ao salvar alterações da encomenda.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteShipment = async (s: UnifiedShipment) => {
+    if (!window.confirm("Deseja realmente excluir/cancelar esta encomenda publicada?")) {
+      return;
+    }
+    try {
+      if (s.isBackend && token) {
+        await deleteShipmentApi(s.id, token);
+      }
+      removeDemoShipment(s.id);
+      setSuccessMessage("✓ Encomenda excluída com sucesso!");
+      await loadShipments();
+    } catch {
+      removeDemoShipment(s.id);
+      await loadShipments();
     }
   };
 
@@ -564,25 +582,47 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                       {/* Botão de Edição */}
                       {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(s)}
-                          style={{
-                            padding: "6px 14px",
-                            backgroundColor: "#EFF6FF",
-                            border: "1px solid #BFDBFE",
-                            borderRadius: "8px",
-                            color: "#1D4ED8",
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "5px"
-                          }}
-                        >
-                          ✏️ Editar Encomenda
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(s)}
+                            style={{
+                              padding: "6px 14px",
+                              backgroundColor: "#EFF6FF",
+                              border: "1px solid #BFDBFE",
+                              borderRadius: "8px",
+                              color: "#1D4ED8",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px"
+                            }}
+                          >
+                            ✏️ Editar Encomenda
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteShipment(s)}
+                            style={{
+                              padding: "6px 14px",
+                              backgroundColor: "#FEF2F2",
+                              border: "1px solid #FECACA",
+                              borderRadius: "8px",
+                              color: "#DC2626",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px"
+                            }}
+                          >
+                            🗑️ Excluir Encomenda
+                          </button>
+                        </>
                       ) : (
                         <span style={{ fontSize: "12px", color: "#94A3B8", fontStyle: "italic" }}>
                           🔒 Edição bloqueada (contratada ou em trânsito)

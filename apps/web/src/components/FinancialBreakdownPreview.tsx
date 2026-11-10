@@ -43,7 +43,7 @@ export function FinancialBreakdownPreview({
           <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% de Taxa Única)</h3>
           <dl style={{ margin: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Valor bruto do frete:</dt>
+              <dt>Valor do transporte:</dt>
               <dd style={{ fontWeight: 600, margin: 0 }}>{formatBrlFromCents(transportAmountCents)}</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
@@ -55,7 +55,7 @@ export function FinancialBreakdownPreview({
               <dd style={{ margin: 0, color: "var(--color-success)" }}>R$ 0,00 (absorvidas)</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--color-border)" }}>
-              <dt style={{ fontWeight: 700 }}>Transportador recebe líquido:</dt>
+              <dt style={{ fontWeight: 700 }}>Você receberá (líquido):</dt>
               <dd style={{ fontWeight: 700, color: "var(--color-success)", margin: 0, fontSize: "18px" }}>
                 {formatBrlFromCents(carrierReceivesCents)}
               </dd>

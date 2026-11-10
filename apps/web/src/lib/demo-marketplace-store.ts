@@ -39,6 +39,7 @@ export interface DemoShipment {
 
 export interface DemoTrip {
   readonly id: string;
+  readonly carrierId?: string;
   readonly carrierName: string;
   readonly carrierKycVerified: boolean;
   readonly vehicleType: VehicleTypeCode;
@@ -187,6 +188,12 @@ export function addDemoTrip(trip: Omit<DemoTrip, "id" | "createdAt" | "status">)
 export function removeDemoTrip(id: string): void {
   const current = getDemoTrips().filter((t) => t.id !== id);
   safeSetStorage(TRIPS_STORAGE_KEY, current);
+}
+
+export function updateDemoTrip(id: string, updates: Partial<DemoTrip>): readonly DemoTrip[] {
+  const current = getDemoTrips().map((t) => (t.id === id ? { ...t, ...updates } : t));
+  safeSetStorage(TRIPS_STORAGE_KEY, current);
+  return current;
 }
 
 export function getDemoProposals(): readonly DemoProposal[] {

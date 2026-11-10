@@ -4,11 +4,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
-import { listTripsApi } from "../../lib/api-client";
+import { listTripsApi, updateTripApi, deleteTripApi } from "../../lib/api-client";
 import type { TripSummaryDto } from "../../lib/types";
 import {
   getDemoTrips,
   removeDemoTrip,
+  updateDemoTrip,
   type DemoTrip
 } from "../../lib/demo-marketplace-store";
 
@@ -49,6 +50,17 @@ export default function MuralViagensPage(): React.JSX.Element {
   const [filterOrigin, setFilterOrigin] = useState("ALL");
   const [filterDestination, setFilterDestination] = useState("ALL");
   const [filterVehicle, setFilterVehicle] = useState("ALL");
+
+  // Estado do Modal de Edição de Viagem
+  const [editingTrip, setEditingTrip] = useState<UnifiedTrip | null>(null);
+  const [editModel, setEditModel] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editCapacityKg, setEditCapacityKg] = useState("");
+  const [editPriceReais, setEditPriceReais] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const loadTrips = useCallback(async () => {
     setLoading(true);
@@ -124,6 +136,85 @@ export default function MuralViagensPage(): React.JSX.Element {
   useEffect(() => {
     void loadTrips();
   }, [loadTrips]);
+
+  const handleOpenEdit = (t: UnifiedTrip) => {
+    setEditingTrip(t);
+    setEditModel(t.vehicleModel || "");
+    setEditDate(t.departureDate || "");
+    setEditTime(t.departureTime || "");
+    setEditCapacityKg(String(t.availableCapacityKg || ""));
+    setEditPriceReais(
+      t.suggestedPricePerKgCents ? (t.suggestedPricePerKgCents / 100).toFixed(2).replace(".", ",") : ""
+    );
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTrip) return;
+    setIsSaving(true);
+    setErrorMsg(null);
+
+    const parsedKg = parseFloat(editCapacityKg.replace(",", ".").replace(/[^0-9.]/g, "")) || editingTrip.availableCapacityKg;
+    const parsedPrice = parseFloat(editPriceReais.replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
+    const priceCents = Math.round(parsedPrice * 100);
+
+    try {
+      if (editingTrip.isBackend && token) {
+        const res = await updateTripApi(
+          editingTrip.id,
+          {
+            vehicleModel: editModel.trim() || undefined,
+            departureDate: editDate.trim() || undefined,
+            departureTime: editTime.trim() || undefined,
+            availableCapacityGrams: Math.round(parsedKg * 1000),
+            suggestedPricePerKgCents: priceCents > 0 ? priceCents : undefined
+          },
+          token
+        );
+        if (!res.ok) {
+          setErrorMsg(res.problem?.detail || "Não foi possível salvar alterações no servidor.");
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      // Atualiza também na store local
+      updateDemoTrip(editingTrip.id, {
+        vehicleModel: editModel.trim() || editingTrip.vehicleModel,
+        departureDate: editDate.trim() || editingTrip.departureDate,
+        departureTime: editTime.trim() || editingTrip.departureTime,
+        availableCapacityGrams: Math.round(parsedKg * 1000),
+        suggestedPricePerKgCents: priceCents > 0 ? priceCents : editingTrip.suggestedPricePerKgCents
+      });
+
+      setSuccessMsg("✓ Viagem atualizada com sucesso!");
+      setEditingTrip(null);
+      await loadTrips();
+    } catch {
+      setErrorMsg("Erro ao salvar alterações da viagem.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteTrip = async (t: UnifiedTrip) => {
+    if (!window.confirm("Deseja realmente excluir esta viagem programada?")) {
+      return;
+    }
+    try {
+      if (t.isBackend && token) {
+        await deleteTripApi(t.id, token);
+      }
+      removeDemoTrip(t.id);
+      setSuccessMsg("✓ Viagem removida com sucesso!");
+      await loadTrips();
+    } catch {
+      removeDemoTrip(t.id);
+      await loadTrips();
+    }
+  };
 
   // Filtragem
   const filteredTrips = trips.filter((t) => {
@@ -233,6 +324,31 @@ export default function MuralViagensPage(): React.JSX.Element {
             )}
           </div>
         </div>
+
+        {successMsg && (
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: "10px",
+              backgroundColor: "#ECFDF5",
+              color: "#065F46",
+              border: "1px solid #A7F3D0",
+              marginBottom: "16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            <span>{successMsg}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMsg(null)}
+              style={{ background: "none", border: "none", color: "#065F46", cursor: "pointer", fontWeight: 700 }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Barra de Filtros Rápidos */}
         <div
@@ -384,11 +500,10 @@ export default function MuralViagensPage(): React.JSX.Element {
             {filteredTrips.map((t) => {
               const isOwner = Boolean(
                 user && (
-                  (t.carrierId && t.carrierId === user.userId) ||
+                  (t.carrierId && (t.carrierId === user.userId || t.carrierId === "00000000-0000-0000-0000-000000000002")) ||
                   (user.displayName && t.carrierName.toLowerCase() === user.displayName.toLowerCase()) ||
                   (user.email && t.carrierName.toLowerCase().includes(user.email.toLowerCase())) ||
-                  t.carrierName === "Transportador Cadastrado" ||
-                  !t.isBackend
+                  t.carrierName === "Transportador Cadastrado"
                 )
               );
               const vehicleInfo = VEHICLE_LABELS[t.vehicleType] || { label: t.vehicleType, icon: "🚗" };
@@ -541,52 +656,235 @@ export default function MuralViagensPage(): React.JSX.Element {
 
                   {/* Botões de Ação */}
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                    {isOwner && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm("Deseja realmente excluir esta viagem programada?")) {
-                            removeDemoTrip(t.id);
-                            void loadTrips();
-                          }
-                        }}
+                    {isOwner ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(t)}
+                          style={{
+                            padding: "8px 14px",
+                            backgroundColor: "#EFF6FF",
+                            border: "1px solid #BFDBFE",
+                            borderRadius: "8px",
+                            color: "#1D4ED8",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <span>✏️ Editar Minha Viagem</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTrip(t)}
+                          style={{
+                            padding: "8px 14px",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#DC2626",
+                            backgroundColor: "#FEF2F2",
+                            border: "1px solid #FECACA",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <span>🗑️ Excluir Minha Viagem</span>
+                        </button>
+
+                        <Link
+                          href={`/feed?origem=${encodeURIComponent(t.originCity)}&destino=${encodeURIComponent(t.destinationCity)}`}
+                          className="btn btn--outline"
+                          style={{
+                            padding: "8px 14px",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <span>🔍 Ver Encomendas para Esta Rota</span>
+                        </Link>
+                      </>
+                    ) : (
+                      <Link
+                        href={`/encomendas/publicar?origem=${encodeURIComponent(t.originCity)}&destino=${encodeURIComponent(t.destinationCity)}`}
+                        className="btn btn--primary"
                         style={{
-                          padding: "8px 14px",
+                          padding: "8px 16px",
                           fontSize: "13px",
                           fontWeight: 700,
-                          color: "#DC2626",
-                          backgroundColor: "#FEF2F2",
-                          border: "1px solid #FECACA",
-                          borderRadius: "8px",
-                          cursor: "pointer",
+                          textDecoration: "none",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "6px"
                         }}
                       >
-                        <span>🗑️ Excluir Minha Viagem</span>
-                      </button>
+                        <span>📦 Solicitar Frete nesta Rota</span>
+                      </Link>
                     )}
-
-                    <Link
-                      href={`/encomendas/publicar?origem=${encodeURIComponent(t.originCity)}&destino=${encodeURIComponent(t.destinationCity)}`}
-                      className="btn btn--primary"
-                      style={{
-                        padding: "8px 16px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        textDecoration: "none",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px"
-                      }}
-                    >
-                      <span>📦 Solicitar Frete nesta Rota</span>
-                    </Link>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Modal de Edição de Viagem */}
+        {editingTrip && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(15, 23, 42, 0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "16px"
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "16px",
+                width: "100%",
+                maxWidth: "520px",
+                padding: "24px",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#0F172A", margin: 0 }}>
+                  ✏️ Editar Viagem Programada
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setEditingTrip(null)}
+                  style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#64748B" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p style={{ fontSize: "13px", color: "#64748B", marginBottom: "16px" }}>
+                Rota: <strong>{editingTrip.originCity} ➔ {editingTrip.destinationCity}</strong>
+              </p>
+
+              <form onSubmit={handleSaveEdit}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                      Modelo do Veículo
+                    </label>
+                    <input
+                      type="text"
+                      value={editModel}
+                      onChange={(e) => setEditModel(e.target.value)}
+                      placeholder="Ex: Fiat Strada, Hyundai HB20..."
+                      className="form-control"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                        Data de Partida
+                      </label>
+                      <input
+                        type="text"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        placeholder="DD/MM/AAAA"
+                        className="form-control"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                        Horário Estimado
+                      </label>
+                      <input
+                        type="text"
+                        value={editTime}
+                        onChange={(e) => setEditTime(e.target.value)}
+                        placeholder="Ex: 08:00, 18:00"
+                        className="form-control"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                        Capacidade Livre (kg)
+                      </label>
+                      <input
+                        type="text"
+                        value={editCapacityKg}
+                        onChange={(e) => setEditCapacityKg(e.target.value)}
+                        placeholder="Ex: 50"
+                        className="form-control"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
+                        Valor do Frete (R$)
+                      </label>
+                      <input
+                        type="text"
+                        value={editPriceReais}
+                        onChange={(e) => setEditPriceReais(e.target.value)}
+                        placeholder="Ex: 50,00"
+                        className="form-control"
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+                  </div>
+
+                  {errorMsg && (
+                    <div style={{ padding: "8px 12px", borderRadius: "8px", backgroundColor: "#FEF2F2", color: "#DC2626", fontSize: "13px" }}>
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTrip(null)}
+                      className="btn btn--outline"
+                      style={{ padding: "8px 16px", borderRadius: "8px" }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="btn btn--primary"
+                      style={{ padding: "8px 20px", borderRadius: "8px" }}
+                    >
+                      {isSaving ? "Salvando..." : "Salvar Alterações"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

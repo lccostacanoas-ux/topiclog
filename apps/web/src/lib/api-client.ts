@@ -863,6 +863,18 @@ export async function updateShipmentApi(
   });
 }
 
+export async function deleteShipmentApi(
+  id: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<void>> {
+  return apiRequest<void>(`/api/v1/shipments/${id}`, {
+    method: "DELETE",
+    token,
+    customCorrelationId
+  });
+}
+
 export async function createTripApi(
   payload: CreateTripPayload,
   token?: string,
@@ -1017,6 +1029,40 @@ export async function getTripByIdApi(
 ): Promise<ApiFetchResult<TripDto>> {
   return apiRequest<TripDto>(`/api/v1/trips/${id}`, {
     method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function updateTripApi(
+  id: string,
+  payload: {
+    vehicleModel?: string;
+    departureDate?: string;
+    departureTime?: string;
+    availableCapacityGrams?: number;
+    flexiblePickup?: boolean;
+    suggestedPricePerKgCents?: number;
+    intermediateStops?: readonly string[];
+  },
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<TripDto>> {
+  return apiRequest<TripDto>(`/api/v1/trips/${id}`, {
+    method: "PUT",
+    token,
+    body: payload,
+    customCorrelationId
+  });
+}
+
+export async function deleteTripApi(
+  id: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<void>> {
+  return apiRequest<void>(`/api/v1/trips/${id}`, {
+    method: "DELETE",
     token,
     customCorrelationId
   });
