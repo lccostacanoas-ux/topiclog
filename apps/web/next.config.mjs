@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
-const isExport = true;
+const isVercel = Boolean(process.env.VERCEL);
+const isExport = !isVercel && (process.env.NEXT_EXPORT === "true" || process.env.NETLIFY === "true");
 
 const nextConfig = {
   reactStrictMode: true,
@@ -7,19 +8,7 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true
   },
-  ...(isExport
-    ? { output: "export", trailingSlash: true }
-    : {
-        async rewrites() {
-          const apiBaseUrl = process.env.API_BASE_URL || "http://127.0.0.1:5080";
-          return [
-            {
-              source: "/api/:path*",
-              destination: `${apiBaseUrl}/api/:path*`
-            }
-          ];
-        }
-      })
+  ...(isExport ? { output: "export", trailingSlash: true } : {})
 };
 
 export default nextConfig;
