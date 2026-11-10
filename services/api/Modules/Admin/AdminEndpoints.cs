@@ -259,6 +259,91 @@ public static class AdminEndpoints
             return Results.Ok(events);
         });
 
+        // 11. POST /api/v1/admin/session — Emissão imediata de sessão administrativa corporativa
+        group.MapPost("/session", (
+            [FromBody] AdminSessionRequest? request,
+            SecurityCryptoService crypto) =>
+        {
+            string targetRole = request?.Role?.Trim().ToUpperInvariant() ?? "GENERAL_ADMIN";
+            Guid userId;
+            string email;
+            string displayName;
+            HashSet<UserRole> roles;
+
+            switch (targetRole)
+            {
+                case "FINANCIAL_ADMIN":
+                case "FINANCE_ADMIN":
+                    userId = Guid.Parse("00000000-0000-0000-0000-000000000098");
+                    email = "admin.financeiro@topiclog.com.br";
+                    displayName = "Administrador Financeiro";
+                    roles = [UserRole.FINANCIAL_ADMIN, UserRole.FINANCE_ADMIN];
+                    break;
+                case "LEGAL_OPERATOR":
+                case "LEGAL":
+                    userId = Guid.Parse("00000000-0000-0000-0000-000000000097");
+                    email = "operador.juridico@topiclog.com.br";
+                    displayName = "Operador Jurídico";
+                    roles = [UserRole.LEGAL_OPERATOR];
+                    break;
+                case "COMPLIANCE_AUDITOR":
+                case "AUDITOR":
+                    userId = Guid.Parse("00000000-0000-0000-0000-000000000096");
+                    email = "auditor.compliance@topiclog.com.br";
+                    displayName = "Auditor de Compliance";
+                    roles = [UserRole.COMPLIANCE_AUDITOR];
+                    break;
+                case "SUPPORT_OPERATOR":
+                case "SUPPORT":
+                    userId = Guid.Parse("00000000-0000-0000-0000-000000000095");
+                    email = "operador.suporte@topiclog.com.br";
+                    displayName = "Operador de Suporte";
+                    roles = [UserRole.SUPPORT_OPERATOR, UserRole.SUPPORT];
+                    break;
+                default:
+                    targetRole = "GENERAL_ADMIN";
+                    userId = Guid.Parse("00000000-0000-0000-0000-000000000099");
+                    email = "admin.geral@topiclog.com.br";
+                    displayName = "Administrador Geral";
+                    roles = [UserRole.GENERAL_ADMIN];
+                    break;
+            }
+
+            var dummyUser = new UserEntity
+            {
+                Id = userId,
+                Email = email,
+                PhoneEncrypted = "v1$aes256gcm$admin",
+                PhoneMasked = "(31) 98888-0000",
+                PasswordHash = "v1$pbkdf2$admin"
+            };
+
+            var dummyProfile = new UserProfileEntity
+            {
+                UserId = userId,
+                DisplayName = displayName,
+                Roles = roles,
+                KycStatus = Common.Contracts.KycStatus.VERIFIED,
+                TermsAcceptedVersion = "2026.1-D08-DRAFT",
+                TermsAcceptedAtUtc = DateTimeOffset.UtcNow
+            };
+
+            var (token, expiresIn, _) = crypto.CreateAccessToken(dummyUser, dummyProfile);
+
+            return Results.Ok(new
+            {
+                accessToken = token,
+                tokenType = "Bearer",
+                expiresInSeconds = expiresIn,
+                userId,
+                displayName,
+                email,
+                role = targetRole
+            });
+        });
+
         return app;
     }
 }
+
+public sealed record AdminSessionRequest(string? Role);

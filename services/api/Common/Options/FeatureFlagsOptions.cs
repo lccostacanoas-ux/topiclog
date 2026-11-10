@@ -35,14 +35,19 @@ public sealed class FeatureFlagsOptions
     public bool InsuranceCommercializationEnabled { get; set; }
 
     /// <summary>
-    /// Entrega normal exige código de segurança válido + foto privada (D16).
+    /// Entrega normal validada exclusivamente por código de segurança / senha (PIN de 4 dígitos).
     /// </summary>
-    public bool RequireCodeAndPhotoForDelivery { get; set; } = true;
+    public bool RequireCodeAndPhotoForDelivery { get; set; }
 
     /// <summary>
     /// Hospeda o TopicLogBackgroundWorker no mesmo processo da API para economizar RAM em máquinas de 8 GB.
     /// </summary>
     public bool RunWorkerInProcess { get; set; } = true;
+
+    /// <summary>
+    /// Endpoints de emissão de tokens de teste (Sandbox). Desativados por padrão (P0/Auditoria 29/10/2026).
+    /// </summary>
+    public bool EnableSandboxAuthEndpoints { get; set; }
 }
 
 /// <summary>
@@ -75,9 +80,10 @@ public sealed class FeatureFlagsOptionsValidator : IValidateOptions<FeatureFlags
             failures.Add("VIOLAÇÃO DE SEGURANÇA (D05): BilateralKycRequiredOnContract deve permanecer true.");
         }
 
-        if (!options.RequireCodeAndPhotoForDelivery)
+        if (!string.Equals(options.EnvironmentMode, "Testing", StringComparison.OrdinalIgnoreCase)
+            && options.EnableSandboxAuthEndpoints)
         {
-            failures.Add("VIOLAÇÃO DE SEGURANÇA (D16): RequireCodeAndPhotoForDelivery deve permanecer true.");
+            failures.Add("VIOLAÇÃO DE SEGURANÇA (P0): EnableSandboxAuthEndpoints só pode ser habilitado quando EnvironmentMode for 'Testing'.");
         }
 
         return failures.Count > 0

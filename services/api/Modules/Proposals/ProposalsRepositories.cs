@@ -43,21 +43,77 @@ public interface IProposalsRepository
 
 public sealed class InMemoryProposalsRepository : IProposalsRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("proposals_store.json");
+    private readonly object _diskLock = new();
+
     private readonly ConcurrentDictionary<Guid, Proposal> _proposals = new();
     private readonly ConcurrentDictionary<Guid, Contract> _contracts = new();
     private readonly ConcurrentBag<ProposalEvent> _events = new();
     private readonly ConcurrentDictionary<Guid, PriorityOffer> _priorityOffers = new();
     private readonly object _acceptanceLock = new();
 
-    public InMemoryProposalsRepository()
+    public InMemoryProposalsRepository(bool? seedDemo = null)
     {
-        SeedDemoData();
+        bool isUnitTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (seedDemo ?? isUnitTest)
+        {
+            SeedDemoData();
+        }
+        else
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<Proposal>>(json);
+            if (list is null) return;
+            foreach (var item in list)
+            {
+                if (item is not null)
+                {
+                    _proposals[item.Id] = item;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar propostas: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        lock (_diskLock)
+        {
+            try
+            {
+                var list = _proposals.Values.ToList();
+                var json = System.Text.Json.JsonSerializer.Serialize(list, JsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Storage] Erro ao persistir propostas em disco: {ex.Message}");
+            }
+        }
     }
 
     public Task<Proposal> CreateProposalAsync(Proposal proposal, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _proposals[proposal.Id] = proposal;
+        SaveToDisk();
         return Task.FromResult(proposal);
     }
 
@@ -105,6 +161,7 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         {
             proposal.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _proposals[proposal.Id] = proposal;
+            SaveToDisk();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
@@ -354,6 +411,8 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
 
             // Apply side effects (leg capacity reservation, shipment status change)
             onCommit();
+
+            SaveToDisk();
 
             return new AtomicAcceptanceResult(
                 Success: true,

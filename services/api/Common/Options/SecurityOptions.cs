@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using TopicLog.Api.Common;
 
 namespace TopicLog.Api.Common.Options;
 
@@ -18,7 +20,7 @@ public sealed class SecurityOptions
 
     public string Audience { get; set; } = "https://app.topiclog.com.br";
 
-    public int AccessTokenLifetimeMinutes { get; set; } = 15;
+    public int AccessTokenLifetimeMinutes { get; set; } = 120;
 
     public int RefreshTokenLifetimeDays { get; set; } = 7;
 
@@ -49,6 +51,11 @@ public sealed class SecurityOptions
     /// Permanece vazia no código-fonte e nos arquivos versionados no Git (DEC-02.5).
     /// </summary>
     public string PiiEncryptionKeyBase64 { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Chave HMAC-SHA256 dedicada para hash seguro de unicidade de CPF (separada da criptografia de dados - Finding 5).
+    /// </summary>
+    public string CpfLookupHmacKeyBase64 { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -124,6 +131,11 @@ public sealed class SecurityOptionsValidator : IValidateOptions<SecurityOptions>
             {
                 failures.Add("VIOLAÇÃO DE SEGURANÇA (DEC-02.5): Em Production, Security:PiiEncryptionKeyBase64 deve ser injetada via ambiente com exatamente 32 bytes (256 bits).");
             }
+
+            if (!TryValidateBase64Key(options.CpfLookupHmacKeyBase64, minBytes: 32, exactBytes: 32))
+            {
+                failures.Add("VIOLAÇÃO DE SEGURANÇA (Finding 5): Em Production, Security:CpfLookupHmacKeyBase64 deve ser injetada via ambiente com exatamente 32 bytes (256 bits).");
+            }
         }
 
         return failures.Count > 0
@@ -157,9 +169,9 @@ public sealed class SecurityOptionsValidator : IValidateOptions<SecurityOptions>
 
 /// <summary>
 /// Provedor de material criptográfico em tempo de execução.
-/// Garante que nenhum segredo seja gravado no código-fonte ou no Git (DEC-02.5):
-/// utiliza as chaves de ambiente quando fornecidas ou gera chaves efêmeras aleatórias de 256 bits
-/// em memória RAM durante a execução de desenvolvimento/testes.
+/// Separa chaves de criptografia AES-GCM (PII), assinatura de token JWT e HMAC de CPF (Finding 5).
+/// Em ambiente persistente de desenvolvimento, preserva as chaves geradas em arquivo protegido
+/// para garantir que números de telefone e unicidade de CPF permaneçam consistentes entre reinicializações.
 /// </summary>
 public sealed class RuntimeKeyMaterialProvider
 {
@@ -172,9 +184,22 @@ public sealed class RuntimeKeyMaterialProvider
         ArgumentNullException.ThrowIfNull(securityOptions);
         var opts = securityOptions.Value;
 
-        _jwtSigningKey = ResolveOrGenerateKey(opts.JwtSigningKeyBase64, requiredLength: 32);
-        _piiEncryptionKey = ResolveOrGenerateKey(opts.PiiEncryptionKeyBase64, requiredLength: 32);
-        _cpfLookupHmacKey = SHA256.HashData(_piiEncryptionKey);
+        byte[]? configuredJwt = TryDecodeKey(opts.JwtSigningKeyBase64, 32);
+        byte[]? configuredPii = TryDecodeKey(opts.PiiEncryptionKeyBase64, 32);
+        byte[]? configuredCpfHmac = TryDecodeKey(opts.CpfLookupHmacKeyBase64, 32);
+
+        if (configuredJwt != null && configuredPii != null && configuredCpfHmac != null)
+        {
+            _jwtSigningKey = configuredJwt;
+            _piiEncryptionKey = configuredPii;
+            _cpfLookupHmacKey = configuredCpfHmac;
+            return;
+        }
+
+        var persistentKeys = LoadOrGenerateDevKeys(configuredJwt, configuredPii, configuredCpfHmac);
+        _jwtSigningKey = persistentKeys.Jwt;
+        _piiEncryptionKey = persistentKeys.Pii;
+        _cpfLookupHmacKey = persistentKeys.CpfHmac;
     }
 
     public ReadOnlySpan<byte> JwtSigningKey => _jwtSigningKey;
@@ -183,19 +208,71 @@ public sealed class RuntimeKeyMaterialProvider
 
     public ReadOnlySpan<byte> CpfLookupHmacKey => _cpfLookupHmacKey;
 
-    private static byte[] ResolveOrGenerateKey(string configuredBase64, int requiredLength)
+    private static byte[]? TryDecodeKey(string configuredBase64, int requiredLength)
     {
-        if (!string.IsNullOrWhiteSpace(configuredBase64))
+        if (string.IsNullOrWhiteSpace(configuredBase64))
+        {
+            return null;
+        }
+
+        try
         {
             byte[] decoded = Convert.FromBase64String(configuredBase64);
             if (decoded.Length >= requiredLength)
             {
-                return decoded.Length == requiredLength
-                    ? decoded
-                    : decoded[..requiredLength];
+                return decoded.Length == requiredLength ? decoded : decoded[..requiredLength];
             }
         }
+        catch (FormatException)
+        {
+        }
 
-        return RandomNumberGenerator.GetBytes(requiredLength);
+        return null;
+    }
+
+    private static (byte[] Jwt, byte[] Pii, byte[] CpfHmac) LoadOrGenerateDevKeys(
+        byte[]? configuredJwt,
+        byte[]? configuredPii,
+        byte[]? configuredCpfHmac)
+    {
+        string devKeysFile = Path.Combine(StoragePathResolver.StorageDirectory, ".topiclog_dev_keys.json");
+        try
+        {
+            if (File.Exists(devKeysFile))
+            {
+                string json = File.ReadAllText(devKeysFile);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                byte[] jwt = configuredJwt ?? TryDecodeKey(root.GetProperty("jwt").GetString() ?? "", 32) ?? RandomNumberGenerator.GetBytes(32);
+                byte[] pii = configuredPii ?? TryDecodeKey(root.GetProperty("pii").GetString() ?? "", 32) ?? RandomNumberGenerator.GetBytes(32);
+                byte[] cpfHmac = configuredCpfHmac ?? TryDecodeKey(root.GetProperty("cpfHmac").GetString() ?? "", 32) ?? RandomNumberGenerator.GetBytes(32);
+                return (jwt, pii, cpfHmac);
+            }
+        }
+        catch
+        {
+            // Em caso de falha de leitura, gera novas chaves com fallback seguro
+        }
+
+        byte[] newJwt = configuredJwt ?? RandomNumberGenerator.GetBytes(32);
+        byte[] newPii = configuredPii ?? RandomNumberGenerator.GetBytes(32);
+        byte[] newCpfHmac = configuredCpfHmac ?? RandomNumberGenerator.GetBytes(32);
+
+        try
+        {
+            var content = JsonSerializer.Serialize(new
+            {
+                jwt = Convert.ToBase64String(newJwt),
+                pii = Convert.ToBase64String(newPii),
+                cpfHmac = Convert.ToBase64String(newCpfHmac)
+            });
+            StoragePathResolver.SaveFileAtomically(devKeysFile, content);
+        }
+        catch
+        {
+            // Ambientes restritos em memória
+        }
+
+        return (newJwt, newPii, newCpfHmac);
     }
 }

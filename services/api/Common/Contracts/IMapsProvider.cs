@@ -38,7 +38,8 @@ public enum GeoreferenceStatus
     RESOLVED = 0,
     PENDING = 1,
     UNRESOLVED = 2,
-    INVALID = 3
+    INVALID = 3,
+    APPROXIMATE = 4
 }
 
 public sealed record GeoreferenceResolutionResult(

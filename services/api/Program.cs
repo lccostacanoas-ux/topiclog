@@ -42,6 +42,13 @@ namespace TopicLog.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // Padronização e binding inequívoco de TOPICLOG_ENV_MODE para FeatureFlags:EnvironmentMode (Finding 5)
+            string? topicLogEnvMode = Environment.GetEnvironmentVariable("TOPICLOG_ENV_MODE");
+            if (!string.IsNullOrWhiteSpace(topicLogEnvMode))
+            {
+                builder.Configuration["FeatureFlags:EnvironmentMode"] = topicLogEnvMode.Trim();
+            }
+
             // Suporte transparente a enums em formato texto (ex: "CAR", "BICYCLE", "DOCUMENTOS")
             builder.Services.ConfigureHttpJsonOptions(options =>
             {
@@ -116,13 +123,24 @@ namespace TopicLog.Api
             app.MapTopicLogAdminEndpoints();
             app.MapTopicLogLegalEndpoints();
 
-            // Acesso temporário assinado a objetos privados de mídia (D16 / ADR-0006)
-            app.MapGet("/api/v1/private-media", (
-                string key,
-                long expires) =>
+            // Acesso temporário assinado a objetos privados de mídia com validação HMAC e streaming real (D16 / ADR-0006 / Finding 6)
+            app.MapGet("/api/v1/private-media", async (
+                [Microsoft.AspNetCore.Mvc.FromQuery] string? key,
+                [Microsoft.AspNetCore.Mvc.FromQuery] long? expires,
+                [Microsoft.AspNetCore.Mvc.FromQuery] string? sig,
+                IObjectStorageProvider storageProvider,
+                CancellationToken cancellationToken) =>
             {
+                if (string.IsNullOrWhiteSpace(key) || !expires.HasValue || string.IsNullOrWhiteSpace(sig))
+                {
+                    return Results.Problem(
+                        title: "Requisição inválida",
+                        detail: "Parâmetros 'key', 'expires' e 'sig' são obrigatórios.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
                 long nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (expires < nowUnix)
+                if (expires.Value < nowUnix)
                 {
                     return Results.Problem(
                         title: "Link temporário expirado",
@@ -130,12 +148,26 @@ namespace TopicLog.Api
                         statusCode: StatusCodes.Status410Gone);
                 }
 
-                return Results.Ok(new
+                if (!storageProvider.ValidateSignedPath(key, expires.Value, sig))
                 {
-                    storageKey = key,
-                    validUntilUtc = DateTimeOffset.FromUnixTimeSeconds(expires),
-                    status = "AUTHORIZED_TEMPORARY"
-                });
+                    return Results.Problem(
+                        title: "Assinatura inválida",
+                        detail: "A assinatura HMAC do link temporário é inválida ou foi adulterada.",
+                        statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                var item = await storageProvider.RetrievePrivateObjectAsync(key, cancellationToken).ConfigureAwait(false);
+                if (item == null)
+                {
+                    return Results.NotFound(new
+                    {
+                        title = "Arquivo não encontrado",
+                        detail = "O arquivo solicitado não existe ou foi removido.",
+                        status = 404
+                    });
+                }
+
+                return Results.Stream(item.Value.Stream, contentType: item.Value.ContentType);
             });
 
             return app;
@@ -175,8 +207,7 @@ namespace TopicLog.Api
                 bool isReady = !f.RealPaymentsEnabled
                     && f.AsaasSandboxEnabled
                     && f.BilateralKycRequiredOnContract
-                    && !f.InsuranceCommercializationEnabled
-                    && f.RequireCodeAndPhotoForDelivery;
+                    && !f.InsuranceCommercializationEnabled;
 
                 return Results.Ok(new
                 {
@@ -233,6 +264,46 @@ namespace TopicLog.Api
                     }
                 });
             });
+
+            // Rota Raiz Informativa da API (Evita 404 no navegador)
+            app.MapGet("/", () => Results.Content(
+                """
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head>
+                    <meta charset="utf-8" />
+                    <title>Topic Log API — Status Online</title>
+                    <style>
+                        body { font-family: system-ui, -apple-system, sans-serif; background: #0B132B; color: #F8FAFC; margin: 0; padding: 40px; display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+                        .card { background: #10213A; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 32px; max-width: 600px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+                        .badge { display: inline-block; background: rgba(16,185,129,0.2); color: #10B981; border: 1px solid rgba(16,185,129,0.4); border-radius: 20px; padding: 4px 12px; font-weight: 700; font-size: 13px; margin-bottom: 16px; }
+                        h1 { margin: 0 0 10px 0; font-size: 24px; }
+                        p { color: #94A3B8; font-size: 14px; line-height: 1.6; }
+                        .links { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+                        .btn { display: block; padding: 12px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; text-align: center; }
+                        .btn-admin { background: #2563EB; color: #FFF; }
+                        .btn-web { background: #1E293B; color: #38BDF8; border: 1px solid rgba(56,189,248,0.3); }
+                        .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748B; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <div class="badge">🟢 BACKEND ONLINE (.NET 10 LTS)</div>
+                        <h1>Topic Log API REST</h1>
+                        <p>Esta é a camada de serviços e regras de negócio da Topic Log (porta 5080). Para interagir com a interface gráfica, acesse os portais abaixo:</p>
+                        <div class="links">
+                            <a class="btn btn-admin" href="http://localhost:3001" target="_blank">🛡️ Abrir Painel do Administrador (Porta 3001)</a>
+                            <a class="btn btn-web" href="http://localhost:3000" target="_blank">📦 Abrir Aplicativo TopicLog Web (Porta 3000)</a>
+                        </div>
+                        <div class="footer">
+                            Documentação Técnica: <a href="/openapi/v1.json" style="color: #94A3B8;">OpenAPI 3.1</a> | 
+                            Health: <a href="/health/live" style="color: #94A3B8;">Liveness</a> • <a href="/health/ready" style="color: #94A3B8;">Readiness</a>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """,
+                "text/html; charset=utf-8"));
 
             // Catálogo dos 19 Módulos do Monólito Modular
             app.MapGet("/api/v1/system/modules", () => Results.Ok(new

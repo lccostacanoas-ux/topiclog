@@ -208,7 +208,8 @@ public static class TopicLogRules
                 ReasonDescription: "Ato unilateral do transportador nunca confirma entrega nem libera repasse (D16).");
         }
 
-        bool normalProofComplete = input.HasValidSecurityCode && input.HasDeliveryPhoto;
+        // Validação da entrega normal: trabalha exclusivamente com a senha / código PIN de segurança
+        bool normalProofComplete = input.HasValidSecurityCode;
         bool deliveryVerified = normalProofComplete || input.HasApprovedHumanException;
 
         if (!deliveryVerified)
@@ -218,7 +219,7 @@ public static class TopicLogRules
                 IsTransferEligible: false,
                 RecommendedTransferStatus: TransferStatus.NOT_ELIGIBLE,
                 ReasonCode: "DELIVERY_PROOF_INCOMPLETE",
-                ReasonDescription: "A entrega normal exige código de segurança válido + foto privada, ou exceção revisada por humano autorizado (D16).");
+                ReasonDescription: "A entrega normal exige código de segurança / senha válido (PIN de 4 dígitos), ou exceção revisada por humano autorizado (D16).");
         }
 
         if (input.HasOpenDispute || input.HasHoldOrFraudFlag)

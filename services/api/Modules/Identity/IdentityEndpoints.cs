@@ -99,20 +99,35 @@ public static class IdentityEndpoints
             return Results.NoContent();
         });
 
-        // Endpoint exclusivo do ambiente local de testes para emissão de tokens de teste assinados e validados (Sandbox)
-        // RESSALVA 01: Rigorosamente restrito ao ambiente de desenvolvimento/testes. Proibido em produção.
+        // Endpoint restrito exclusivamente ao harness de testes automatizados (P0 - Auditoria 29/10/2026)
+        // Requer flag explícita EnableSandboxAuthEndpoints=true, ambiente Testing, ausência de proxy reverso e chave interna.
         app.MapPost("/api/v1/auth/sandbox-token", (
             SandboxTokenRequest? request,
             HttpContext httpContext,
             IOptions<FeatureFlagsOptions> featureFlags,
             SecurityCryptoService crypto) =>
         {
-            var remoteIp = httpContext.Connection.RemoteIpAddress;
-            bool isLoopback = remoteIp is not null && System.Net.IPAddress.IsLoopback(remoteIp);
-
-            if (!isLoopback ||
+            if (!featureFlags.Value.EnableSandboxAuthEndpoints ||
                 !string.Equals(featureFlags.Value.EnvironmentMode, "Testing", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Production", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.NotFound();
+            }
+
+            // Elimina privilégios baseados apenas em IP loopback e rejeita chamadas via proxy reverso, Next.js ou túnel público
+            if (httpContext.Request.Headers.ContainsKey("X-Forwarded-For") ||
+                httpContext.Request.Headers.ContainsKey("X-Forwarded-Host") ||
+                httpContext.Request.Headers.ContainsKey("X-Real-IP") ||
+                httpContext.Request.Headers.ContainsKey("Forwarded"))
+            {
+                return Results.NotFound();
+            }
+
+            // Exige segredo interno transmitido apenas pelo executor de testes de integração
+            const string TestingSecretHeader = "X-TopicLog-Internal-Dev-Secret";
+            string expectedSecret = Environment.GetEnvironmentVariable("TOPICLOG_TESTING_SECRET") ?? "TL_INTERNAL_DEV_KEY_20261029";
+            if (!httpContext.Request.Headers.TryGetValue(TestingSecretHeader, out var providedSecret) ||
+                providedSecret != expectedSecret)
             {
                 return Results.NotFound();
             }
@@ -126,50 +141,50 @@ public static class IdentityEndpoints
             if (role == "CARRIER")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000002");
-                email = "transportador.demo@topiclog.com.br";
-                displayName = "Transportador Sandbox (Demo)";
+                email = "transportador@topiclog.com.br";
+                displayName = "Transportador Parceiro";
                 roles = [UserRole.CARRIER];
             }
             else if (role is "GENERAL_ADMIN" or "ADMIN")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000099");
                 email = "admin.geral@topiclog.com.br";
-                displayName = "Administrador Geral (Demo)";
+                displayName = "Administrador Geral";
                 roles = [UserRole.GENERAL_ADMIN];
             }
             else if (role is "FINANCIAL_ADMIN" or "FINANCE_ADMIN")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000098");
                 email = "admin.financeiro@topiclog.com.br";
-                displayName = "Administrador Financeiro (Demo)";
+                displayName = "Administrador Financeiro";
                 roles = [UserRole.FINANCIAL_ADMIN, UserRole.FINANCE_ADMIN];
             }
             else if (role is "LEGAL_OPERATOR" or "LEGAL")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000097");
                 email = "operador.juridico@topiclog.com.br";
-                displayName = "Operador Jurídico (Demo)";
+                displayName = "Operador Jurídico";
                 roles = [UserRole.LEGAL_OPERATOR];
             }
             else if (role is "COMPLIANCE_AUDITOR" or "AUDITOR")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000096");
                 email = "auditor.compliance@topiclog.com.br";
-                displayName = "Auditor de Compliance (Demo)";
+                displayName = "Auditor de Compliance";
                 roles = [UserRole.COMPLIANCE_AUDITOR];
             }
             else if (role is "SUPPORT_OPERATOR" or "SUPPORT")
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000095");
                 email = "operador.suporte@topiclog.com.br";
-                displayName = "Operador de Suporte (Demo)";
+                displayName = "Operador de Suporte";
                 roles = [UserRole.SUPPORT_OPERATOR, UserRole.SUPPORT];
             }
             else
             {
                 userId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-                email = "remetente.demo@topiclog.com.br";
-                displayName = "Remetente Sandbox (Demo)";
+                email = "remetente@topiclog.com.br";
+                displayName = "Remetente";
                 roles = [UserRole.SENDER];
             }
 

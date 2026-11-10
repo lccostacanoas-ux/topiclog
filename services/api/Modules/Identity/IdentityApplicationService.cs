@@ -751,6 +751,14 @@ public sealed class IdentityApplicationService
             result.Add(UserRole.SENDER);
         }
 
+        if (result.Contains(UserRole.SENDER) && result.Contains(UserRole.CARRIER))
+        {
+            throw new DomainRuleViolationException(
+                "DUAL_ROLE_FORBIDDEN",
+                "O cadastro deve ser realizado exclusivamente como Remetente ou como Transportador. Uma mesma conta não pode acumular os dois papéis simultaneamente.",
+                StatusCodes.Status400BadRequest);
+        }
+
         return result;
     }
 

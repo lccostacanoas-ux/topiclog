@@ -228,9 +228,9 @@ export const DEFAULT_TOPICLOG_SYSTEM_STATE: SystemFeatureFlagsResponse = {
     CAR: 20000
   },
   commercialPolicies: {
-    freePlanCommissionRate: 0.13,
-    premiumPlanMonthlyPriceCents: 3990,
-    premiumPlanCommissionRate: 0.07,
+    freePlanCommissionRate: 0.20,
+    premiumPlanMonthlyPriceCents: 0,
+    premiumPlanCommissionRate: 0.20,
     platformAbsorbsGatewayFees: true
   },
   insurance: {
@@ -242,7 +242,7 @@ export const DEFAULT_TOPICLOG_SYSTEM_STATE: SystemFeatureFlagsResponse = {
     realPaymentsEnabled: false,
     asaasSandboxEnabled: true,
     bilateralKycRequiredOnContract: true,
-    requireCodeAndPhotoForDelivery: true,
+    requireCodeAndPhotoForDelivery: false,
     runWorkerInProcess: true
   }
 };

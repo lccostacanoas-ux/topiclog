@@ -51,3 +51,11 @@ temp/
 Thumbs.db
 .idea/
 *.swp
+
+# Admin Console (Local Only - Segurança: Não subir para Vercel / GitHub público)
+apps/admin/
+scratch/
+cloudflared.exe
+*.zip
+.netlify/
+dist-topiclog-web/

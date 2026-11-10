@@ -27,6 +27,7 @@ public static class ProposalsEndpoints
             HttpContext httpContext,
             ResourceAuthorizationService authorization,
             IProposalsApplicationService proposalsService,
+            IUserRepository userRepository,
             CancellationToken cancellationToken) =>
         {
             var actor = authorization.RequireAuthenticatedActor(httpContext);
@@ -38,9 +39,25 @@ public static class ProposalsEndpoints
                     403);
             }
 
+            // Trava de unicidade: O mesmo transportador não pode ter múltiplas propostas simultâneas para a mesma encomenda
+            var existingProposals = await proposalsService.ListProposalsByShipmentIdAsync(request.ShipmentId, actor.UserId, cancellationToken);
+            var duplicateActive = existingProposals.FirstOrDefault(p =>
+                p.CarrierId == actor.UserId &&
+                (p.Status == "PENDING" || p.Status == "COUNTERED"));
+            if (duplicateActive != null)
+            {
+                throw new DomainRuleViolationException(
+                    "PROPOSAL_ALREADY_SUBMITTED",
+                    "Você já enviou uma proposta para esta encomenda. Acompanhe a negociação na aba 'Minhas Propostas'.",
+                    StatusCodes.Status409Conflict);
+            }
+
+            var userEntry = await userRepository.FindByIdAsync(actor.UserId, cancellationToken);
+            string carrierDisplayName = userEntry?.Profile.DisplayName ?? actor.Email;
+
             var created = await proposalsService.CreateProposalAsync(
                 actor.UserId,
-                actor.Email,
+                carrierDisplayName,
                 request,
                 cancellationToken).ConfigureAwait(false);
 

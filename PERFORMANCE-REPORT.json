@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-10-28T22:32:31.7261553+00:00",
+  "runtime": ".NET 10.0.12",
+  "calculations10000Ms": 3068,
+  "sqliteWrites10000Ms": 14688,
+  "sqliteList500Ms": 7,
+  "thresholds": {
+    "calculations10000Ms": 20000,
+    "sqliteWrites10000Ms": 30000,
+    "sqliteList500Ms": 3000
+  },
+  "result": "PERF_OK"
+}

@@ -376,16 +376,6 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             return MapOrderToResponse(order);
         }
 
-        // Decisão D16 / PR-05: Exige comprovante fotográfico previamente enviado para conclusão da entrega
-        var proof = await _fulfillmentRepo.GetProofByOrderIdAsync(order.Id, cancellationToken);
-        if (proof is null)
-        {
-            throw new DomainRuleViolationException(
-                "DELIVERY_PHOTO_REQUIRED",
-                "A comprovação fotográfica da entrega (foto do local/destinatário) é obrigatória antes de validar o código de segurança conforme a decisão D16.",
-                422);
-        }
-
         // Confirmação da entrega por senha / código de segurança de 4 dígitos (PIN)
         var challenge = await _fulfillmentRepo.GetActiveChallengeByOrderIdAsync(order.Id, cancellationToken);
         if (challenge == null)

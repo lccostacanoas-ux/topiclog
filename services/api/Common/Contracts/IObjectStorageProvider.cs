@@ -21,7 +21,16 @@ public interface IObjectStorageProvider
         string contentType,
         CancellationToken cancellationToken);
 
+    Task<(Stream Stream, string ContentType)?> RetrievePrivateObjectAsync(
+        string storageKey,
+        CancellationToken cancellationToken);
+
     string GenerateTemporarySignedPath(
         string storageKey,
         TimeSpan validityWindow);
+
+    bool ValidateSignedPath(
+        string storageKey,
+        long expiresUnix,
+        string signature);
 }

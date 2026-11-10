@@ -70,16 +70,74 @@ public interface IAuditRepository
 }
 
 /// <summary>
-/// Implementação temporária em memória de <see cref="IUserRepository"/> exclusiva para
-/// desenvolvimento local e testes iniciais em equipamento de 8 GB de RAM (DEC-01.1, DEC-01.4).
-/// A persistência real com PostgreSQL 16 (infra/sql/001_identity_kyc_audit.sql) e seus
-/// testes de integração permanecem pendentes antes de homologação para produção.
+/// Implementação de <see cref="IUserRepository"/> com armazenamento local persistente em disco (JSON)
+/// e cache indexado em memória para suportar testes locais e reiniciar o servidor sem perda de contas (DEC-01.1).
 /// </summary>
 public sealed class InMemoryUserRepository : IUserRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("users_store.json");
+
     private readonly Lock _syncRoot = new();
     private readonly Dictionary<Guid, (UserEntity User, UserProfileEntity Profile)> _byId = [];
     private readonly Dictionary<string, Guid> _idByEmail = new(StringComparer.OrdinalIgnoreCase);
+
+    public InMemoryUserRepository()
+    {
+        LoadFromDisk();
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath))
+            {
+                return;
+            }
+
+            var json = File.ReadAllText(StorageFilePath);
+            var items = System.Text.Json.JsonSerializer.Deserialize<List<PersistedUserEntry>>(json);
+            if (items is null) return;
+
+            lock (_syncRoot)
+            {
+                foreach (var item in items)
+                {
+                    if (item.User is not null && item.Profile is not null)
+                    {
+                        _byId[item.User.Id] = (item.User, item.Profile);
+                        _idByEmail[item.User.Email.Trim().ToLowerInvariant()] = item.User.Id;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar contas de usuários: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        List<PersistedUserEntry> entries;
+        lock (_syncRoot)
+        {
+            entries = _byId.Values.Select(x => new PersistedUserEntry(x.User, x.Profile)).ToList();
+        }
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(entries, JsonOptions);
+            TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Erro crítico ao salvar contas de usuários: {ex.Message}");
+            throw new InvalidOperationException("Falha na persistência de contas de usuários em disco.", ex);
+        }
+    }
 
     public Task<(UserEntity User, UserProfileEntity Profile)?> FindByEmailAsync(
         string normalizedEmail,
@@ -94,6 +152,15 @@ public sealed class InMemoryUserRepository : IUserRepository
                 && _byId.TryGetValue(id, out var entry))
             {
                 return Task.FromResult<(UserEntity, UserProfileEntity)?>(Clone(entry));
+            }
+
+            // Fallback amigável: se o usuário digitou o Nome Completo (ex: "Luiz Carlos Costa")
+            var matchByName = _byId.Values.FirstOrDefault(x =>
+                string.Equals(x.Profile.DisplayName?.Trim(), normalizedEmail.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(x.Profile.DisplayName?.Trim().Normalize(System.Text.NormalizationForm.FormD), normalizedEmail.Trim().Normalize(System.Text.NormalizationForm.FormD), StringComparison.OrdinalIgnoreCase));
+            if (matchByName != default && matchByName.User is not null)
+            {
+                return Task.FromResult<(UserEntity, UserProfileEntity)?>(Clone(matchByName));
             }
 
             return Task.FromResult<(UserEntity, UserProfileEntity)?>(null);
@@ -161,6 +228,7 @@ public sealed class InMemoryUserRepository : IUserRepository
 
             _idByEmail[normalizedEmail] = user.Id;
             _byId[user.Id] = Clone((user, profile));
+            SaveToDisk();
         }
 
         return Task.CompletedTask;
@@ -183,10 +251,13 @@ public sealed class InMemoryUserRepository : IUserRepository
             }
 
             _byId[user.Id] = Clone((user, profile));
+            SaveToDisk();
         }
 
         return Task.CompletedTask;
     }
+
+    private sealed record PersistedUserEntry(UserEntity User, UserProfileEntity Profile);
 
     private static (UserEntity User, UserProfileEntity Profile) Clone((UserEntity User, UserProfileEntity Profile) source)
     {

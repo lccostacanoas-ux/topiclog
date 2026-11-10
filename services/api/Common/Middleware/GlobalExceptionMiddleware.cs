@@ -35,10 +35,21 @@ public sealed partial class GlobalExceptionMiddleware
                 context.Request.Path.Value ?? string.Empty,
                 domainEx.Message);
 
+            var friendlyTitle = domainEx.RuleCode switch
+            {
+                "AUTH_INVALID_CREDENTIALS" => "E-mail ou senha incorretos",
+                "AUTH_ACCOUNT_LOCKED" => "Conta temporariamente bloqueada",
+                "AUTH_ACCOUNT_SUSPENDED" => "Conta suspensa",
+                "INVALID_DISPLAY_NAME" => "Nome informado inválido",
+                "INVALID_PHONE" => "Telefone informado inválido",
+                "INVALID_CPF_FORMAT" => "CPF informado inválido",
+                _ => "Não foi possível concluir a solicitação"
+            };
+
             await WriteProblemDetailsAsync(
                 context,
                 statusCode: domainEx.HttpStatusCode,
-                title: "Violação de regra de negócio",
+                title: friendlyTitle,
                 detail: domainEx.Message,
                 ruleCode: domainEx.RuleCode).ConfigureAwait(false);
         }

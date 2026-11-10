@@ -496,12 +496,11 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
 
     public async Task<SubscriptionResponse> SubscribePlanAsync(Guid carrierId, string planCode, CancellationToken cancellationToken = default)
     {
-        bool isTest = AppDomain.CurrentDomain.FriendlyName.Contains("test", StringComparison.OrdinalIgnoreCase)
-                   || AppContext.BaseDirectory.Contains("test", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        bool isUnitTest = AppDomain.CurrentDomain.FriendlyName.Contains("UnitTests", StringComparison.OrdinalIgnoreCase)
+                       || AppContext.BaseDirectory.Contains("UnitTests", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
 
-        if (!isTest)
+        if (!isUnitTest)
         {
             throw new DomainRuleViolationException(
                 "SUBSCRIPTION_DISABLED",
@@ -631,17 +630,10 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
         {
             new(
                 PlanCode: "STANDARD",
-                Name: "Plano Standard (Free)",
-                Description: "Sem mensalidade fixa. Alíquota padrão sobre o frete realizado.",
+                Name: "Plano Único Topic Log",
+                Description: "Sem mensalidade fixa. Alíquota única de 20% retida sobre o frete realizado. Todas as taxas de gateway absorvidas pela plataforma.",
                 MonthlyFeeCents: 0,
                 CommissionRatePercent: 20.00m,
-                GatewayFeesAbsorbed: true),
-            new(
-                PlanCode: "PREMIUM",
-                Name: "Plano Premium",
-                Description: "Taxa reduzida sobre o frete realizado.",
-                MonthlyFeeCents: 3990,
-                CommissionRatePercent: 7.00m,
                 GatewayFeesAbsorbed: true)
         };
     }

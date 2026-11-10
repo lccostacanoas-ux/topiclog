@@ -1,4 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace TopicLog.Api.Modules.Proposals;
@@ -152,9 +155,67 @@ public sealed record PriorityOffer(
     bool IsAccepted,
     string Notes);
 
+public sealed class FlexibleGuidConverter : JsonConverter<Guid>
+{
+    public override Guid Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var str = reader.GetString();
+            if (string.IsNullOrWhiteSpace(str)) return Guid.Empty;
+            if (Guid.TryParse(str, out var g)) return g;
+            if (str == "enc-001") return Guid.Parse("e0000001-0000-0000-0000-000000000001");
+            if (str == "enc-002") return Guid.Parse("e0000002-0000-0000-0000-000000000002");
+            if (str == "enc-003") return Guid.Parse("e0000003-0000-0000-0000-000000000003");
+            if (str == "enc-004") return Guid.Parse("e0000004-0000-0000-0000-000000000004");
+            if (str == "enc-005") return Guid.Parse("e0000005-0000-0000-0000-000000000005");
+            if (str == "enc-006") return Guid.Parse("e0000006-0000-0000-0000-000000000006");
+            if (str == "via-001") return Guid.Parse("b0000001-0000-0000-0000-000000000001");
+            if (str == "via-002") return Guid.Parse("b0000002-0000-0000-0000-000000000002");
+            if (str == "via-003") return Guid.Parse("b0000003-0000-0000-0000-000000000003");
+            if (str == "via-004") return Guid.Parse("b0000004-0000-0000-0000-000000000004");
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(str));
+            return new Guid(hash.AsSpan(0, 16));
+        }
+        return reader.GetGuid();
+    }
+
+    public override void Write(Utf8JsonWriter writer, Guid value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToString());
+    }
+}
+
+public sealed class FlexibleNullableGuidConverter : JsonConverter<Guid?>
+{
+    public override Guid? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return null;
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var str = reader.GetString();
+            if (string.IsNullOrWhiteSpace(str)) return null;
+            if (Guid.TryParse(str, out var g)) return g;
+            if (str == "via-001") return Guid.Parse("b0000001-0000-0000-0000-000000000001");
+            if (str == "via-002") return Guid.Parse("b0000002-0000-0000-0000-000000000002");
+            if (str == "via-003") return Guid.Parse("b0000003-0000-0000-0000-000000000003");
+            if (str == "via-004") return Guid.Parse("b0000004-0000-0000-0000-000000000004");
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(str));
+            return new Guid(hash.AsSpan(0, 16));
+        }
+        return reader.GetGuid();
+    }
+
+    public override void Write(Utf8JsonWriter writer, Guid? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue) writer.WriteStringValue(value.Value.ToString());
+        else writer.WriteNullValue();
+    }
+}
+
 public sealed record CreateProposalRequest(
-    Guid ShipmentId,
-    Guid? TripId,
+    [property: JsonConverter(typeof(FlexibleGuidConverter))] Guid ShipmentId,
+    [property: JsonConverter(typeof(FlexibleNullableGuidConverter))] Guid? TripId,
     long AmountCents,
     string? EstimatedPickup,
     string? EstimatedDelivery,

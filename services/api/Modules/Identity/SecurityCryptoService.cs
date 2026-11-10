@@ -75,8 +75,25 @@ public sealed class SecurityCryptoService
 
     /// <summary>
     /// Verifica uma senha contra o hash armazenado em tempo constante.
+    /// Suporta tolerância a espaços automáticos adicionados por teclados virtuais móveis (.Trim()).
     /// </summary>
     public static bool VerifyPassword(string plainTextPassword, string storedPasswordHash)
+    {
+        if (string.IsNullOrWhiteSpace(plainTextPassword) || string.IsNullOrWhiteSpace(storedPasswordHash))
+        {
+            return false;
+        }
+
+        bool isMatch = VerifyPasswordInternal(plainTextPassword, storedPasswordHash);
+        if (!isMatch && plainTextPassword.Trim() != plainTextPassword)
+        {
+            isMatch = VerifyPasswordInternal(plainTextPassword.Trim(), storedPasswordHash);
+        }
+
+        return isMatch;
+    }
+
+    private static bool VerifyPasswordInternal(string plainTextPassword, string storedPasswordHash)
     {
         if (string.IsNullOrWhiteSpace(plainTextPassword) || string.IsNullOrWhiteSpace(storedPasswordHash))
         {

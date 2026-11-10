@@ -1,4 +1,8 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using TopicLog.Api.Common;
 using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Domain;
 using TopicLog.Api.Common.Options;
@@ -185,6 +189,38 @@ public sealed class LocalFreeMapsProvider : IMapsProvider
             ["2304400"] = new("2304400", "Fortaleza", "CE", new GeoApproximatePoint(-3.7319, -38.5267), false, 73)
         };
 
+    private static GeoApproximatePoint GetCentroidForState(string? uf) => uf?.ToUpperInvariant() switch
+    {
+        "AC" => new(-9.0238, -70.8120),
+        "AL" => new(-9.5713, -36.7820),
+        "AP" => new(0.9020, -52.0030),
+        "AM" => new(-3.4168, -65.8561),
+        "BA" => new(-12.5797, -41.7007),
+        "CE" => new(-5.4984, -39.3206),
+        "DF" => new(-15.7975, -47.8919),
+        "ES" => new(-19.1834, -40.3089),
+        "GO" => new(-15.8270, -49.8362),
+        "MA" => new(-4.9609, -45.2744),
+        "MT" => new(-12.6819, -56.9211),
+        "MS" => new(-20.7722, -54.7852),
+        "MG" => new(-18.5122, -44.5550),
+        "PA" => new(-1.9981, -54.9306),
+        "PB" => new(-7.2400, -36.7820),
+        "PR" => new(-25.2521, -52.0215),
+        "PE" => new(-8.8137, -36.9541),
+        "PI" => new(-7.7183, -42.7289),
+        "RJ" => new(-22.9068, -43.1729),
+        "RN" => new(-5.7945, -36.5644),
+        "RS" => new(-30.0346, -51.2177),
+        "RO" => new(-11.5057, -63.5806),
+        "RR" => new(2.7376, -62.0751),
+        "SC" => new(-27.2423, -50.2189),
+        "SP" => new(-23.5505, -46.6333),
+        "SE" => new(-10.5741, -37.3857),
+        "TO" => new(-10.1753, -48.2982),
+        _ => new(-18.5122, -44.5550)
+    };
+
     public string ProviderName => "OpenStreetMap/Nominatim-Compatible (Prototype)";
 
     public string LicenseAttribution => "© OpenStreetMap contributors (ODbL)";
@@ -292,29 +328,17 @@ public sealed class LocalFreeMapsProvider : IMapsProvider
 
         if (matched == null)
         {
+            // Endereço desconhecido ou não catalogado no banco local: status UNRESOLVED sem centro de estado silencioso (Finding 7)
             return new GeoreferenceResolutionResult(
                 IbgeCode: null,
                 NormalizedCity: city.Trim(),
-                StateUf: cleanUf ?? string.Empty,
+                StateUf: cleanUf ?? "BR",
                 MunicipalityCentroid: null,
                 ExactPoint: null,
                 Precision: GeoreferencePrecision.UNRESOLVED,
                 Status: GeoreferenceStatus.UNRESOLVED,
                 IsEstimated: true,
-                ErrorMessage: $"Município '{city}' não localizado no catálogo oficial do IBGE.");
-        }
-
-        GeoApproximatePoint? exactPoint = null;
-        var precision = GeoreferencePrecision.MUNICIPALITY_CENTROID;
-        bool isEstimated = true;
-
-        if (!string.IsNullOrWhiteSpace(streetAndNumber))
-        {
-            exactPoint = new GeoApproximatePoint(
-                Math.Round(matched.ApproximateCenter.Latitude + 0.0025, 4),
-                Math.Round(matched.ApproximateCenter.Longitude + 0.0020, 4));
-            precision = GeoreferencePrecision.EXACT_STREET;
-            isEstimated = false;
+                ErrorMessage: $"Município '{city}' não localizado na base canônica de coordenadas.");
         }
 
         return new GeoreferenceResolutionResult(
@@ -322,10 +346,10 @@ public sealed class LocalFreeMapsProvider : IMapsProvider
             NormalizedCity: matched.Name,
             StateUf: matched.StateUf,
             MunicipalityCentroid: matched.ApproximateCenter,
-            ExactPoint: exactPoint,
-            Precision: precision,
+            ExactPoint: null,
+            Precision: GeoreferencePrecision.MUNICIPALITY_CENTROID,
             Status: GeoreferenceStatus.RESOLVED,
-            IsEstimated: isEstimated,
+            IsEstimated: true,
             ErrorMessage: null);
     }
 
@@ -451,35 +475,208 @@ public sealed class LocalFreeMapsProvider : IMapsProvider
 }
 
 /// <summary>
-/// Armazenamento privado local para desenvolvimento sem Docker/MinIO em máquina de 8 GB de RAM.
+/// Armazenamento privado real em disco local com validação estrita de magic bytes,
+/// limitação de tamanho, prevenção contra path traversal e URLs com assinatura HMAC (Finding 6).
 /// </summary>
 public sealed class LocalDiskObjectStorageProvider : IObjectStorageProvider
 {
+    private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+    private readonly RuntimeKeyMaterialProvider _keyMaterial;
+
+    public LocalDiskObjectStorageProvider()
+        : this(new RuntimeKeyMaterialProvider(Microsoft.Extensions.Options.Options.Create(new SecurityOptions())))
+    {
+    }
+
+    public LocalDiskObjectStorageProvider(RuntimeKeyMaterialProvider keyMaterial)
+    {
+        ArgumentNullException.ThrowIfNull(keyMaterial);
+        _keyMaterial = keyMaterial;
+    }
+
     public string ProviderName => "LocalDiskPrivateStorage";
 
-    public Task<PrivateObjectReference> StorePrivateObjectAsync(
+    private static string BaseStoragePath =>
+        Path.Combine(StoragePathResolver.StorageDirectory, "private-media");
+
+    public async Task<PrivateObjectReference> StorePrivateObjectAsync(
         string category,
         string fileName,
         Stream content,
         string contentType,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(content);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string safeCategory = string.IsNullOrWhiteSpace(category) ? "general" : category.Trim().ToLowerInvariant();
-        string storageKey = $"private/{safeCategory}/{Guid.NewGuid():N}_{Path.GetFileName(fileName)}";
-        long length = content.CanSeek ? content.Length : 0;
+        using var ms = new MemoryStream();
+        await content.CopyToAsync(ms, cancellationToken).ConfigureAwait(false);
+        byte[] bytes = ms.ToArray();
 
-        return Task.FromResult(new PrivateObjectReference(
-            StorageKey: storageKey,
-            ContentType: contentType,
-            SizeBytes: length,
-            StoredAtUtc: DateTimeOffset.UtcNow));
+        if (bytes.Length == 0)
+        {
+            throw new DomainRuleViolationException("EMPTY_FILE", "O arquivo de imagem enviado está vazio.", StatusCodes.Status400BadRequest);
+        }
+
+        if (bytes.Length > MaxFileSizeBytes)
+        {
+            throw new DomainRuleViolationException("FILE_TOO_LARGE", "O arquivo excede o limite máximo permitido de 5 MB.", StatusCodes.Status400BadRequest);
+        }
+
+        // Validação estrita por magic bytes (não confiar no MIME/extensão do cliente)
+        string? extension = DetectImageExtension(bytes);
+        if (extension == null)
+        {
+            throw new DomainRuleViolationException("INVALID_FILE_FORMAT", "Formato de arquivo inválido. Apenas imagens JPEG, PNG ou WebP são permitidas.", StatusCodes.Status400BadRequest);
+        }
+
+        string safeCategory = string.IsNullOrWhiteSpace(category) ? "general" : SanitizeCategory(category);
+        string safeFileName = $"{Guid.NewGuid():N}.{extension}";
+        string relativeKey = $"private/{safeCategory}/{safeFileName}";
+
+        string baseDir = Path.GetFullPath(BaseStoragePath);
+        string fullPath = Path.GetFullPath(Path.Combine(baseDir, safeCategory, safeFileName));
+
+        if (!fullPath.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainRuleViolationException("PATH_TRAVERSAL_DETECTED", "Tentativa de manipulação de caminho detectada.", StatusCodes.Status400BadRequest);
+        }
+
+        string? dir = Path.GetDirectoryName(fullPath);
+        if (dir != null)
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        await File.WriteAllBytesAsync(fullPath, bytes, cancellationToken).ConfigureAwait(false);
+
+        string effectiveContentType = extension switch
+        {
+            "jpg" => "image/jpeg",
+            "png" => "image/png",
+            "webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
+
+        return new PrivateObjectReference(
+            StorageKey: relativeKey,
+            ContentType: effectiveContentType,
+            SizeBytes: bytes.Length,
+            StoredAtUtc: DateTimeOffset.UtcNow);
+    }
+
+    public Task<(Stream Stream, string ContentType)?> RetrievePrivateObjectAsync(
+        string storageKey,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(storageKey) || storageKey.Contains(".."))
+        {
+            return Task.FromResult<(Stream Stream, string ContentType)?>(null);
+        }
+
+        string baseDir = Path.GetFullPath(BaseStoragePath);
+        string subPath = storageKey.StartsWith("private/", StringComparison.OrdinalIgnoreCase)
+            ? storageKey["private/".Length..]
+            : storageKey;
+
+        string fullPath = Path.GetFullPath(Path.Combine(baseDir, subPath.Replace('/', Path.DirectorySeparatorChar)));
+        if (!fullPath.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
+        {
+            return Task.FromResult<(Stream Stream, string ContentType)?>(null);
+        }
+
+        string ext = Path.GetExtension(fullPath).TrimStart('.').ToLowerInvariant();
+        string contentType = ext switch
+        {
+            "jpg" or "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
+
+        Stream fileStream = File.OpenRead(fullPath);
+        return Task.FromResult<(Stream Stream, string ContentType)?>((fileStream, contentType));
     }
 
     public string GenerateTemporarySignedPath(string storageKey, TimeSpan validityWindow)
     {
         long expiresUnix = DateTimeOffset.UtcNow.Add(validityWindow).ToUnixTimeSeconds();
-        return $"/api/v1/private-media?key={Uri.EscapeDataString(storageKey)}&expires={expiresUnix}";
+        string signature = ComputeSignature(storageKey, expiresUnix);
+        return $"/api/v1/private-media?key={Uri.EscapeDataString(storageKey)}&expires={expiresUnix}&sig={signature}";
+    }
+
+    public bool ValidateSignedPath(string storageKey, long expiresUnix, string signature)
+    {
+        if (string.IsNullOrWhiteSpace(storageKey) || string.IsNullOrWhiteSpace(signature))
+        {
+            return false;
+        }
+
+        long nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (expiresUnix < nowUnix)
+        {
+            return false;
+        }
+
+        string expectedSig = ComputeSignature(storageKey, expiresUnix);
+        try
+        {
+            byte[] providedBytes = Convert.FromHexString(signature);
+            byte[] expectedBytes = Convert.FromHexString(expectedSig);
+            return CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private string ComputeSignature(string storageKey, long expiresUnix)
+    {
+        byte[] payload = Encoding.UTF8.GetBytes($"{storageKey}:{expiresUnix}");
+        byte[] hash = HMACSHA256.HashData(_keyMaterial.PiiEncryptionKey, payload);
+        return Convert.ToHexString(hash);
+    }
+
+    private static string? DetectImageExtension(ReadOnlySpan<byte> bytes)
+    {
+        // JPEG: FF D8 FF
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+        {
+            return "jpg";
+        }
+
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if (bytes.Length >= 8 &&
+            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+        {
+            return "png";
+        }
+
+        // WebP: RIFF....WEBP
+        if (bytes.Length >= 12 &&
+            bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+            bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
+        {
+            return "webp";
+        }
+
+        return null;
+    }
+
+    private static string SanitizeCategory(string category)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in category)
+        {
+            if (char.IsLetterOrDigit(c) || c == '-' || c == '_')
+            {
+                sb.Append(char.ToLowerInvariant(c));
+            }
+        }
+        return sb.Length > 0 ? sb.ToString() : "general";
     }
 }
