@@ -168,6 +168,12 @@ export function removeDemoShipment(id: string): void {
   safeSetStorage(SHIPMENTS_STORAGE_KEY, current);
 }
 
+export function updateDemoShipment(id: string, updates: Partial<DemoShipment>): readonly DemoShipment[] {
+  const current = getDemoShipments().map((s) => (s.id === id ? { ...s, ...updates } : s));
+  safeSetStorage(SHIPMENTS_STORAGE_KEY, current);
+  return current;
+}
+
 export function getDemoTrips(): readonly DemoTrip[] {
   return safeGetStorage<DemoTrip[]>(TRIPS_STORAGE_KEY, INITIAL_TRIPS);
 }

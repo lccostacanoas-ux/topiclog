@@ -85,7 +85,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
               deliveryWindow: s.deliveryWindow || "A combinar",
               status: s.status,
               createdAt: s.createdAtUtc,
-              isBackend: true
+              isBackend: !res.isFallback
             });
           }
         }
@@ -171,7 +171,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
           token
         );
 
-        if (!res.ok) {
+        if (!res.ok && res.status !== 404 && res.status !== 0 && res.status !== 405) {
           setErrorMessage(res.problem?.detail || "Não foi possível atualizar a encomenda no servidor.");
           setIsSaving(false);
           return;

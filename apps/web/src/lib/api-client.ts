@@ -81,8 +81,12 @@ import type {
 import {
   addDemoTrip,
   getDemoTrips,
+  updateDemoTrip,
+  removeDemoTrip,
   addDemoShipment,
   getDemoShipments,
+  updateDemoShipment,
+  removeDemoShipment,
   addDemoProposal,
   getDemoProposals,
   type DemoTrip,
@@ -855,12 +859,32 @@ export async function updateShipmentApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<ShipmentDetailDto>> {
-  return apiRequest<ShipmentDetailDto>(`/api/v1/shipments/${id}`, {
+  const result = await apiRequest<ShipmentDetailDto>(`/api/v1/shipments/${id}`, {
     method: "PUT",
     token,
     body: payload,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    updateDemoShipment(id, {
+      title: payload.title,
+      description: payload.description,
+      suggestedPriceCents: payload.suggestedPriceCents
+    });
+    return {
+      ok: true,
+      status: 200,
+      correlationId: customCorrelationId ?? "fallback-cid",
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function deleteShipmentApi(
@@ -868,11 +892,27 @@ export async function deleteShipmentApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<void>> {
-  return apiRequest<void>(`/api/v1/shipments/${id}`, {
+  const result = await apiRequest<void>(`/api/v1/shipments/${id}`, {
     method: "DELETE",
     token,
     customCorrelationId
   });
+
+  if (result.ok) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    removeDemoShipment(id);
+    return {
+      ok: true,
+      status: 204,
+      correlationId: customCorrelationId ?? "fallback-cid",
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function createTripApi(
@@ -1048,12 +1088,36 @@ export async function updateTripApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<TripDto>> {
-  return apiRequest<TripDto>(`/api/v1/trips/${id}`, {
+  const result = await apiRequest<TripDto>(`/api/v1/trips/${id}`, {
     method: "PUT",
     token,
     body: payload,
     customCorrelationId
   });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    updateDemoTrip(id, {
+      vehicleModel: payload.vehicleModel,
+      departureDate: payload.departureDate,
+      departureTime: payload.departureTime,
+      availableCapacityGrams: payload.availableCapacityGrams,
+      suggestedPricePerKgCents: payload.suggestedPricePerKgCents,
+      flexiblePickup: payload.flexiblePickup,
+      intermediateStops: payload.intermediateStops
+    });
+    return {
+      ok: true,
+      status: 200,
+      correlationId: customCorrelationId ?? "fallback-cid",
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function deleteTripApi(
@@ -1061,11 +1125,27 @@ export async function deleteTripApi(
   token?: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<void>> {
-  return apiRequest<void>(`/api/v1/trips/${id}`, {
+  const result = await apiRequest<void>(`/api/v1/trips/${id}`, {
     method: "DELETE",
     token,
     customCorrelationId
   });
+
+  if (result.ok) {
+    return result;
+  }
+
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    removeDemoTrip(id);
+    return {
+      ok: true,
+      status: 204,
+      correlationId: customCorrelationId ?? "fallback-cid",
+      isFallback: true
+    };
+  }
+
+  return result;
 }
 
 export async function listRegionsCitiesApi(

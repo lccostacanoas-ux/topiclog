@@ -91,7 +91,7 @@ export default function MuralViagensPage(): React.JSX.Element {
             availableCapacityKg: Math.round(t.availableCapacityGrams / 1000),
             suggestedPricePerKgCents: t.suggestedPricePerKgCents,
             status: t.status,
-            isBackend: true
+            isBackend: !res.isFallback
           });
         }
       }
@@ -174,7 +174,7 @@ export default function MuralViagensPage(): React.JSX.Element {
           },
           token
         );
-        if (!res.ok) {
+        if (!res.ok && res.status !== 404 && res.status !== 0 && res.status !== 405) {
           setErrorMsg(res.problem?.detail || "Não foi possível salvar alterações no servidor.");
           setIsSaving(false);
           return;

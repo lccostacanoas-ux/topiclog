@@ -419,62 +419,106 @@ function FeedContent(): React.JSX.Element {
     setSelectedItem(synthShipment);
   };
 
-  const renderListView = (items: readonly any[], onOpenDetail: (item: any) => void) => (
-    <div style={{ backgroundColor: "#FFFFFF", borderRadius: "14px", border: "1px solid #E2E8F0", overflowX: "auto", boxShadow: "0 2px 6px rgba(0,0,0,0.04)", marginBottom: "20px" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "640px" }}>
-        <thead>
-          <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <th style={{ padding: "12px 16px" }}>Rota</th>
-            <th style={{ padding: "12px 16px" }}>Encomenda</th>
-            <th style={{ padding: "12px 16px" }}>Peso</th>
-            <th style={{ padding: "12px 16px" }}>Modal</th>
-            <th style={{ padding: "12px 16px" }}>Valor Sugerido</th>
-            <th style={{ padding: "12px 16px", textAlign: "right" }}>Ação</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background-color 0.15s" }}>
-              <td style={{ padding: "12px 16px", fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>
-                {item.originCity} ➔ {item.destinationCity}
-              </td>
-              <td style={{ padding: "12px 16px" }}>
-                <div style={{ fontWeight: 600, color: "#1E293B" }}>{item.title}</div>
-                <div style={{ fontSize: "11px", color: "#64748B" }}>
-                  {item.originNeighborhood ? `${item.originNeighborhood} ➔ ${item.destinationNeighborhood || item.destinationCity}` : (item.senderName || "Remetente")}
-                </div>
-              </td>
-              <td style={{ padding: "12px 16px", color: "#334155", fontWeight: 600, whiteSpace: "nowrap" }}>
-                {item.weightGrams != null && item.weightGrams > 0 ? (
-                  `${(item.weightGrams / 1000).toFixed(1)} kg`
-                ) : (
-                  <span style={{ color: "#94A3B8", fontStyle: "italic", fontWeight: 400, fontSize: "12px" }}>Peso não informado</span>
-                )}
-              </td>
-              <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
-                <span className={`badge-vehicle badge-vehicle--${item.vehicleType || item.maxVehicleType || "CAR"}`}>
-                  {(item.vehicleType || item.maxVehicleType) === "BICYCLE" ? "🚲 Até 5kg" : (item.vehicleType || item.maxVehicleType) === "MOTORCYCLE" ? "🏍️ Até 20kg" : "🚗 Até 40kg"}
-                </span>
-              </td>
-              <td style={{ padding: "12px 16px", fontWeight: 800, color: "#059669", whiteSpace: "nowrap" }}>
-                R$ {((item.suggestedPriceCents || 0) / 100).toFixed(2).replace(".", ",")}
-              </td>
-              <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                <button
-                  type="button"
-                  onClick={() => onOpenDetail(item)}
-                  className="btn btn--primary"
-                  style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 700 }}
-                >
-                  Propor Frete ➔
-                </button>
-              </td>
+  const renderListView = (items: readonly any[], onOpenDetail: (item: any) => void) => {
+    if (items.length === 0) {
+      return (
+        <div
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "14px",
+            border: "1.5px dashed #CBD5E1",
+            padding: "48px 24px",
+            textAlign: "center",
+            marginBottom: "20px"
+          }}
+        >
+          <span style={{ fontSize: "36px", display: "block", marginBottom: "8px" }}>📦</span>
+          <div style={{ fontSize: "16px", fontWeight: 700, color: "#1E293B", marginBottom: "4px" }}>
+            Nenhuma oportunidade encontrada
+          </div>
+          <div style={{ fontSize: "13px", color: "#64748B" }}>
+            Não há encomendas ou viagens correspondentes aos filtros selecionados.
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ backgroundColor: "#FFFFFF", borderRadius: "14px", border: "1px solid #E2E8F0", overflowX: "auto", boxShadow: "0 2px 6px rgba(0,0,0,0.04)", marginBottom: "20px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px", minWidth: "640px" }}>
+          <thead>
+            <tr style={{ backgroundColor: "#F8FAFC", borderBottom: "2px solid #E2E8F0", color: "#475569", fontWeight: 700, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <th style={{ padding: "12px 16px" }}>Rota</th>
+              <th style={{ padding: "12px 16px" }}>Item / Motorista</th>
+              <th style={{ padding: "12px 16px" }}>Capacidade / Peso</th>
+              <th style={{ padding: "12px 16px" }}>Modal</th>
+              <th style={{ padding: "12px 16px" }}>Valor Sugerido</th>
+              <th style={{ padding: "12px 16px", textAlign: "right" }}>Ação</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const isTrip = !("title" in item) && Boolean(item.carrierName);
+              return (
+                <tr key={item.id} style={{ borderBottom: "1px solid #F1F5F9", transition: "background-color 0.15s" }}>
+                  <td style={{ padding: "12px 16px", fontWeight: 700, color: "#0F172A", whiteSpace: "nowrap" }}>
+                    {item.originCity} ➔ {item.destinationCity}
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ fontWeight: 600, color: "#1E293B" }}>
+                      {isTrip ? `🚗 ${item.carrierName} (${item.vehicleModel})` : item.title}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#64748B" }}>
+                      {isTrip
+                        ? `Saída: ${item.departureDate} às ${item.departureTime}`
+                        : item.originNeighborhood
+                        ? `${item.originNeighborhood} ➔ ${item.destinationNeighborhood || item.destinationCity}`
+                        : item.senderName || "Remetente"}
+                    </div>
+                  </td>
+                  <td style={{ padding: "12px 16px", color: "#334155", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {isTrip ? (
+                      `${((item.availableCapacityGrams || 0) / 1000).toFixed(0)} kg livres`
+                    ) : item.weightGrams != null && item.weightGrams > 0 ? (
+                      `${(item.weightGrams / 1000).toFixed(1)} kg`
+                    ) : (
+                      <span style={{ color: "#94A3B8", fontStyle: "italic", fontWeight: 400, fontSize: "12px" }}>
+                        Peso não informado
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                    <span className={`badge-vehicle badge-vehicle--${item.vehicleType || item.maxVehicleType || "CAR"}`}>
+                      {(item.vehicleType || item.maxVehicleType) === "BICYCLE"
+                        ? "🚲 Até 5kg"
+                        : (item.vehicleType || item.maxVehicleType) === "MOTORCYCLE"
+                        ? "🏍️ Até 20kg"
+                        : "🚗 Carro"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "12px 16px", fontWeight: 800, color: isTrip ? "#1D4ED8" : "#059669", whiteSpace: "nowrap" }}>
+                    {isTrip
+                      ? `R$ ${(((item.suggestedPricePerKgCents || 0)) / 100).toFixed(2).replace(".", ",")}/kg`
+                      : `R$ ${(((item.suggestedPriceCents || 0)) / 100).toFixed(2).replace(".", ",")}`}
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenDetail(item)}
+                      className={isTrip ? "btn btn--outline" : "btn btn--primary"}
+                      style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 700 }}
+                    >
+                      {isTrip ? "Enviar carga ➔" : "Propor Frete ➔"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <main className="container" style={{ paddingTop: "28px", paddingBottom: "64px", maxWidth: "980px" }}>
@@ -1155,10 +1199,19 @@ function FeedContent(): React.JSX.Element {
       ) : (
         /* Modo Padrão: Listagem com alternador de Cards vs Lista */
         viewFormat === "LIST" ? (
-          renderListView(filteredShipments, (s) => {
-            setSelectedItem(s);
-            setCarrierOfferValue((s.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
-          })
+          renderListView(
+            activeTab === "SHIPMENTS"
+              ? filteredShipments
+              : activeTab === "TRIPS"
+              ? filteredTrips
+              : [...filteredShipments, ...filteredTrips],
+            (item) => {
+              setSelectedItem(item);
+              if ("suggestedPriceCents" in item && item.suggestedPriceCents) {
+                setCarrierOfferValue((item.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
+              }
+            }
+          )
         ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "16px" }}>
           {(activeTab === "ALL" || activeTab === "SHIPMENTS") &&
