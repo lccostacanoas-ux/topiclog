@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "dev:turbo": "next dev --turbopack --port 3000",
-    "build": "next build",
+    "build": "next build && node -e \"const fs=require('fs'); try{fs.cpSync('.next', '../../.next', {recursive:true})}catch(e){}\"",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
     "cap:sync": "cap sync",
