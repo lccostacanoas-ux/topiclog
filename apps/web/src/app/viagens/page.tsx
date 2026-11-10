@@ -4,12 +4,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
-import { listTripsApi, updateTripApi, deleteTripApi } from "../../lib/api-client";
+import { listTripsApi, updateTripApi, deleteTripApi, createProposalApi } from "../../lib/api-client";
 import type { TripSummaryDto } from "../../lib/types";
 import {
   getDemoTrips,
   removeDemoTrip,
   updateDemoTrip,
+  addDemoShipment,
+  addDemoProposal,
   type DemoTrip
 } from "../../lib/demo-marketplace-store";
 import StarRatingDisplay from "../../components/StarRatingDisplay";
@@ -44,7 +46,7 @@ export default function MuralViagensPage(): React.JSX.Element {
   const router = useRouter();
   const { user, token, isAuthenticated } = useAuth();
   const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
-  const isSender = Boolean(user?.roles?.includes("SENDER"));
+  const isSender = Boolean(user?.roles?.includes("SENDER") && !user?.roles?.includes("CARRIER"));
 
   const [trips, setTrips] = useState<UnifiedTrip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +54,7 @@ export default function MuralViagensPage(): React.JSX.Element {
   const [filterDestination, setFilterDestination] = useState("ALL");
   const [filterVehicle, setFilterVehicle] = useState("ALL");
 
-  // Estado do Modal de Edição de Viagem
+  // Estado do Modal de Edição de Viagem (Apenas Transportador Dono)
   const [editingTrip, setEditingTrip] = useState<UnifiedTrip | null>(null);
   const [editModel, setEditModel] = useState("");
   const [editDate, setEditDate] = useState("");
@@ -60,6 +62,15 @@ export default function MuralViagensPage(): React.JSX.Element {
   const [editCapacityKg, setEditCapacityKg] = useState("");
   const [editPriceReais, setEditPriceReais] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Estado do Modal de Solicitação de Envio pelo Remetente
+  const [requestingTrip, setRequestingTrip] = useState<UnifiedTrip | null>(null);
+  const [requestTitle, setRequestTitle] = useState("");
+  const [requestWeightKg, setRequestWeightKg] = useState("5");
+  const [requestOfferPrice, setRequestOfferPrice] = useState("");
+  const [requestNotes, setRequestNotes] = useState("");
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -139,6 +150,10 @@ export default function MuralViagensPage(): React.JSX.Element {
   }, [loadTrips]);
 
   const handleOpenEdit = (t: UnifiedTrip) => {
+    if (!isCarrier) {
+      alert("Apenas o transportador responsável pode editar esta viagem.");
+      return;
+    }
     setEditingTrip(t);
     setEditModel(t.vehicleModel || "");
     setEditDate(t.departureDate || "");
@@ -154,6 +169,10 @@ export default function MuralViagensPage(): React.JSX.Element {
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTrip) return;
+    if (!isCarrier) {
+      setErrorMsg("Apenas o transportador responsável pode editar esta viagem.");
+      return;
+    }
     setIsSaving(true);
     setErrorMsg(null);
 
@@ -201,6 +220,10 @@ export default function MuralViagensPage(): React.JSX.Element {
   };
 
   const handleDeleteTrip = async (t: UnifiedTrip) => {
+    if (!isCarrier) {
+      alert("Apenas o transportador responsável pode excluir esta viagem.");
+      return;
+    }
     if (!window.confirm("Deseja realmente excluir esta viagem programada?")) {
       return;
     }
@@ -214,6 +237,100 @@ export default function MuralViagensPage(): React.JSX.Element {
     } catch {
       removeDemoTrip(t.id);
       await loadTrips();
+    }
+  };
+
+  const handleOpenRequest = (t: UnifiedTrip) => {
+    if (!isAuthenticated) {
+      alert("Para solicitar o envio de uma encomenda nesta viagem, acesse sua conta como Remetente.");
+      router.push("/entrar");
+      return;
+    }
+    setRequestingTrip(t);
+    setRequestTitle("");
+    setRequestWeightKg("5");
+    const baseFreight = t.suggestedPricePerKgCents
+      ? (t.suggestedPricePerKgCents / 100).toFixed(2).replace(".", ",")
+      : "50,00";
+    setRequestOfferPrice(baseFreight);
+    setRequestNotes(`Solicitação de frete para entrega na rota ${t.originCity} ➔ ${t.destinationCity}.`);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const handleConfirmRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestingTrip) return;
+    if (!requestTitle.trim()) {
+      setErrorMsg("Informe o que você deseja enviar (Título da encomenda).");
+      return;
+    }
+
+    setIsSubmittingRequest(true);
+    setErrorMsg(null);
+
+    const cleanPrice = parseFloat(requestOfferPrice.replace(",", ".").replace(/[^0-9.]/g, "")) || 50;
+    const priceCents = Math.round(cleanPrice * 100);
+    const cleanKg = parseFloat(requestWeightKg.replace(",", ".").replace(/[^0-9.]/g, "")) || 5;
+
+    try {
+      // 1. Cadastra a encomenda correspondente
+      const newShipment = addDemoShipment({
+        title: requestTitle.trim(),
+        description: `${requestNotes.trim()} [Solicitado na viagem de ${requestingTrip.carrierName}]`,
+        category: "GERAL",
+        dimensions: { lengthCm: 30, widthCm: 25, heightCm: 15 },
+        specialCare: ["Lacrado", "Carga Verificada"],
+        originCity: requestingTrip.originCity,
+        originNeighborhood: "Centro",
+        destinationCity: requestingTrip.destinationCity,
+        destinationNeighborhood: "Centro",
+        weightGrams: Math.round(cleanKg * 1000),
+        maxVehicleType: (requestingTrip.vehicleType as any) || "CAR",
+        suggestedPriceCents: priceCents,
+        deadlineDate: requestingTrip.departureDate,
+        senderName: user?.displayName || user?.email?.split("@")[0] || "Remetente",
+        senderKycVerified: true,
+        interestedInInsurance: false,
+        photoIcon: "📦"
+      });
+
+      // 2. Registra proposta formal vinculada à viagem com os types exatos de DemoProposal
+      const commissionCents = Math.round(priceCents * 0.20);
+      addDemoProposal({
+        shipmentId: newShipment.id,
+        shipmentTitle: newShipment.title,
+        route: `${requestingTrip.originCity} ➔ ${requestingTrip.destinationCity}`,
+        senderName: user?.displayName || user?.email?.split("@")[0] || "Remetente",
+        carrierName: requestingTrip.carrierName,
+        originalPriceCents: priceCents,
+        proposedPriceCents: priceCents,
+        platformCommissionCents: commissionCents,
+        carrierNetCents: priceCents - commissionCents,
+        message: `Solicitação de envio na viagem de ${requestingTrip.carrierName}. ${requestNotes.trim()}`,
+        isCurrentUserCarrier: false
+      });
+
+      // 3. Tenta persistir via API se autenticado
+      if (token) {
+        try {
+          await createProposalApi({
+            shipmentId: newShipment.id,
+            tripId: requestingTrip.id,
+            amountCents: priceCents,
+            notes: `Solicitação de envio na viagem de ${requestingTrip.carrierName}.`
+          }, token);
+        } catch {
+          // Fallback silencioso registrado localmente
+        }
+      }
+
+      setSuccessMsg(`✓ Solicitação de envio de "${requestTitle}" enviada com sucesso para o motorista ${requestingTrip.carrierName}! Você pode acompanhar o status em 'Propostas'.`);
+      setRequestingTrip(null);
+    } catch {
+      setErrorMsg("Erro ao registrar a solicitação de envio nesta viagem.");
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -488,23 +605,33 @@ export default function MuralViagensPage(): React.JSX.Element {
             <p style={{ fontSize: "14px", color: "#64748B", maxWidth: "420px", margin: "0 auto 20px auto" }}>
               Tente redefinir os filtros de origem e destino ou seja o primeiro a cadastrar uma viagem nesta rota!
             </p>
-            <Link
-              href="/viagens/cadastrar"
-              className="btn btn--primary"
-              style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
-            >
-              Cadastrar Viagem nesta Rota
-            </Link>
+            {isCarrier ? (
+              <Link
+                href="/viagens/cadastrar"
+                className="btn btn--primary"
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
+              >
+                + Cadastrar Viagem nesta Rota
+              </Link>
+            ) : (
+              <Link
+                href="/encomendas/publicar"
+                className="btn btn--primary"
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
+              >
+                📦 Publicar Encomenda para esta Rota
+              </Link>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {filteredTrips.map((t) => {
               const isOwner = Boolean(
+                isCarrier &&
                 user && (
-                  (t.carrierId && (t.carrierId === user.userId || t.carrierId === "00000000-0000-0000-0000-000000000002")) ||
-                  (user.displayName && t.carrierName.toLowerCase() === user.displayName.toLowerCase()) ||
-                  (user.email && t.carrierName.toLowerCase().includes(user.email.toLowerCase())) ||
-                  t.carrierName === "Transportador Cadastrado"
+                  (t.carrierId && t.carrierId === user.userId) ||
+                  (user.displayName && t.carrierName.toLowerCase() === user.displayName.toLowerCase() && t.carrierName !== "Transportador Cadastrado") ||
+                  (user.email && t.carrierName.toLowerCase().includes(user.email.toLowerCase()))
                 )
               );
               const vehicleInfo = VEHICLE_LABELS[t.vehicleType] || { label: t.vehicleType, icon: "🚗" };
@@ -719,21 +846,44 @@ export default function MuralViagensPage(): React.JSX.Element {
                         </Link>
                       </>
                     ) : (
-                      <Link
-                        href={`/encomendas/publicar?origem=${encodeURIComponent(t.originCity)}&destino=${encodeURIComponent(t.destinationCity)}`}
-                        className="btn btn--primary"
-                        style={{
-                          padding: "8px 16px",
-                          fontSize: "13px",
-                          fontWeight: 700,
-                          textDecoration: "none",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px"
-                        }}
-                      >
-                        <span>📦 Solicitar Frete nesta Rota</span>
-                      </Link>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRequest(t)}
+                          className="btn btn--primary"
+                          style={{
+                            padding: "8px 16px",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            backgroundColor: "#2563EB",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "8px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          <span>📦 Solicitar Envio de Encomenda</span>
+                        </button>
+
+                        <Link
+                          href={`/mensagens?chatWith=${encodeURIComponent(t.carrierName)}&tripId=${encodeURIComponent(t.id)}`}
+                          className="btn btn--outline"
+                          style={{
+                            padding: "8px 14px",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          <span>💬 Falar com o Motorista</span>
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -886,6 +1036,165 @@ export default function MuralViagensPage(): React.JSX.Element {
                       {isSaving ? "Salvando..." : "Salvar Alterações"}
                     </button>
                   </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Solicitação de Envio pelo Remetente */}
+        {requestingTrip && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(15, 23, 42, 0.65)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "16px"
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "16px",
+                width: "100%",
+                maxWidth: "540px",
+                padding: "24px",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.25)"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #E2E8F0", paddingBottom: "12px" }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                    📦 Solicitar Envio de Encomenda
+                  </h3>
+                  <span style={{ fontSize: "13px", color: "#64748B" }}>
+                    Motorista: <strong>{requestingTrip.carrierName}</strong> • Rota: {requestingTrip.originCity} ➔ {requestingTrip.destinationCity}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRequestingTrip(null)}
+                  style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#64748B" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#F0FDF4",
+                  border: "1px solid #BBF7D0",
+                  borderRadius: "10px",
+                  padding: "10px 14px",
+                  marginBottom: "16px",
+                  fontSize: "12px",
+                  color: "#166534"
+                }}
+              >
+                📅 Partida prevista em <strong>{requestingTrip.departureDate}</strong> às <strong>{requestingTrip.departureTime}</strong> • Espaço livre: <strong>{requestingTrip.availableCapacityKg} kg</strong>
+              </div>
+
+              {errorMsg && (
+                <div style={{ backgroundColor: "#FEE2E2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px", borderRadius: "8px", marginBottom: "14px", fontSize: "13px" }}>
+                  ⚠️ {errorMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleConfirmRequest}>
+                <div className="form-group" style={{ marginBottom: "14px" }}>
+                  <label className="form-label" style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", display: "block" }}>
+                    O que você deseja enviar? (Título da Encomenda) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Documentos, Caixa média com roupas, Peça mecânica..."
+                    value={requestTitle}
+                    onChange={(e) => setRequestTitle(e.target.value)}
+                    className="form-control"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                  <div>
+                    <label style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", display: "block", color: "#334155" }}>
+                      Peso Estimado (kg) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 5"
+                      value={requestWeightKg}
+                      onChange={(e) => setRequestWeightKg(e.target.value)}
+                      className="form-control"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", display: "block", color: "#334155" }}>
+                      Valor do Frete Proposto (R$) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 50,00"
+                      value={requestOfferPrice}
+                      onChange={(e) => setRequestOfferPrice(e.target.value)}
+                      className="form-control"
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: "20px" }}>
+                  <label className="form-label" style={{ fontSize: "13px", fontWeight: 700, marginBottom: "4px", display: "block" }}>
+                    Observações e Ponto de Coleta/Entrega (Opcional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Ex: Ponto de encontro no Centro ou retirada no bairro..."
+                    value={requestNotes}
+                    onChange={(e) => setRequestNotes(e.target.value)}
+                    className="form-control"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", resize: "none" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setRequestingTrip(null)}
+                    className="btn btn--outline"
+                    disabled={isSubmittingRequest}
+                    style={{ padding: "8px 16px", fontSize: "13px", borderRadius: "8px" }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={isSubmittingRequest}
+                    style={{
+                      padding: "8px 20px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      backgroundColor: "#2563EB",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      cursor: isSubmittingRequest ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    {isSubmittingRequest ? "Enviando Solicitação..." : "Confirmar Solicitação de Envio ➔"}
+                  </button>
                 </div>
               </form>
             </div>

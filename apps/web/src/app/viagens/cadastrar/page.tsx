@@ -206,7 +206,9 @@ function getContextualSuggestions(orig: string, dest: string): IntermediateStopI
 
 export default function CadastrarViagemPage(): React.JSX.Element {
   const router = useRouter();
-  const { token } = useAuth();
+  const { user, token, isAuthenticated, isLoading } = useAuth();
+  const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
+  const isSenderOnly = Boolean(user && user.roles?.includes("SENDER") && !user.roles?.includes("CARRIER"));
   const isSubmittingRef = useRef(false);
 
   const [vehicleType, setVehicleType] = useState<VehicleTypeCode>("CAR");
@@ -305,6 +307,12 @@ export default function CadastrarViagemPage(): React.JSX.Element {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    if (isSenderOnly) {
+      setErrorMsg("Sua conta é de Remetente. Apenas Transportadores parceiros podem cadastrar viagens e rotas.");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     const cleanOrigin = originCity.trim().replace(/\s*-\s*[A-Z]{2}$/, "");
     const cleanDest = destinationCity.trim().replace(/\s*-\s*[A-Z]{2}$/, "");
 
@@ -380,6 +388,58 @@ export default function CadastrarViagemPage(): React.JSX.Element {
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
+
+  if (!isLoading && isSenderOnly) {
+    return (
+      <main className="container" style={{ paddingTop: "40px", paddingBottom: "60px", maxWidth: "680px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "48px 28px", borderRadius: "18px", boxShadow: "var(--shadow-md)" }}>
+          <div style={{ fontSize: "56px", marginBottom: "16px" }}>🚫</div>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-brand-deep-navy)", marginBottom: "12px" }}>
+            Cadastro de Viagens Restrito a Transportadores
+          </h1>
+          <div
+            style={{
+              backgroundColor: "#EFF6FF",
+              border: "1.5px solid #BFDBFE",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              marginBottom: "24px",
+              textAlign: "left"
+            }}
+          >
+            <div style={{ fontSize: "14px", color: "#1E40AF", lineHeight: "1.6" }}>
+              Olá, <strong>{user?.displayName || "Remetente"}</strong>! Sua conta está registrada com o papel de <strong>Remetente</strong>.
+              <br /><br />
+              📌 <strong>Regra da Plataforma TopicLog:</strong>
+              <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
+                <li><strong>Transportadores:</strong> Cadastram rotas e viagens com espaço livre no veículo.</li>
+                <li><strong>Remetentes:</strong> Publicam encomendas e <strong>contratam viagens</strong> solicitando o envio diretamente aos motoristas.</li>
+              </ul>
+            </div>
+          </div>
+          <p style={{ fontSize: "14px", color: "#64748B", marginBottom: "28px", lineHeight: "1.5" }}>
+            Você pode consultar todas as viagens no Mural e solicitar o envio da sua carga para qualquer rota disponível!
+          </p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+            <Link
+              href="/viagens"
+              className="btn btn--primary"
+              style={{ padding: "12px 24px", fontSize: "14px", fontWeight: 700 }}
+            >
+              🗺️ Consultar Mural de Viagens
+            </Link>
+            <Link
+              href="/encomendas/publicar"
+              className="btn btn--outline"
+              style={{ padding: "12px 24px", fontSize: "14px", fontWeight: 700 }}
+            >
+              📦 Publicar Nova Encomenda
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="container" style={{ paddingTop: "28px", paddingBottom: "56px", maxWidth: "840px" }}>
