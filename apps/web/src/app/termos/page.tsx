@@ -153,7 +153,7 @@ export default function TermsPage(): React.JSX.Element {
             2.2 Comissão da Plataforma e Repasse Financeiro
           </h3>
           <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
-            <li><strong>Taxa Configurável:</strong> Pela intermediação tecnológica, suporte e custódia de segurança da transação, a TopicLog retém uma taxa de comissão configurada pelo administrador (inicialmente fixada em <strong>20%</strong>).</li>
+            <li><strong>Taxa Configurável:</strong> Pela intermediação tecnológica, suporte e custódia de segurança da transação, a TopicLog retém uma taxa de comissão percentual definida e gerenciada dinamicamente pelo administrador da plataforma através do Console Administrativo.</li>
             <li><strong>Transparência Prévia:</strong> Antes de qualquer aceite definitivo de contratação, o sistema exibe de forma clara: (i) valor bruto acordado; (ii) percentual e valor em reais da comissão retida; (iii) repasse líquido exato que o transportador receberá.</li>
             <li><strong>Liberação por Senha/Código:</strong> O repasse financeiro em garantia é liberado imediatamente após a validação do código de segurança (PIN de 4 dígitos) fornecido pelo remetente/destinatário.</li>
           </ul>

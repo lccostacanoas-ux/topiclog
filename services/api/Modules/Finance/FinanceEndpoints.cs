@@ -117,9 +117,22 @@ public static class FinanceEndpoints
         });
 
         // GET /api/v1/finance/subscriptions/plans
-        group.MapGet("/subscriptions/plans", (IFinancialPolicyProvider financeService) =>
+        group.MapGet("/subscriptions/plans", async (
+            IFinancialPolicyProvider financeService,
+            CancellationToken cancellationToken) =>
         {
-            var plans = financeService.GetAvailablePlans();
+            var policy = await financeService.GetEffectivePolicyAsync(DateTimeOffset.UtcNow, cancellationToken);
+            var rate = policy?.FreePlanCommissionPercent ?? 20.00m;
+            var plans = new List<PlanCatalogItemResponse>
+            {
+                new(
+                    PlanCode: "STANDARD",
+                    Name: "Plano Topic Log",
+                    Description: $"Sem mensalidade fixa. Taxa configurada pelo administrador ({rate:0.##}%) retida sobre o frete realizado. Todas as taxas de gateway absorvidas pela plataforma.",
+                    MonthlyFeeCents: 0,
+                    CommissionRatePercent: rate,
+                    GatewayFeesAbsorbed: true)
+            };
             return Results.Ok(plans);
         });
 
@@ -134,14 +147,16 @@ public static class FinanceEndpoints
             var sub = await financeService.GetCarrierSubscriptionAsync(actor.UserId, cancellationToken);
             if (sub is null)
             {
-                // Retorna representação padrão do plano gratuito
+                var policy = await financeService.GetEffectivePolicyAsync(DateTimeOffset.UtcNow, cancellationToken);
+                var rate = policy?.FreePlanCommissionPercent ?? 20.00m;
+                // Retorna representação padrão do plano gratuito com alíquota configurada
                 return Results.Ok(new SubscriptionResponse(
                     Id: Guid.Empty,
                     CarrierId: actor.UserId,
                     PlanCode: "FREE",
                     Status: "ACTIVE",
                     MonthlyFeeCents: 0,
-                    CommissionRatePercent: 20.00m,
+                    CommissionRatePercent: rate,
                     CurrentPeriodStartUtc: DateTimeOffset.UtcNow,
                     CurrentPeriodEndUtc: DateTimeOffset.UtcNow.AddYears(1),
                     CanceledAtUtc: null));

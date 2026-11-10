@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
-import { getDemoShipments, getRatingsSummary, type RatingsSummary } from "../lib/demo-marketplace-store";
+import { getDemoShipments, getRatingsSummary, addDemoRating, type RatingsSummary } from "../lib/demo-marketplace-store";
 
 function renderStars(rating: number) {
   return (
@@ -848,158 +848,236 @@ export default function HomePage(): React.JSX.Element {
             Média de estrelas atribuídas mutuamente a transportadores e remetentes com base nas entregas e interações realizadas.
           </p>
 
-          {ratingsSummary.totalCount === 0 ? (
+          {/* Cards Públicos de Avaliação: Transportadores e Remetentes (Apenas Estrelas, Sem Comentários) */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "14px"
+            }}
+          >
+            {/* Card Transportador */}
             <div
               style={{
                 backgroundColor: "#FFFFFF",
                 borderRadius: "14px",
-                padding: "24px 20px",
-                border: "1px dashed #CBD5E1",
-                textAlign: "center",
-                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)"
+                padding: "20px 22px",
+                border: "1px solid #E2E8F0",
+                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between"
               }}
             >
-              <div style={{ fontSize: "28px", marginBottom: "8px" }}>⭐</div>
-              <div style={{ fontSize: "15px", fontWeight: 700, color: "#1E293B", marginBottom: "6px" }}>
-                Ainda sem avaliações registradas
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                  <div
+                    style={{
+                      width: "42px",
+                      height: "42px",
+                      borderRadius: "50%",
+                      backgroundColor: "#D1FAE5",
+                      color: "#065F46",
+                      fontWeight: 800,
+                      fontSize: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0
+                    }}
+                  >
+                    🚚
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                      Transportadores
+                    </div>
+                    <span style={{ fontSize: "12px", color: "#64748B" }}>
+                      Avaliação pública concedida por remetentes
+                    </span>
+                  </div>
+                </div>
+
+                {ratingsSummary.carrierCount > 0 ? (
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                      {renderStars(Math.round(ratingsSummary.carrierAvg))}
+                      <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                        {ratingsSummary.carrierAvg.toFixed(1)}{" "}
+                        <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#047857" }}>
+                      ★ {ratingsSummary.carrierCount} {ratingsSummary.carrierCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "13px",
+                      color: "#64748B",
+                      fontStyle: "italic",
+                      backgroundColor: "#F8FAFC",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #E2E8F0",
+                      marginTop: "10px"
+                    }}
+                  >
+                    <span>⭐</span>
+                    <span>Ainda sem avaliação</span>
+                  </div>
+                )}
               </div>
-              <p style={{ fontSize: "13px", color: "#64748B", margin: 0, maxWidth: "540px", marginLeft: "auto", marginRight: "auto", lineHeight: "1.5" }}>
-                A quantidade de estrelas atribuídas a Transportadores e Remetentes será exibida aqui automaticamente assim que houver a conclusão de entregas e interações na plataforma.
-              </p>
+
+              {/* Avaliação Interativa Rápida (Apenas Estrelas, Sem Comentários) */}
+              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px dashed #E2E8F0" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "6px" }}>
+                  Avaliar motorista parceiro (toque nas estrelas):
+                </span>
+                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => {
+                        addDemoRating({ roleTarget: "CARRIER", stars: star });
+                        setRatingsSummary(getRatingsSummary());
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: "20px",
+                        color: "#F59E0B",
+                        cursor: "pointer",
+                        padding: "2px"
+                      }}
+                      title={`Avaliar com ${star} estrela${star > 1 ? "s" : ""}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  <span style={{ fontSize: "11px", color: "#94A3B8", marginLeft: "4px" }}>
+                    (1 a 5 estrelas)
+                  </span>
+                </div>
+              </div>
             </div>
-          ) : (
+
+            {/* Card Remetente */}
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                gap: "14px"
+                backgroundColor: "#FFFFFF",
+                borderRadius: "14px",
+                padding: "20px 22px",
+                border: "1px solid #E2E8F0",
+                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between"
               }}
             >
-              {/* Card Transportador */}
-              <div
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderRadius: "14px",
-                  padding: "20px 22px",
-                  border: "1px solid #E2E8F0",
-                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between"
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-                    <div
-                      style={{
-                        width: "42px",
-                        height: "42px",
-                        borderRadius: "50%",
-                        backgroundColor: "#D1FAE5",
-                        color: "#065F46",
-                        fontWeight: 800,
-                        fontSize: "20px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0
-                      }}
-                    >
-                      🚚
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                  <div
+                    style={{
+                      width: "42px",
+                      height: "42px",
+                      borderRadius: "50%",
+                      backgroundColor: "#DBEAFE",
+                      color: "#1E40AF",
+                      fontWeight: 800,
+                      fontSize: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0
+                    }}
+                  >
+                    📦
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                      Remetentes
                     </div>
-                    <div>
-                      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
-                        Transportadores
-                      </div>
-                      <span style={{ fontSize: "12px", color: "#64748B" }}>
-                        Estrelas concedidas por remetentes
+                    <span style={{ fontSize: "12px", color: "#64748B" }}>
+                      Avaliação pública concedida por transportadores
+                    </span>
+                  </div>
+                </div>
+
+                {ratingsSummary.senderCount > 0 ? (
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                      {renderStars(Math.round(ratingsSummary.senderAvg))}
+                      <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
+                        {ratingsSummary.senderAvg.toFixed(1)}{" "}
+                        <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
                       </span>
                     </div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#1D4ED8" }}>
+                      ★ {ratingsSummary.senderCount} {ratingsSummary.senderCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
+                    </div>
                   </div>
-
-                  {ratingsSummary.carrierCount > 0 ? (
-                    <div style={{ marginTop: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                        {renderStars(Math.round(ratingsSummary.carrierAvg))}
-                        <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
-                          {ratingsSummary.carrierAvg.toFixed(1)} <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#047857" }}>
-                        ★ {ratingsSummary.carrierCount} {ratingsSummary.carrierCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: "13px", color: "#64748B", fontStyle: "italic", marginTop: "10px" }}>
-                      Ainda sem avaliações de entregas realizadas.
-                    </div>
-                  )}
-                </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "13px",
+                      color: "#64748B",
+                      fontStyle: "italic",
+                      backgroundColor: "#F8FAFC",
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid #E2E8F0",
+                      marginTop: "10px"
+                    }}
+                  >
+                    <span>⭐</span>
+                    <span>Ainda sem avaliação</span>
+                  </div>
+                )}
               </div>
 
-              {/* Card Remetente */}
-              <div
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderRadius: "14px",
-                  padding: "20px 22px",
-                  border: "1px solid #E2E8F0",
-                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between"
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-                    <div
-                      style={{
-                        width: "42px",
-                        height: "42px",
-                        borderRadius: "50%",
-                        backgroundColor: "#DBEAFE",
-                        color: "#1E40AF",
-                        fontWeight: 800,
-                        fontSize: "20px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0
+              {/* Avaliação Interativa Rápida (Apenas Estrelas, Sem Comentários) */}
+              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px dashed #E2E8F0" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "6px" }}>
+                  Avaliar remetente (toque nas estrelas):
+                </span>
+                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => {
+                        addDemoRating({ roleTarget: "SENDER", stars: star });
+                        setRatingsSummary(getRatingsSummary());
                       }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: "20px",
+                        color: "#F59E0B",
+                        cursor: "pointer",
+                        padding: "2px"
+                      }}
+                      title={`Avaliar com ${star} estrela${star > 1 ? "s" : ""}`}
                     >
-                      📦
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
-                        Remetentes
-                      </div>
-                      <span style={{ fontSize: "12px", color: "#64748B" }}>
-                        Estrelas concedidas por transportadores
-                      </span>
-                    </div>
-                  </div>
-
-                  {ratingsSummary.senderCount > 0 ? (
-                    <div style={{ marginTop: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                        {renderStars(Math.round(ratingsSummary.senderAvg))}
-                        <span style={{ fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
-                          {ratingsSummary.senderAvg.toFixed(1)} <span style={{ fontSize: "13px", color: "#64748B", fontWeight: 500 }}>/ 5.0</span>
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1D4ED8" }}>
-                        ★ {ratingsSummary.senderCount} {ratingsSummary.senderCount === 1 ? "avaliação recebida" : "avaliações recebidas"}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: "13px", color: "#64748B", fontStyle: "italic", marginTop: "10px" }}>
-                      Ainda sem avaliações de encomendas enviadas.
-                    </div>
-                  )}
+                      ★
+                    </button>
+                  ))}
+                  <span style={{ fontSize: "11px", color: "#94A3B8", marginLeft: "4px" }}>
+                    (1 a 5 estrelas)
+                  </span>
                 </div>
               </div>
             </div>
-          )}
+          </div>
         </section>
 
         {/* =========================================================================

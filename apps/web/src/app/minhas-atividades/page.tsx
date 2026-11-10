@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { getDemoShipments, clearAllTestData, type DemoShipment } from "../../lib/demo-marketplace-store";
+import { getDemoShipments, clearAllTestData, addDemoRating, type DemoShipment } from "../../lib/demo-marketplace-store";
 import { CITY_CENTROIDS } from "../../components/BrazilianAddressInput";
 import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
+import { StarRatingDisplay } from "../../components/StarRatingDisplay";
 
 // Carregamento dinâmico do mapa de rotas sem SSR
 const TopicLogRouteMap = dynamic(
@@ -459,6 +460,42 @@ export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
                       {copiedPinId === item.id ? "✓ Copiado!" : "Copiar PIN"}
                     </button>
                   </div>
+                </div>
+
+                {/* Avaliação Pública em Estrelas (Exclusivamente estrelas, sem comentários) */}
+                <div
+                  style={{
+                    backgroundColor: "#F8FAFC",
+                    border: "1px dashed #CBD5E1",
+                    borderRadius: "10px",
+                    padding: "10px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    marginBottom: "16px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>
+                      ⭐ Avaliação do Transportador Parceiro:
+                    </span>
+                    <StarRatingDisplay
+                      size="sm"
+                      interactive={true}
+                      showBadgeWhenEmpty={true}
+                      onRate={(stars) => {
+                        addDemoRating({
+                          roleTarget: "CARRIER",
+                          stars
+                        });
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#64748B", fontStyle: "italic" }}>
+                    (Avaliação bilateral pública em estrelas • 1 a 5)
+                  </span>
                 </div>
 
                 {/* Ações Rápidas: Pagamento Pix, Propostas e Mensagens */}

@@ -18,7 +18,7 @@ function formatBrlFromCents(cents: number): string {
 
 /**
  * Componente FinancialBreakdown conforme 04-Design-System.md (Seção 4, 5 e 6)
- * Modelo oficial: Alíquota única de 20% sobre fretes realizados, sem taxas de mensalidade.
+ * Modelo oficial: Alíquota configurável pelo administrador da plataforma sobre fretes realizados, sem taxas de mensalidade.
  */
 export function FinancialBreakdownPreview({
   transportAmountCents,
@@ -31,16 +31,16 @@ export function FinancialBreakdownPreview({
   return (
     <section className="card" aria-labelledby="financial-preview-heading">
       <h2 id="financial-preview-heading" style={{ marginTop: 0, fontSize: "20px", lineHeight: "28px" }}>
-        Transparência Financeira e Repasse Líquido (Alíquota Única de 20%)
+        Transparência Financeira e Repasse Líquido (Taxa Configurável)
       </h2>
       <p style={{ color: "var(--color-muted)", marginTop: "4px" }}>
-        A Topic Log opera sem mensalidades fixas. A taxa da plataforma é de 20% retida por frete realizado,
+        A Topic Log opera sem mensalidades fixas. A taxa de comissão é configurada pelo administrador no console administrativo (atualmente {commissionRatePercent}%),
         e todas as taxas de intermediação bancária (Pix, cartão e débito) são 100% absorvidas pela plataforma.
       </p>
 
       <div style={{ marginTop: "16px", maxWidth: "480px" }}>
         <div className="card" style={{ backgroundColor: "var(--color-background)" }}>
-          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% de Taxa Única)</h3>
+          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% de Taxa Vigente)</h3>
           <dl style={{ margin: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
               <dt>Valor do transporte:</dt>

@@ -12,6 +12,7 @@ import {
   updateDemoTrip,
   type DemoTrip
 } from "../../lib/demo-marketplace-store";
+import StarRatingDisplay from "../../components/StarRatingDisplay";
 
 interface UnifiedTrip {
   id: string;
@@ -581,9 +582,12 @@ export default function MuralViagensPage(): React.JSX.Element {
                           </span>
                         )}
                       </div>
-                      <span style={{ fontSize: "13px", color: "#64748B" }}>
+                      <span style={{ fontSize: "13px", color: "#64748B", display: "block" }}>
                         {vehicleInfo.label} • {t.vehicleModel}
                       </span>
+                      <div style={{ marginTop: "4px" }}>
+                        <StarRatingDisplay size="sm" ratingAvg={null} ratingCount={0} />
+                      </div>
                     </div>
                   </div>
 

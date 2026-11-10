@@ -626,14 +626,16 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
 
     public IReadOnlyList<PlanCatalogItemResponse> GetAvailablePlans()
     {
+        var policy = _policyRepository.GetActivePolicyAsync(DateTimeOffset.UtcNow).GetAwaiter().GetResult();
+        var rate = policy?.FreePlanCommissionPercent ?? 20.00m;
         return new List<PlanCatalogItemResponse>
         {
             new(
                 PlanCode: "STANDARD",
-                Name: "Plano Único Topic Log",
-                Description: "Sem mensalidade fixa. Alíquota única de 20% retida sobre o frete realizado. Todas as taxas de gateway absorvidas pela plataforma.",
+                Name: "Plano Topic Log",
+                Description: $"Sem mensalidade fixa. Taxa configurada pelo administrador ({rate:0.##}%) retida sobre o frete realizado. Todas as taxas de gateway absorvidas pela plataforma.",
                 MonthlyFeeCents: 0,
-                CommissionRatePercent: 20.00m,
+                CommissionRatePercent: rate,
                 GatewayFeesAbsorbed: true)
         };
     }

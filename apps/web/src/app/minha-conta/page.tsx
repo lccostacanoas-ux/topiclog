@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { AlertBanner } from "../../components/AlertBanner";
 import { StatusPill } from "../../components/StatusPill";
+import { StarRatingDisplay } from "../../components/StarRatingDisplay";
 import { getPublicUserCardApi, updatePrivateProfileApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import type { ProblemDetailsDto, PublicUserCardResponse, UserRole } from "../../lib/types";
@@ -377,15 +378,17 @@ export default function MyAccountPage(): React.JSX.Element {
                 Papéis na plataforma: {publicCard.publicRoles.map(r => r === "SENDER" ? "Remetente" : r === "CARRIER" ? "Transportador" : "Destinatário").join(", ")}
               </p>
 
-              {publicCard.ratingCount > 0 ? (
-                <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--color-primary)", fontWeight: 600 }}>
-                  Avaliação: ★ {Number(publicCard.ratingAvg).toFixed(2)} ({publicCard.ratingCount} entregas avaliadas)
-                </p>
-              ) : (
-                <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--color-muted)" }}>
-                  Avaliação: Ainda sem avaliações (as estrelas serão exibidas após as primeiras entregas e interações)
-                </p>
-              )}
+              <div style={{ margin: "8px 0 0 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "13px", color: "var(--color-brand-deep-navy)", fontWeight: 700 }}>
+                  Avaliação Pública:
+                </span>
+                <StarRatingDisplay
+                  size="sm"
+                  ratingAvg={publicCard.ratingAvg}
+                  ratingCount={publicCard.ratingCount}
+                  showBadgeWhenEmpty={true}
+                />
+              </div>
             </div>
           ) : (
             <p style={{ color: "var(--color-muted)" }}>Carregando dados do perfil...</p>
