@@ -10,21 +10,101 @@ public interface IShipmentsRepository
     Task<Shipment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Shipment>> ListActiveAsync(string? originCity = null, string? destinationCity = null, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(Shipment shipment, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemoryShipmentsRepository : IShipmentsRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("shipments_store.json");
+
+    private readonly Lock _syncLock = new();
     private readonly ConcurrentDictionary<Guid, Shipment> _storage = new();
 
     public InMemoryShipmentsRepository()
     {
-        SeedDemoShipments();
+        LoadFromDisk();
+    }
+
+    private void LoadFromDisk()
+    {
+        bool isUnitTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isUnitTest)
+        {
+            SeedDemoShipments();
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(StorageFilePath))
+            {
+                SeedDemoShipments();
+                return;
+            }
+
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<Shipment>>(json);
+            if (list is null) return;
+
+            bool migratedAny = false;
+            foreach (var item in list)
+            {
+                if (item is not null)
+                {
+                    // Migração idempotente (Finding 4): nunca expor e-mail no SenderName público
+                    if (!string.IsNullOrWhiteSpace(item.SenderName) && item.SenderName.Contains('@'))
+                    {
+                        item.SenderName = "Remetente";
+                        migratedAny = true;
+                    }
+                    _storage[item.Id] = item;
+                }
+            }
+
+            if (migratedAny)
+            {
+                SaveToDisk();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Erro ao carregar encomendas salvas: {ex.Message}");
+            throw;
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest)
+        {
+            return;
+        }
+
+        lock (_syncLock)
+        {
+            var list = _storage.Values.ToList();
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(list, JsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Storage] Erro crítico ao salvar encomendas: {ex.Message}");
+                throw new InvalidOperationException("Falha na persistência de encomendas em disco.", ex);
+            }
+        }
     }
 
     public Task<Shipment> CreateAsync(Shipment shipment, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _storage[shipment.Id] = shipment;
+        SaveToDisk();
         return Task.FromResult(shipment);
     }
 
@@ -65,6 +145,18 @@ public sealed class InMemoryShipmentsRepository : IShipmentsRepository
         {
             shipment.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _storage[shipment.Id] = shipment;
+            SaveToDisk();
+            return Task.FromResult(true);
+        }
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_storage.TryRemove(id, out _))
+        {
+            SaveToDisk();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);

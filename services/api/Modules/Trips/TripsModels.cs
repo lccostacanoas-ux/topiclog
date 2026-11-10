@@ -23,23 +23,32 @@ public sealed class Trip
     public Guid CarrierId { get; init; }
     public string CarrierName { get; init; } = string.Empty;
     public bool CarrierKycVerified { get; init; }
-    public VehicleType VehicleType { get; init; } = VehicleType.CAR;
-    public string VehicleModel { get; init; } = string.Empty;
-    public string OriginCity { get; init; } = string.Empty;
-    public string OriginStateUf { get; init; } = "MG";
-    public string DestinationCity { get; init; } = string.Empty;
-    public string DestinationStateUf { get; init; } = "MG";
-    public IReadOnlyList<string> IntermediateStops { get; init; } = [];
-    public string DepartureDate { get; init; } = string.Empty;
-    public string DepartureTime { get; init; } = string.Empty;
+    public VehicleType VehicleType { get; set; } = VehicleType.CAR;
+    public string VehicleModel { get; set; } = string.Empty;
+    public string OriginCity { get; set; } = string.Empty;
+    public string OriginStateUf { get; set; } = "MG";
+    public string DestinationCity { get; set; } = string.Empty;
+    public string DestinationStateUf { get; set; } = "MG";
+    public IReadOnlyList<string> IntermediateStops { get; set; } = [];
+    public string DepartureDate { get; set; } = string.Empty;
+    public string DepartureTime { get; set; } = string.Empty;
     public int AvailableCapacityGrams { get; set; }
     public Dictionary<string, int> LegCapacities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    public bool FlexiblePickup { get; init; }
-    public long SuggestedPricePerKgCents { get; init; }
+    public bool FlexiblePickup { get; set; }
+    public long SuggestedPricePerKgCents { get; set; }
     public TripStatus Status { get; set; } = TripStatus.SCHEDULED;
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
+
+public sealed record UpdateTripRequest(
+    string? VehicleModel,
+    string? DepartureDate,
+    string? DepartureTime,
+    int? AvailableCapacityGrams,
+    bool? FlexiblePickup,
+    long? SuggestedPricePerKgCents,
+    IReadOnlyList<string>? IntermediateStops);
 
 public sealed record CreateTripRequest(
     [property: JsonConverter(typeof(JsonStringEnumConverter))] VehicleType VehicleType,
@@ -82,6 +91,7 @@ public sealed record TripSummaryResponse(
     string VehicleModel,
     string OriginCity,
     string DestinationCity,
+    IReadOnlyList<string> IntermediateStops,
     int StopCount,
     string DepartureDate,
     string DepartureTime,

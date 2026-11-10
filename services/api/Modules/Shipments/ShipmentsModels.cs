@@ -48,7 +48,10 @@ public sealed record ShipmentAddress(
     double? ExactLatitude = null,
     double? ExactLongitude = null,
     GeoreferencePrecision Precision = GeoreferencePrecision.MUNICIPALITY_CENTROID,
-    GeoreferenceStatus Status = GeoreferenceStatus.RESOLVED);
+    GeoreferenceStatus Status = GeoreferenceStatus.RESOLVED,
+    string? FormattedAddress = null,
+    string? Complement = null,
+    string? Provider = null);
 
 public sealed record InsuranceInterestRecord(
     bool Interested,
@@ -60,9 +63,9 @@ public sealed class Shipment
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid SenderId { get; init; }
-    public string SenderName { get; init; } = string.Empty;
-    public string Title { get; init; } = string.Empty;
-    public string Description { get; init; } = string.Empty;
+    public string SenderName { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
     public ShipmentCategory Category { get; init; } = ShipmentCategory.GERAL;
     public VehicleType VehicleType { get; init; } = VehicleType.MOTORCYCLE;
     public int WeightGrams { get; init; }
@@ -70,8 +73,8 @@ public sealed class Shipment
     public double DimensionsWidthCm { get; init; }
     public double DimensionsHeightCm { get; init; }
     public long DeclaredValueCents { get; init; }
-    public long SuggestedPriceCents { get; init; }
-    public IReadOnlyList<string> SpecialCareNotes { get; init; } = [];
+    public long SuggestedPriceCents { get; set; }
+    public IReadOnlyList<string> SpecialCareNotes { get; set; } = [];
     public ShipmentAddress OriginAddress { get; set; } = default!;
     public ShipmentAddress DestinationAddress { get; set; } = default!;
     public string PickupWindow { get; init; } = string.Empty;
@@ -84,30 +87,45 @@ public sealed class Shipment
 }
 
 public sealed record AddressInputDto(
-    string City,
-    string? StateUf,
-    string Neighborhood,
-    string? StreetAndNumber,
-    string? PostalCode,
-    string? IbgeCode = null);
+    string? City = null,
+    string? StateUf = null,
+    string? Neighborhood = null,
+    string? StreetAndNumber = null,
+    string? PostalCode = null,
+    string? IbgeCode = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    string? FormattedAddress = null,
+    string? Complement = null,
+    string? Provider = null);
 
 public sealed record CreateShipmentRequest(
-    string Title,
-    string Description,
-    [property: JsonConverter(typeof(JsonStringEnumConverter))] ShipmentCategory Category,
-    [property: JsonConverter(typeof(JsonStringEnumConverter))] VehicleType VehicleType,
-    int WeightGrams,
-    double DimensionsLengthCm,
-    double DimensionsWidthCm,
-    double DimensionsHeightCm,
-    long DeclaredValueCents,
+    string? Title,
+    string? Description,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))] ShipmentCategory? Category,
+    [property: JsonConverter(typeof(JsonStringEnumConverter))] VehicleType? VehicleType,
+    int? WeightGrams,
+    double? DimensionsLengthCm,
+    double? DimensionsWidthCm,
+    double? DimensionsHeightCm,
+    long? DeclaredValueCents,
     long SuggestedPriceCents,
     IReadOnlyList<string>? SpecialCareNotes,
     AddressInputDto Origin,
     AddressInputDto Destination,
     string? PickupWindow,
     string? DeliveryWindow,
-    bool InterestedInInsurance);
+    bool InterestedInInsurance = false,
+    string? Notes = null,
+    bool AcceptedTerms = true,
+    string? LegalTermsVersion = "2.1.0",
+    bool IsDemo = false);
+
+public sealed record UpdateShipmentRequest(
+    string? Title,
+    string? Description,
+    long? SuggestedPriceCents,
+    IReadOnlyList<string>? SpecialCareNotes = null);
 
 public sealed record ShipmentAddressResponse(
     string Kind,
@@ -120,7 +138,10 @@ public sealed record ShipmentAddressResponse(
     bool IsMaskedForPrivacy,
     string? IbgeCode = null,
     string GeoreferencePrecision = "MUNICIPALITY_CENTROID",
-    string GeoreferenceStatus = "RESOLVED");
+    string GeoreferenceStatus = "RESOLVED",
+    string? FormattedAddress = null,
+    string? Complement = null,
+    string? Provider = null);
 
 public sealed record ShipmentDetailResponse(
     Guid Id,

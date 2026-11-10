@@ -376,16 +376,17 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             return MapOrderToResponse(order);
         }
 
-        // DECISÃO 1 & REGRA VINCULANTE D16: Exige cumulativamente CÓDIGO VÁLIDO + FOTO
+        // Decisão D16 / PR-05: Exige comprovante fotográfico previamente enviado para conclusão da entrega
         var proof = await _fulfillmentRepo.GetProofByOrderIdAsync(order.Id, cancellationToken);
-        if (proof == null)
+        if (proof is null)
         {
             throw new DomainRuleViolationException(
                 "DELIVERY_PHOTO_REQUIRED",
-                "A confirmação da entrega exige cumulativamente o registro da evidência fotográfica do pacote no local (Decisão D16). Submeta a foto antes do código.",
+                "A comprovação fotográfica da entrega (foto do local/destinatário) é obrigatória antes de validar o código de segurança conforme a decisão D16.",
                 422);
         }
 
+        // Confirmação da entrega por senha / código de segurança de 4 dígitos (PIN)
         var challenge = await _fulfillmentRepo.GetActiveChallengeByOrderIdAsync(order.Id, cancellationToken);
         if (challenge == null)
         {
@@ -498,7 +499,7 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             ActorRole = actorRole.ToString(),
             PreviousStatus = prev,
             NewStatus = order.Status.ToString(),
-            Notes = $"Entrega verificada com sucesso via código de 4 dígitos válido e evidência fotográfica. Elegível para liberação futura de repasse (Gate G3). Observações: {request.RecipientSignatureOrNotes ?? "Nenhuma"}.",
+            Notes = $"Entrega verificada com sucesso via código de segurança / senha de 4 dígitos válido. Elegível para liberação futura de repasse (Gate G3). Observações: {request.RecipientSignatureOrNotes ?? "Nenhuma"}.",
             OccurredAtUtc = DateTimeOffset.UtcNow
         }, cancellationToken);
 

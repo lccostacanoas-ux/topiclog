@@ -15,7 +15,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
 
     public InMemoryFulfillmentRepository()
     {
-        SeedDemoData();
+        // Repositório limpo sem ordens de entrega fictícias
     }
 
     public Task<DeliveryOrder> CreateOrderAsync(DeliveryOrder order, CancellationToken cancellationToken = default)

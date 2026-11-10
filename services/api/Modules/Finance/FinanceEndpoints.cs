@@ -141,7 +141,7 @@ public static class FinanceEndpoints
                     PlanCode: "FREE",
                     Status: "ACTIVE",
                     MonthlyFeeCents: 0,
-                    CommissionRatePercent: 13.00m,
+                    CommissionRatePercent: 20.00m,
                     CurrentPeriodStartUtc: DateTimeOffset.UtcNow,
                     CurrentPeriodEndUtc: DateTimeOffset.UtcNow.AddYears(1),
                     CanceledAtUtc: null));

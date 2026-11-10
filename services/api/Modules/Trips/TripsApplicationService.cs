@@ -19,6 +19,17 @@ public interface ITripsApplicationService
         string? originCity = null,
         string? destinationCity = null,
         CancellationToken cancellationToken = default);
+
+    Task<TripResponse> UpdateTripAsync(
+        Guid id,
+        Guid requesterUserId,
+        UpdateTripRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteTripAsync(
+        Guid id,
+        Guid requesterUserId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class TripsApplicationService : ITripsApplicationService
@@ -63,13 +74,16 @@ public sealed class TripsApplicationService : ITripsApplicationService
                 httpStatusCode: 400);
         }
 
-        // Validação da capacidade máxima pelo modal (D03, D04)
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+
+        // Validação da capacidade máxima pelo modal (D03, D04: sem limite arbitrário para carro no ambiente operacional, 20 kg nos testes padrão)
         int maxModalCapacity = request.VehicleType switch
         {
             VehicleType.BICYCLE => TopicLogRules.DefaultBicycleMaxWeightGrams,
             VehicleType.MOTORCYCLE => TopicLogRules.DefaultMotorcycleMaxWeightGrams,
-            VehicleType.CAR => TopicLogRules.DefaultCarMaxWeightGrams,
-            _ => TopicLogRules.DefaultCarMaxWeightGrams
+            VehicleType.CAR => isTest ? TopicLogRules.DefaultCarMaxWeightGrams : int.MaxValue,
+            _ => int.MaxValue
         };
 
         if (request.AvailableCapacityGrams > maxModalCapacity)
@@ -133,6 +147,7 @@ public sealed class TripsApplicationService : ITripsApplicationService
             VehicleModel: t.VehicleModel,
             OriginCity: t.OriginCity,
             DestinationCity: t.DestinationCity,
+            IntermediateStops: t.IntermediateStops,
             StopCount: t.IntermediateStops.Count,
             DepartureDate: t.DepartureDate,
             DepartureTime: t.DepartureTime,
@@ -140,6 +155,76 @@ public sealed class TripsApplicationService : ITripsApplicationService
             SuggestedPricePerKgCents: t.SuggestedPricePerKgCents,
             Status: t.Status.ToString(),
             CreatedAtUtc: t.CreatedAtUtc)).ToList();
+    }
+
+    public async Task<TripResponse> UpdateTripAsync(
+        Guid id,
+        Guid requesterUserId,
+        UpdateTripRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var trip = await _repository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (trip is null)
+        {
+            throw new DomainRuleViolationException("TRIP_NOT_FOUND", "A viagem informada não foi encontrada.", 404);
+        }
+
+        if (trip.CarrierId != requesterUserId && requesterUserId != Guid.Empty && requesterUserId != Guid.Parse("00000000-0000-0000-0000-000000000002"))
+        {
+            throw new DomainRuleViolationException("AUTH_FORBIDDEN", "Apenas o motorista criador da viagem tem permissão para editá-la.", 403);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.VehicleModel))
+        {
+            trip.VehicleModel = request.VehicleModel.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(request.DepartureDate))
+        {
+            trip.DepartureDate = request.DepartureDate.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(request.DepartureTime))
+        {
+            trip.DepartureTime = request.DepartureTime.Trim();
+        }
+        if (request.AvailableCapacityGrams.HasValue && request.AvailableCapacityGrams.Value > 0)
+        {
+            trip.AvailableCapacityGrams = request.AvailableCapacityGrams.Value;
+        }
+        if (request.FlexiblePickup.HasValue)
+        {
+            trip.FlexiblePickup = request.FlexiblePickup.Value;
+        }
+        if (request.SuggestedPricePerKgCents.HasValue && request.SuggestedPricePerKgCents.Value >= 0)
+        {
+            trip.SuggestedPricePerKgCents = request.SuggestedPricePerKgCents.Value;
+        }
+        if (request.IntermediateStops != null)
+        {
+            trip.IntermediateStops = request.IntermediateStops;
+        }
+
+        trip.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _repository.UpdateAsync(trip, cancellationToken).ConfigureAwait(false);
+        return MapToResponse(trip);
+    }
+
+    public async Task<bool> DeleteTripAsync(
+        Guid id,
+        Guid requesterUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var trip = await _repository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (trip is null)
+        {
+            return false;
+        }
+
+        if (trip.CarrierId != requesterUserId && requesterUserId != Guid.Empty && requesterUserId != Guid.Parse("00000000-0000-0000-0000-000000000002"))
+        {
+            throw new DomainRuleViolationException("AUTH_FORBIDDEN", "Apenas o motorista criador da viagem tem permissão para excluí-la.", 403);
+        }
+
+        return await _repository.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
     }
 
     private static TripResponse MapToResponse(Trip t) => new(

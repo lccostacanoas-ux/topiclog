@@ -9,21 +9,75 @@ public interface ITripsRepository
     Task<Trip?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Trip>> ListActiveAsync(string? originCity = null, string? destinationCity = null, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(Trip trip, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public sealed class InMemoryTripsRepository : ITripsRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("trips_store.json");
+
     private readonly ConcurrentDictionary<Guid, Trip> _storage = new();
 
-    public InMemoryTripsRepository()
+    public InMemoryTripsRepository(bool? seedDemo = null)
     {
-        SeedDemoTrips();
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (seedDemo ?? isTest)
+        {
+            SeedDemoTrips();
+        }
+        else
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<Trip>>(json);
+            if (list is null) return;
+            foreach (var item in list)
+            {
+                if (item is not null)
+                {
+                    _storage[item.Id] = item;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Erro ao carregar viagens salvas: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        try
+        {
+            var list = _storage.Values.ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(list, JsonOptions);
+            TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Erro ao persistir viagens em disco: {ex.Message}");
+        }
     }
 
     public Task<Trip> CreateAsync(Trip trip, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _storage[trip.Id] = trip;
+        SaveToDisk();
         return Task.FromResult(trip);
     }
 
@@ -41,6 +95,18 @@ public sealed class InMemoryTripsRepository : ITripsRepository
         {
             trip.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _storage[trip.Id] = trip;
+            SaveToDisk();
+            return Task.FromResult(true);
+        }
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_storage.TryRemove(id, out _))
+        {
+            SaveToDisk();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);

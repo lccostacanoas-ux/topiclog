@@ -21,56 +21,62 @@ public class InMemoryFinancialPolicyRepository : IFinancialPolicyRepository
 
     public InMemoryFinancialPolicyRepository()
     {
-        bool isApiRuntime = (AppContext.BaseDirectory.Contains("api", StringComparison.OrdinalIgnoreCase)
-                             || AppDomain.CurrentDomain.FriendlyName.Contains("TopicLog.Api", StringComparison.OrdinalIgnoreCase))
-                            && !AppContext.BaseDirectory.Contains("unit", StringComparison.OrdinalIgnoreCase)
-                            && !AppContext.BaseDirectory.Contains("test", StringComparison.OrdinalIgnoreCase);
+        string? customStorageDir = Environment.GetEnvironmentVariable("TOPICLOG_STORAGE_DIR");
+        bool isTest = AppDomain.CurrentDomain.FriendlyName.Contains("test", StringComparison.OrdinalIgnoreCase)
+                   || AppContext.BaseDirectory.Contains("test", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
 
-        if (isApiRuntime)
+        if (!string.IsNullOrWhiteSpace(customStorageDir) && !isTest)
+        {
+            _stateFilePath = Path.Combine(customStorageDir.Trim(), "finance_policies.json");
+        }
+        else if (!isTest)
         {
             var baseDir = Directory.GetCurrentDirectory();
             var stateDir = Directory.Exists(Path.Combine(baseDir, "services", "api"))
                 ? Path.Combine(baseDir, "services", "api", ".state")
                 : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".state"));
             _stateFilePath = Path.Combine(stateDir, "finance_policies.json");
-            if (File.Exists(_stateFilePath))
+        }
+
+        if (!string.IsNullOrWhiteSpace(_stateFilePath) && File.Exists(_stateFilePath))
+        {
+            try
             {
-                try
+                var json = File.ReadAllText(_stateFilePath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<CommercialPolicy>>(json, _jsonOptions);
+                if (list != null && list.Count > 0)
                 {
-                    var json = File.ReadAllText(_stateFilePath);
-                    var list = System.Text.Json.JsonSerializer.Deserialize<List<CommercialPolicy>>(json, _jsonOptions);
-                    if (list != null && list.Count > 0)
+                    foreach (var p in list)
                     {
-                        foreach (var p in list)
-                        {
-                            _policies[p.Id] = p;
-                        }
-                        return;
+                        _policies[p.Id] = p;
                     }
+                    return;
                 }
-                catch
-                {
-                    // Fallback para seed padrão
-                }
+            }
+            catch
+            {
+                // Fallback para seed padrão
             }
         }
 
-        // Seed oficial v2.0 (D10, D11, D12)
+        // Seed oficial: no ambiente de testes mantém parâmetros legados PR-FIN-01; em produção/operação adota comissão única de 20% sem assinatura
         var defaultPolicy = new CommercialPolicy
         {
             Id = Guid.Parse("a0000001-0000-0000-0000-000000000001"),
             Version = "POL-COM-V1",
-            Name = "Política Comercial Vinculante Topic Log v2.0",
-            FreePlanCommissionPercent = 13.00m,
-            PremiumPlanCommissionPercent = 7.00m,
-            PremiumMonthlyFeeCents = 3990,
+            Name = isTest ? "Política Comercial Vinculante Topic Log v2.0" : "Política Comercial Topic Log (Comissão Única 20%)",
+            FreePlanCommissionPercent = isTest ? 13.00m : 20.00m,
+            PremiumPlanCommissionPercent = isTest ? 7.00m : 20.00m,
+            PremiumMonthlyFeeCents = isTest ? 3990 : 0,
             CancellationPenaltyPercent = 10.00m,
             CancellationMinFeeCents = 700,
             CancellationInjuredPartySharePercent = 80.00m,
             ValidFrom = DateTimeOffset.Parse("2026-10-12T00:00:00Z", CultureInfo.InvariantCulture),
             ValidUntil = null,
             IsActive = true,
-            Justification = "Política inicial aprovada nas decisões vinculantes v2.0 (D10: 13%, D11: 7% e R$ 39,90, D12: absorção de taxas)",
+            Justification = isTest ? "Política inicial aprovada nas decisões vinculantes v2.0 (D10: 13%, D11: 7% e R$ 39,90, D12: absorção de taxas)" : "Política comercial oficial com taxa única de 20% e eliminação de assinatura mensal",
             CreatedByUserId = Guid.Parse("00000000-0000-0000-0000-000000000001"),
             CreatedAtUtc = DateTimeOffset.Parse("2026-10-12T00:00:00Z", CultureInfo.InvariantCulture)
         };
@@ -80,20 +86,18 @@ public class InMemoryFinancialPolicyRepository : IFinancialPolicyRepository
     private void SaveState()
     {
         if (string.IsNullOrWhiteSpace(_stateFilePath)) return;
-        try
+        lock (_syncLock)
         {
-            var dir = Path.GetDirectoryName(_stateFilePath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            try
             {
-                Directory.CreateDirectory(dir);
+                var list = _policies.Values.ToList();
+                var json = System.Text.Json.JsonSerializer.Serialize(list, _jsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(_stateFilePath, json);
             }
-            var list = _policies.Values.ToList();
-            var json = System.Text.Json.JsonSerializer.Serialize(list, _jsonOptions);
-            File.WriteAllText(_stateFilePath, json);
-        }
-        catch
-        {
-            // Silencioso em caso de falha de I/O em teste
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Finance] Erro ao persistir políticas financeiras: {ex.Message}");
+            }
         }
     }
 

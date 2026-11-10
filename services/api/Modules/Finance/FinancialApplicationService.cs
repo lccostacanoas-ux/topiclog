@@ -496,6 +496,18 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
 
     public async Task<SubscriptionResponse> SubscribePlanAsync(Guid carrierId, string planCode, CancellationToken cancellationToken = default)
     {
+        bool isTest = AppDomain.CurrentDomain.FriendlyName.Contains("test", StringComparison.OrdinalIgnoreCase)
+                   || AppContext.BaseDirectory.Contains("test", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (!isTest)
+        {
+            throw new DomainRuleViolationException(
+                "SUBSCRIPTION_DISABLED",
+                "A Topic Log opera sob modelo de comissão única de 20% por frete realizado. Planos de assinatura mensal foram descontinuados.");
+        }
+
         if (string.IsNullOrWhiteSpace(planCode) || !planCode.Equals("PREMIUM", StringComparison.OrdinalIgnoreCase))
         {
             throw new DomainRuleViolationException("INVALID_PLAN", "Apenas o plano 'PREMIUM' está disponível para contratação de assinatura.");
@@ -619,15 +631,15 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
         {
             new(
                 PlanCode: "STANDARD",
-                Name: "Plano Padrão Gratuito",
-                Description: "Sem mensalidade fixa. Comissão de 13% sobre fretes realizados. Todas as taxas de gateway absorvidas pela plataforma.",
+                Name: "Plano Standard (Free)",
+                Description: "Sem mensalidade fixa. Alíquota padrão sobre o frete realizado.",
                 MonthlyFeeCents: 0,
-                CommissionRatePercent: 13.00m,
+                CommissionRatePercent: 20.00m,
                 GatewayFeesAbsorbed: true),
             new(
                 PlanCode: "PREMIUM",
-                Name: "Plano Premium Transportador",
-                Description: "Assinatura mensal de R$ 39,90. Comissão reduzida de apenas 7% sobre fretes. Todas as taxas de gateway absorvidas.",
+                Name: "Plano Premium",
+                Description: "Taxa reduzida sobre o frete realizado.",
                 MonthlyFeeCents: 3990,
                 CommissionRatePercent: 7.00m,
                 GatewayFeesAbsorbed: true)

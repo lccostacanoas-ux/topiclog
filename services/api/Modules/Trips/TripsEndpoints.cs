@@ -28,6 +28,7 @@ public static class TripsEndpoints
             HttpContext httpContext,
             ResourceAuthorizationService authorization,
             ITripsApplicationService tripsService,
+            IUserRepository userRepository,
             CancellationToken cancellationToken) =>
         {
             Guid carrierId;
@@ -37,14 +38,15 @@ public static class TripsEndpoints
             if (authorization.TryGetAuthenticatedActor(httpContext, out var actor) && actor is not null)
             {
                 carrierId = actor.UserId;
-                carrierName = actor.Email;
+                var userEntry = await userRepository.FindByIdAsync(actor.UserId, cancellationToken);
+                carrierName = userEntry?.Profile.DisplayName ?? actor.Email;
                 carrierKycVerified = actor.KycStatus == KycStatus.VERIFIED;
             }
             else
             {
-                // Fallback sandbox para desenvolvimento local
+                // Fallback para desenvolvimento local
                 carrierId = Guid.Parse("00000000-0000-0000-0000-000000000002");
-                carrierName = "Transportador Sandbox (Demo)";
+                carrierName = "Transportador";
                 carrierKycVerified = true;
             }
 
@@ -92,6 +94,63 @@ public static class TripsEndpoints
             }
 
             return Results.Ok(trip);
+        });
+
+        // PUT /api/v1/trips/{id:guid} — Edição de viagem pelo transportador
+        app.MapPut("/api/v1/trips/{id:guid}", async (
+            Guid id,
+            [FromBody] UpdateTripRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            ITripsApplicationService tripsService,
+            CancellationToken cancellationToken) =>
+        {
+            Guid requesterUserId = Guid.Empty;
+            if (authorization.TryGetAuthenticatedActor(httpContext, out var actor) && actor is not null)
+            {
+                requesterUserId = actor.UserId;
+            }
+
+            var updated = await tripsService.UpdateTripAsync(
+                id,
+                requesterUserId,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(updated);
+        });
+
+        // DELETE /api/v1/trips/{id:guid} — Exclusão / cancelamento de viagem pelo transportador
+        app.MapDelete("/api/v1/trips/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            ITripsApplicationService tripsService,
+            CancellationToken cancellationToken) =>
+        {
+            Guid requesterUserId = Guid.Empty;
+            if (authorization.TryGetAuthenticatedActor(httpContext, out var actor) && actor is not null)
+            {
+                requesterUserId = actor.UserId;
+            }
+
+            var deleted = await tripsService.DeleteTripAsync(
+                id,
+                requesterUserId,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!deleted)
+            {
+                return Results.NotFound(new
+                {
+                    type = "https://topiclog.com.br/errors/trip-not-found",
+                    title = "Viagem não encontrada",
+                    status = 404,
+                    detail = $"A viagem com ID '{id}' não existe ou já foi removida."
+                });
+            }
+
+            return Results.NoContent();
         });
 
         return app;

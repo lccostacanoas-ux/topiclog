@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Common.Options;
 using TopicLog.Api.Modules.Identity;
 
 namespace TopicLog.Api.Modules.Shipments;
@@ -22,12 +24,14 @@ public static class ShipmentsEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        // POST /api/v1/shipments — Publicação de encomenda (PRD-03, D03, D04, D06)
+        // POST /api/v1/shipments — Publicação de encomenda protegida por autenticação e privacidade (Finding 4)
         app.MapPost("/api/v1/shipments", async (
             [FromBody] CreateShipmentRequest request,
             HttpContext httpContext,
             ResourceAuthorizationService authorization,
             IShipmentsApplicationService shipmentsService,
+            IUserRepository userRepository,
+            IOptions<FeatureFlagsOptions> featureFlags,
             CancellationToken cancellationToken) =>
         {
             Guid senderId;
@@ -36,13 +40,25 @@ public static class ShipmentsEndpoints
             if (authorization.TryGetAuthenticatedActor(httpContext, out var actor) && actor is not null)
             {
                 senderId = actor.UserId;
-                senderName = actor.Email;
+                var userRecord = await userRepository.FindByIdAsync(actor.UserId, cancellationToken).ConfigureAwait(false);
+                senderName = FormatPublicSenderName(userRecord?.Profile?.DisplayName);
             }
             else
             {
-                // Fallback sandbox com isolamento determinístico para modo de testes locais
+                // Rejeita publicação anônima fora do ambiente de testes habilitado (Finding 4)
+                bool isTestDemoAllowed = string.Equals(featureFlags.Value.EnvironmentMode, "Testing", StringComparison.OrdinalIgnoreCase)
+                    && (httpContext.Request.Headers.ContainsKey("X-TopicLog-Internal-Dev-Secret") || request.IsDemo);
+
+                if (!isTestDemoAllowed)
+                {
+                    throw new DomainRuleViolationException(
+                        "AUTH_UNAUTHORIZED",
+                        "É obrigatório estar autenticado para publicar uma encomenda.",
+                        StatusCodes.Status401Unauthorized);
+                }
+
                 senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
-                senderName = "Remetente Sandbox (Demo)";
+                senderName = "Remetente";
             }
 
             var created = await shipmentsService.CreateShipmentAsync(
@@ -99,6 +115,25 @@ public static class ShipmentsEndpoints
             return Results.Ok(shipment);
         });
 
+        // PUT /api/v1/shipments/{id:guid} — Edição de encomenda pelo remetente antes do aceite de propostas
+        app.MapPut("/api/v1/shipments/{id:guid}", async (
+            Guid id,
+            [FromBody] UpdateShipmentRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IShipmentsApplicationService shipmentsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var updated = await shipmentsService.UpdateShipmentAsync(
+                id,
+                actor.UserId,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(updated);
+        });
+
         // POST /api/v1/shipments/{id:guid}/media — Upload privado de fotos da encomenda (IObjectStorageProvider)
         app.MapPost("/api/v1/shipments/{id:guid}/media", async (
             Guid id,
@@ -135,6 +170,53 @@ public static class ShipmentsEndpoints
             return Results.Created(photoUrl, new { photoUrl });
         });
 
+        // DELETE /api/v1/shipments/{id:guid} — Exclusão / cancelamento de encomenda pelo remetente
+        app.MapDelete("/api/v1/shipments/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IShipmentsApplicationService shipmentsService,
+            CancellationToken cancellationToken) =>
+        {
+            Guid requesterUserId = Guid.Empty;
+            if (authorization.TryGetAuthenticatedActor(httpContext, out var actor) && actor is not null)
+            {
+                requesterUserId = actor.UserId;
+            }
+
+            var deleted = await shipmentsService.DeleteShipmentAsync(
+                id,
+                requesterUserId,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!deleted)
+            {
+                return Results.NotFound(new
+                {
+                    type = "https://topiclog.com.br/errors/shipment-not-found",
+                    title = "Encomenda não encontrada",
+                    status = 404,
+                    detail = $"A encomenda com ID '{id}' não existe ou já foi removida."
+                });
+            }
+
+            return Results.NoContent();
+        });
+
         return app;
+    }
+
+    private static string FormatPublicSenderName(string? displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName)) return "Remetente";
+        string clean = displayName.Trim();
+        if (clean.Contains('@'))
+        {
+            clean = clean.Split('@')[0].Trim();
+        }
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "Remetente";
+        if (parts.Length == 1) return parts[0];
+        return $"{parts[0]} {char.ToUpperInvariant(parts[1][0])}.";
     }
 }
