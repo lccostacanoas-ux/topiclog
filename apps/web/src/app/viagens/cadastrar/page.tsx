@@ -145,34 +145,31 @@ export default function CadastrarViagemPage(): React.JSX.Element {
 
     if (!originCity.trim()) {
       setErrorMsg("Informe a cidade de origem (saída) da viagem.");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!destinationCity.trim()) {
       setErrorMsg("Informe a cidade de destino (chegada) da viagem.");
-      return;
-    }
-
-    if (!vehicleModel.trim()) {
-      setErrorMsg("Informe o modelo do veículo (ex.: Hyundai HB20, Fiat Strada, Chevrolet Onix...).");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     if (!departureDate.trim()) {
       setErrorMsg("Informe a data prevista de saída da viagem.");
-      return;
-    }
-
-    if (isNaN(parsedCapacityKg) || parsedCapacityKg <= 0) {
-      setErrorMsg("Informe uma capacidade disponível válida maior que zero em kg.");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
     const cleanPrice = parseFloat(tripPriceReais.replace(",", ".").replace(/[^0-9.]/g, ""));
     if (isNaN(cleanPrice) || cleanPrice <= 0) {
       setErrorMsg("Informe o valor do frete da viagem em Reais.");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
+
+    const resolvedModel = vehicleModel.trim() || (vehicleType === "CAR" ? "Carro de Passeio" : vehicleType === "MOTORCYCLE" ? "Motocicleta" : "Bicicleta");
+    const resolvedKg = !isNaN(parsedCapacityKg) && parsedCapacityKg > 0 ? parsedCapacityKg : (vehicleType === "CAR" ? 50 : vehicleType === "MOTORCYCLE" ? 20 : 10);
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -183,13 +180,13 @@ export default function CadastrarViagemPage(): React.JSX.Element {
     try {
       const payload: CreateTripPayload = {
         vehicleType,
-        vehicleModel: vehicleModel.trim(),
+        vehicleModel: resolvedModel,
         originCity: originCity.trim(),
         destinationCity: destinationCity.trim(),
         intermediateStops: stringStops,
         departureDate,
         departureTime,
-        availableCapacityGrams: Math.round(parsedCapacityKg * 1000),
+        availableCapacityGrams: Math.round(resolvedKg * 1000),
         flexiblePickup,
         suggestedPricePerKgCents: tripPriceCents
       };
@@ -243,7 +240,7 @@ export default function CadastrarViagemPage(): React.JSX.Element {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="card" style={{ padding: "28px", boxShadow: "var(--shadow-md)" }}>
+      <form onSubmit={handleSubmit} noValidate className="card" style={{ padding: "28px", boxShadow: "var(--shadow-md)" }}>
         {/* Bloco 1: Veículo, Modal e Capacidade */}
         <fieldset style={{ border: "none", padding: 0, margin: "0 0 28px 0" }}>
           <legend style={{ fontSize: "17px", fontWeight: 700, marginBottom: "16px", borderBottom: "1px solid var(--color-border)", width: "100%", paddingBottom: "8px", color: "var(--color-brand-deep-navy)" }}>
@@ -328,12 +325,12 @@ export default function CadastrarViagemPage(): React.JSX.Element {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "12px" }}>
             <div className="form-group">
               <label htmlFor="trip-model" className="form-label">
-                Modelo do Veículo / Compartimento
+                Modelo do Veículo / Compartimento (Opcional)
               </label>
               <input
                 id="trip-model"
                 type="text"
-                placeholder="Ex: Fiat Strada (caçamba coberta), Renault Duster, Honda CG 160..."
+                placeholder="Ex: Fiat Strada, Hyundai HB20, Honda CG... (Opcional)"
                 value={vehicleModel}
                 onChange={(e) => setVehicleModel(e.target.value)}
                 className="form-control"
@@ -342,19 +339,18 @@ export default function CadastrarViagemPage(): React.JSX.Element {
 
             <div className="form-group">
               <label htmlFor="trip-capacity" className="form-label">
-                Capacidade Estimada para Cargas (kg) *
+                Capacidade Estimada para Cargas (kg)
               </label>
               <input
                 id="trip-capacity"
                 type="text"
-                required
-                placeholder="Ex: 50, 100, 200..."
+                placeholder="Ex: 50 kg (Padrão: 50 kg)"
                 value={availableKg}
                 onChange={(e) => setAvailableKg(e.target.value)}
                 className="form-control"
               />
               <span style={{ fontSize: "11px", color: "var(--color-muted)" }}>
-                💡 Você define sua própria capacidade disponível em kg para agregar encomendas no trajeto.
+                💡 Se deixar em branco, adotamos 50 kg para carro, 20 kg para moto ou 10 kg para bike.
               </span>
             </div>
           </div>
