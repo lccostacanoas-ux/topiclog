@@ -693,7 +693,7 @@ export default function RegisterPage(): React.JSX.Element {
                 marginBottom: "20px"
               }}
             >
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "14px", cursor: "pointer", marginBottom: "8px" }}>
                 <input
                   type="checkbox"
                   required
@@ -708,6 +708,10 @@ export default function RegisterPage(): React.JSX.Element {
                   </Link>.
                 </span>
               </label>
+
+              <div style={{ fontSize: "12px", color: "#1E40AF", paddingLeft: "26px", lineHeight: 1.4 }}>
+                💳 <strong>Aviso de Split e Repasse:</strong> Concordo que, para viabilizar a divisão de fretes, custódia garantida e estornos, o recebimento de valores opera exclusivamente através do <strong>Mercado Pago (Banco 323)</strong>.
+              </div>
             </div>
 
             <button

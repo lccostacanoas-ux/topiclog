@@ -127,6 +127,14 @@ export default function TermsPage(): React.JSX.Element {
             <li><strong>Embalagem Adequada:</strong> O remetente é o único e exclusivo responsável pelo acondicionamento e embalagem protetora da mercadoria (caixa, fita, plástico bolha, envelope impermeável), devendo suportar o manuseio e transporte viário normal.</li>
             <li><strong>Código de Segurança (PIN):</strong> Para garantir que a carga seja entregue à pessoa certa, o remetente recebe um código PIN que deve ser informado ao destinatário para validação presencial com o transportador.</li>
           </ul>
+
+          <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
+            1.3 Exclusividade Mercado Pago e Código de Disparo da Viagem
+          </h3>
+          <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
+            <li><strong>Exclusividade Mercado Pago (Banco 323):</strong> Para viabilizar a custódia garantida e eventuais estornos/devoluções imediatas, a operação opera exclusivamente sob a infraestrutura do Mercado Pago. Eventuais reembolsos retornam automaticamente à conta Mercado Pago / Pix de origem do cliente.</li>
+            <li><strong>Código de Início da Viagem (Coleta):</strong> No momento da entrega física da encomenda ao transportador, o remetente deverá obrigatoriamente fornecer o <strong>Código de Início</strong> gerado pela plataforma. O transportador digitará este código no aplicativo, momento em que a conta do remetente exibirá imediatamente a notificação <em>&ldquo;Viagem Iniciada&rdquo;</em>, registrando o horário de saída e a previsão estimada de chegada no destino.</li>
+          </ul>
         </section>
       )}
 
@@ -195,12 +203,13 @@ export default function TermsPage(): React.JSX.Element {
           </ul>
 
           <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
-            2.5 Comissão da Plataforma e Repasse Financeiro
+            2.5 Comissão da Plataforma, Repasse Financeiro e Conta Mercado Pago Obrigatória
           </h3>
           <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
             <li><strong>Taxa Configurável:</strong> Pela intermediação tecnológica, suporte e custódia de segurança da transação, a TopicLog retém uma taxa de comissão percentual definida e gerenciada dinamicamente pelo administrador da plataforma através do Console Administrativo.</li>
             <li><strong>Transparência Prévia:</strong> Antes de qualquer aceite definitivo de contratação, o sistema exibe de forma clara: (i) valor bruto acordado; (ii) percentual e valor em reais da comissão retida; (iii) repasse líquido exato que o transportador receberá.</li>
-            <li><strong>Liberação por Senha/Código:</strong> O repasse financeiro em garantia é liberado imediatamente após a validação do código de segurança (PIN de 4 dígitos) fornecido pelo remetente/destinatário.</li>
+            <li><strong>Obrigatoriedade Exclusiva de Conta no Mercado Pago (Banco 323):</strong> Para que a plataforma realize o split automatizado da comissão e liquide o repasse financeiro líquido diretamente ao motorista sem risco de bloqueio, <strong>o transportador deve obrigatoriamente possuir conta corrente ativa no Mercado Pago</strong>. A chave Pix informada no momento do cadastro deve pertencer exclusivamente ao Mercado Pago. Não serão admitidas chaves ou contas de outros bancos.</li>
+            <li><strong>Controle de Viagem por Códigos (Início e Fim):</strong> O transportador concorda que para disparar oficialmente a viagem no sistema, deverá solicitar o Código de Início ao remetente no ato da coleta e digitá-lo no aplicativo. Ao chegar ao destino final, o transportador digitará o Código de Entrega fornecido pelo destinatário, ato que libera instantaneamente o saldo líquido em sua conta Mercado Pago.</li>
           </ul>
         </section>
       )}
@@ -293,6 +302,14 @@ export default function TermsPage(): React.JSX.Element {
           <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
             <li><strong>Antes do deslocamento do transportador:</strong> O cancelamento é gratuito e o valor retido em garantia é estornado integralmente ao remetente.</li>
             <li><strong>Após o transportador chegar ao local de retirada:</strong> Caso o remetente cancele sem motivo plausível, poderá ser aplicada taxa de deslocamento mínimo de R$ 10,00 para compensação do parceiro.</li>
+          </ul>
+
+          <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
+            4.4 Split de Pagamentos e Estornos Automáticos via Mercado Pago
+          </h3>
+          <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
+            <li><strong>Split Automático:</strong> Toda a divisão financeira entre o transportador parceiro e a plataforma é processada via split nativo da API do Mercado Pago diretamente na liquidação da corrida.</li>
+            <li><strong>Devolução Instantânea ao Remetente:</strong> Em hipótese de cancelamento homologado ou estorno parcial/integral com retenção de multa por desistência, a devolução é creditada instantaneamente na conta bancária/Pix de origem do cliente via API de reembolso do Mercado Pago.</li>
           </ul>
         </section>
       )}

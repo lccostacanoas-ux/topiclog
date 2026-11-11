@@ -35,6 +35,11 @@ export interface DemoShipment {
   readonly interestedInInsurance: boolean;
   readonly photoIcon: string;
   readonly createdAt: string;
+  readonly pickupCode?: string;
+  readonly deliveryCode?: string;
+  readonly tripStartedAt?: string;
+  readonly estimatedDeliveryAt?: string;
+  readonly deliveredAt?: string;
 }
 
 export interface DemoTrip {
@@ -129,7 +134,9 @@ const INITIAL_SHIPMENTS: DemoShipment[] = [
     status: "IN_NEGOTIATION",
     interestedInInsurance: false,
     photoIcon: "📄",
-    createdAt: "Hoje às 14:30"
+    createdAt: "Hoje às 14:30",
+    pickupCode: "4826",
+    deliveryCode: "7391"
   }
 ];
 
@@ -269,6 +276,83 @@ export function updateDemoShipment(id: string, updates: Partial<DemoShipment>): 
   const current = getDemoShipments().map((s) => (s.id === id ? { ...s, ...updates } : s));
   safeSetStorage(SHIPMENTS_STORAGE_KEY, current);
   return current;
+}
+
+export function startTripWithPickupCode(
+  shipmentId: string,
+  providedCode: string,
+  durationMins = 40
+): { success: boolean; message: string; startedAt?: string; estimatedDeliveryAt?: string } {
+  const shipments = getDemoShipments();
+  const shipment = shipments.find((s) => s.id === shipmentId);
+  if (!shipment) {
+    return { success: false, message: "Encomenda não encontrada no sistema." };
+  }
+
+  const expectedCode = shipment.pickupCode || "4826";
+  const cleanProvided = (providedCode || "").trim().replace(/\D/g, "");
+  const cleanExpected = expectedCode.trim().replace(/\D/g, "");
+
+  if (cleanProvided !== cleanExpected) {
+    return {
+      success: false,
+      message: `Código de início incorreto. Solicite ao remetente o código correto gerado pela plataforma.`
+    };
+  }
+
+  const now = new Date();
+  const startedAt = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const arrivalDate = new Date(now.getTime() + durationMins * 60 * 1000);
+  const estimatedDeliveryAt = arrivalDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  updateDemoShipment(shipmentId, {
+    status: "IN_TRANSIT",
+    tripStartedAt: startedAt,
+    estimatedDeliveryAt
+  });
+
+  return {
+    success: true,
+    message: `Viagem disparada com sucesso às ${startedAt}! Previsão de entrega: ~${estimatedDeliveryAt}.`,
+    startedAt,
+    estimatedDeliveryAt
+  };
+}
+
+export function completeTripWithDeliveryCode(
+  shipmentId: string,
+  providedCode: string
+): { success: boolean; message: string; deliveredAt?: string } {
+  const shipments = getDemoShipments();
+  const shipment = shipments.find((s) => s.id === shipmentId);
+  if (!shipment) {
+    return { success: false, message: "Encomenda não encontrada no sistema." };
+  }
+
+  const expectedCode = shipment.deliveryCode || "7391";
+  const cleanProvided = (providedCode || "").trim().replace(/\D/g, "");
+  const cleanExpected = expectedCode.trim().replace(/\D/g, "");
+
+  if (cleanProvided !== cleanExpected) {
+    return {
+      success: false,
+      message: `Código de entrega incorreto. Solicite ao destinatário o código de conclusão fornecido pela plataforma.`
+    };
+  }
+
+  const now = new Date();
+  const deliveredAt = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  updateDemoShipment(shipmentId, {
+    status: "DELIVERED",
+    deliveredAt
+  });
+
+  return {
+    success: true,
+    message: `Entrega validada com sucesso às ${deliveredAt}! Split financeiro liberado na conta Mercado Pago.`,
+    deliveredAt
+  };
 }
 
 export function getDemoTrips(): readonly DemoTrip[] {

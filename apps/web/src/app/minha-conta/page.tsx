@@ -74,7 +74,7 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditAcceptTerms(user.carrierTermsAccepted ?? true);
       setEditPixKeyType(user.pixKeyType || "CPF");
       setEditPixKey(user.pixKey || "");
-      setEditBankName(user.bankName || "Mercado Pago");
+      setEditBankName("Mercado Pago (Banco 323)");
       setEditMpAccountEmail(user.mpAccountEmail || user.email || "");
       setEditCnhDocName(user.cnhDocumentName || "");
       setEditCnhDocData(user.cnhDocumentData || "");
@@ -363,22 +363,36 @@ export default function MyAccountPage(): React.JSX.Element {
                 <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
                     <span style={{ fontSize: "16px" }}>💳</span>
-                    <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados Bancários para Repasse de Frete</strong>
+                    <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados Bancários para Repasse de Frete (Mercado Pago Exclusivo)</strong>
                   </div>
                   {user.pixKey || user.mpAccountEmail ? (
-                    <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
-                      <p style={{ margin: "2px 0" }}><strong>Instituição / Banco:</strong> {user.bankName || "Mercado Pago"}</p>
-                      <p style={{ margin: "2px 0" }}><strong>Chave Pix:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>{user.pixKey || "Não informada"}</span> ({user.pixKeyType || "CPF"})</p>
-                      {user.mpAccountEmail && (
-                        <p style={{ margin: "2px 0" }}><strong>Conta Mercado Pago (Repasse Instantâneo):</strong> {user.mpAccountEmail}</p>
-                      )}
-                      <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#166534" }}>
-                        ✓ Conta cadastrada para receber repasses em custódia após entrega validada por PIN.
+                    <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "12px 14px", fontSize: "13px" }}>
+                      <p style={{ margin: "2px 0" }}>
+                        <strong>Instituição Financeira:</strong>{" "}
+                        <span style={{ fontWeight: 700, color: "#047857" }}>Mercado Pago (Banco 323 - Homologado Exclusivo)</span>
                       </p>
+                      <p style={{ margin: "4px 0" }}>
+                        <strong>Chave Pix Mercado Pago:</strong>{" "}
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "2px 8px", borderRadius: "4px", border: "1px solid #86EFAC" }}>
+                          {user.pixKey || "Não informada"}
+                        </span>{" "}
+                        ({user.pixKeyType || "CPF"})
+                      </p>
+                      {user.mpAccountEmail && (
+                        <p style={{ margin: "4px 0" }}>
+                          <strong>Conta Mercado Pago (Repasse Instantâneo):</strong> {user.mpAccountEmail}
+                        </p>
+                      )}
+                      <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed #BBF7D0", fontSize: "11px", color: "#166534", lineHeight: 1.4 }}>
+                        ✓ Conta habilitada para split automático de fretes (80% Transportador / 20% TopicLog) e liquidação sob custódia garantida.
+                      </div>
                     </div>
                   ) : (
-                    <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#92400E" }}>
-                      ⚠️ <strong>Chave Pix / Conta bancária não cadastrada.</strong> Para receber o repasse líquido dos seus fretes, clique em <em>&ldquo;Editar Dados&rdquo;</em> e informe sua chave Pix ou conta Mercado Pago.
+                    <div style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", color: "#991B1B" }}>
+                      <strong>⚠️ Requisito Obrigatório: Chave Pix / Conta Mercado Pago não cadastrada.</strong>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "12px" }}>
+                        Para receber a divisão e repasse dos seus fretes, clique em <em>&ldquo;Editar Dados&rdquo;</em> e cadastre sua chave Pix ou e-mail vinculados à sua conta Mercado Pago.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -741,54 +755,67 @@ export default function MyAccountPage(): React.JSX.Element {
               <div
                 style={{
                   backgroundColor: "#EFF6FF",
-                  border: "1px solid #BFDBFE",
+                  border: "1.5px solid #3B82F6",
                   borderRadius: "10px",
                   padding: "16px",
                   margin: "16px 0"
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "18px" }}>💳</span>
-                  <strong style={{ fontSize: "14px", color: "#1E40AF" }}>
-                    Dados Bancários e Chave Pix para Recebimento de Repasses
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "20px" }}>💳</span>
+                  <strong style={{ fontSize: "15px", color: "#1E40AF" }}>
+                    Dados Bancários Homologados para Split & Repasses (Mercado Pago Exclusivo)
                   </strong>
                 </div>
-                <p style={{ fontSize: "12px", color: "#475569", margin: "0 0 12px 0" }}>
-                  Informe seus dados bancários e chave Pix para receber os valores de fretes concluídos diretamente na sua conta.
-                </p>
+
+                {/* Aviso Regulatório Obrigatório */}
+                <div
+                  style={{
+                    backgroundColor: "#FEF2F2",
+                    border: "1.5px solid #FCA5A5",
+                    borderRadius: "8px",
+                    padding: "12px 14px",
+                    marginBottom: "14px",
+                    fontSize: "12px",
+                    color: "#991B1B",
+                    lineHeight: 1.5
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, marginBottom: "4px" }}>
+                    <span>⚠️</span> AVISO OBRIGATÓRIO: CONTA NO MERCADO PAGO EXIGIDA
+                  </div>
+                  Para viabilizar a divisão automatizada de valores (split financeiro: 80% transportador / 20% plataforma), a retenção de segurança em custódia e eventuais devoluções imediatas, <strong>a única instituição financeira aceita é o Mercado Pago (Banco 323)</strong>. É obrigatório que tanto o transportador quanto o remetente possuam conta no Mercado Pago. Sua chave Pix e e-mail informados abaixo devem pertencer a essa conta.
+                </div>
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px" }}>Banco / Instituição</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>
+                      Instituição Financeira Homologada *
+                    </label>
                     <select
                       className="form-input"
-                      value={editBankName}
-                      onChange={e => setEditBankName(e.target.value)}
-                      disabled={isSaving}
+                      value="Mercado Pago (Banco 323)"
+                      disabled={true}
+                      style={{ backgroundColor: "#F1F5F9", fontWeight: 700, color: "#0F172A", cursor: "not-allowed" }}
                     >
-                      <option value="Mercado Pago">Mercado Pago (Recomendado)</option>
-                      <option value="Nubank">Nubank</option>
-                      <option value="Banco do Brasil">Banco do Brasil</option>
-                      <option value="Itaú">Itaú Unibanco</option>
-                      <option value="Bradesco">Bradesco</option>
-                      <option value="Caixa Econômica">Caixa Econômica</option>
-                      <option value="Banco Inter">Banco Inter</option>
-                      <option value="Santander">Santander</option>
-                      <option value="Outro">Outra Instituição Financeira</option>
+                      <option value="Mercado Pago (Banco 323)">Mercado Pago (Banco 323 - Exclusivo para Split & Repasses)</option>
                     </select>
+                    <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Única instituição autorizada para split automático e devoluções na TopicLog.
+                    </small>
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px" }}>Tipo de Chave Pix</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Tipo de Chave Pix (no Mercado Pago) *</label>
                     <select
                       className="form-input"
                       value={editPixKeyType}
                       onChange={e => setEditPixKeyType(e.target.value)}
                       disabled={isSaving}
                     >
-                      <option value="CPF">CPF</option>
-                      <option value="CNPJ">CNPJ</option>
-                      <option value="EMAIL">E-mail</option>
+                      <option value="CPF">CPF (Registrado no Mercado Pago)</option>
+                      <option value="CNPJ">CNPJ (Registrado no Mercado Pago)</option>
+                      <option value="EMAIL">E-mail da Conta Mercado Pago</option>
                       <option value="TELEFONE">Telefone Celular</option>
                       <option value="ALEATORIA">Chave Aleatória (EVP)</option>
                     </select>
@@ -797,19 +824,20 @@ export default function MyAccountPage(): React.JSX.Element {
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px" }}>Sua Chave Pix</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Sua Chave Pix (Mercado Pago) *</label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Informe sua chave Pix para receber os fretes"
+                      placeholder="Ex: seu CPF ou e-mail cadastrado no Mercado Pago"
                       value={editPixKey}
                       onChange={e => setEditPixKey(e.target.value)}
                       disabled={isSaving}
+                      required
                     />
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px" }}>E-mail Mercado Pago (opcional)</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>E-mail da Conta Mercado Pago *</label>
                     <input
                       type="email"
                       className="form-input"
@@ -817,6 +845,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       value={editMpAccountEmail}
                       onChange={e => setEditMpAccountEmail(e.target.value)}
                       disabled={isSaving}
+                      required
                     />
                   </div>
                 </div>
