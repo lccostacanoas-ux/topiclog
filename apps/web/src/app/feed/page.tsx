@@ -62,6 +62,8 @@ function FeedContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token } = useAuth();
+  const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
+  const isSender = Boolean(user?.roles?.includes("SENDER"));
   const urlOrigin = searchParams.get("origem")?.trim() || "";
   const urlDest = searchParams.get("destino")?.trim() || "";
 
@@ -1475,7 +1477,27 @@ function FeedContent(): React.JSX.Element {
             )}
 
             {/* Split Financeiro Transparente e Negociação de Valor (Configurável pelo Administrador) */}
-            {"suggestedPriceCents" in selectedItem && (
+            {"weightGrams" in selectedItem && !isCarrier ? (
+              <div
+                style={{
+                  backgroundColor: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "14px",
+                  marginBottom: "16px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", marginBottom: "8px" }}>
+                  <span style={{ color: "#1E40AF", fontWeight: 700 }}>Valor Sugerido pelo Remetente:</span>
+                  <strong style={{ color: "#1D4ED8", fontSize: "16px" }}>
+                    R$ {(("suggestedPriceCents" in selectedItem ? (selectedItem as any).suggestedPriceCents : 0) / 100).toFixed(2).replace(".", ",")}
+                  </strong>
+                </div>
+                <div style={{ fontSize: "12px", color: "#1E3A8A", lineHeight: 1.4 }}>
+                  ℹ️ Você está conectado com perfil de <strong>Remetente</strong>. O envio de propostas de frete para encomendas é exclusivo para motoristas parceiros cadastrados como <strong>Transportador</strong> com veículo cadastrado.
+                </div>
+              </div>
+            ) : "suggestedPriceCents" in selectedItem && (
               <div
                 style={{
                   backgroundColor: "#FFFFFF",
@@ -1673,6 +1695,26 @@ function FeedContent(): React.JSX.Element {
                 >
                   ✏️ Gerenciar Esta Publicação ➔
                 </Link>
+              ) : "weightGrams" in selectedItem && !isCarrier ? (
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    disabled
+                    className="btn btn--outline"
+                    style={{ opacity: 0.65, cursor: "not-allowed", fontSize: "13px" }}
+                    title="Apenas transportadores cadastrados podem propor frete"
+                  >
+                    🔒 Ofertas Restritas a Transportadores
+                  </button>
+                  <Link
+                    href="/encomendas/publicar"
+                    className="btn btn--primary"
+                    onClick={() => setSelectedItem(null)}
+                    style={{ fontSize: "13px" }}
+                  >
+                    + Publicar Minha Encomenda ➔
+                  </Link>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1685,9 +1727,14 @@ function FeedContent(): React.JSX.Element {
                       return;
                     }
 
+                    const isShipment = "weightGrams" in selectedItem;
+                    if (isShipment && !isCarrier) {
+                      alert("Apenas usuários cadastrados como Transportador parceiro podem propor transporte para encomendas.");
+                      return;
+                    }
+
                     setIsSendingProposal(true);
                     try {
-                      const isShipment = "weightGrams" in selectedItem;
                       const shipmentId = isShipment ? selectedItem.id : "e0000001-0000-0000-0000-000000000001";
                       const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (isShipment ? selectedItem.suggestedPriceCents / 100 : 42);
                       const amountCents = Math.round(numVal * 100);
@@ -1697,22 +1744,24 @@ function FeedContent(): React.JSX.Element {
                         shipmentId,
                         tripId,
                         amountCents,
-                        notes: "Proposta formal de transporte acordada via Feed."
+                        notes: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem acordada via Feed."
                       }, token);
 
                       if (!apiRes.ok) {
                         // Fallback resiliente para ambiente sem backend dedicado
+                        const ownerSenderName = isShipment ? ((selectedItem as any).senderName || "Remetente") : (user.displayName || user.email || "Remetente");
+                        const driverCarrierName = isShipment ? (user.displayName || "Transportador") : ((selectedItem as any).carrierName || "Transportador Parceiro");
                         addDemoProposal({
                           shipmentId,
                           shipmentTitle: isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`,
                           route: `${selectedItem.originCity} ➔ ${selectedItem.destinationCity}`,
-                          senderName: user.displayName || user.email || "Remetente",
-                          carrierName: !isShipment ? (selectedItem as any).carrierName || "Transportador Parceiro" : (user.displayName || "Transportador"),
+                          senderName: ownerSenderName,
+                          carrierName: driverCarrierName,
                           originalPriceCents: amountCents,
                           proposedPriceCents: amountCents,
-                          platformCommissionCents: Math.round(amountCents * 0.13),
-                          carrierNetCents: amountCents - Math.round(amountCents * 0.13),
-                          message: "Proposta formal de transporte acordada via Feed.",
+                          platformCommissionCents: Math.round(amountCents * (commissionPercent / 100)),
+                          carrierNetCents: amountCents - Math.round(amountCents * (commissionPercent / 100)),
+                          message: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem.",
                           isCurrentUserCarrier: isShipment
                         });
                       }

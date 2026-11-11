@@ -247,6 +247,12 @@ export function updateProposalStatus(
   return current;
 }
 
+export function removeDemoProposal(proposalId: string): readonly DemoProposal[] {
+  const current = getDemoProposals().filter((p) => p.id !== proposalId);
+  safeSetStorage(PROPOSALS_STORAGE_KEY, current);
+  return current;
+}
+
 export function getDemoChatThreads(): readonly DemoChatThread[] {
   return safeGetStorage<DemoChatThread[]>(CHATS_STORAGE_KEY, INITIAL_THREADS);
 }

@@ -13,6 +13,7 @@ import {
 import {
   getDemoProposals,
   updateProposalStatus,
+  removeDemoProposal,
   type DemoProposal
 } from "../../lib/demo-marketplace-store";
 import { useAuth } from "../../lib/auth-context";
@@ -191,6 +192,14 @@ export default function PropostasPage(): React.JSX.Element {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Excluir Proposta do Histórico
+  const handleDeleteProposal = async (proposalId: string) => {
+    if (!window.confirm("Deseja realmente remover esta proposta do seu histórico?")) return;
+    removeDemoProposal(proposalId);
+    setActionNotice("Proposta removida do seu histórico.");
+    await loadData();
   };
 
   // Enviar Contraproposta
@@ -629,6 +638,48 @@ export default function PropostasPage(): React.JSX.Element {
                       }}
                     >
                       ✕ Recusar
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => void handleDeleteProposal(proposal.id)}
+                      style={{
+                        padding: "8px 12px",
+                        backgroundColor: "#F8FAFC",
+                        color: "#64748B",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                      title="Excluir proposta"
+                    >
+                      🗑️ Excluir
+                    </button>
+                  </div>
+                )}
+
+                {/* Botões quando Recusada */}
+                {isRejected && (
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => void handleDeleteProposal(proposal.id)}
+                      style={{
+                        padding: "6px 14px",
+                        backgroundColor: "#F8FAFC",
+                        color: "#DC2626",
+                        border: "1px solid #FECACA",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      🗑️ Excluir do Histórico
                     </button>
                   </div>
                 )}
