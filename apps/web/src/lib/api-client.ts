@@ -114,12 +114,43 @@ export interface LocalMockUser {
   vehicleYear?: string;
   cnhCategory?: string;
   carrierTermsAccepted?: boolean;
+  pixKeyType?: string;
+  pixKey?: string;
+  bankName?: string;
+  bankAgency?: string;
+  bankAccount?: string;
+  mpAccountEmail?: string;
   createdAt: string;
 }
 
 const LOCAL_USERS_KEY = "topiclog_users";
 
 export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
+  {
+    id: "usr-luiz-carrier",
+    email: "luizcostacanoas@gmail.com",
+    password: "123456",
+    displayName: "Luiz Carlos Costa",
+    phone: "(31) 98888-7777",
+    cpf: "55042724567",
+    city: "Belo Horizonte",
+    stateUf: "MG",
+    roles: ["CARRIER"],
+    kycStatus: "VERIFIED",
+    ratingAvg: 5.0,
+    ratingCount: 34,
+    vehicleType: "CARRO",
+    vehicleModel: "Fiat Strada Endurance",
+    vehiclePlate: "BRA2E19",
+    vehicleYear: "2023",
+    cnhCategory: "B",
+    carrierTermsAccepted: true,
+    bankName: "Mercado Pago",
+    pixKeyType: "CPF",
+    pixKey: "55042724567",
+    mpAccountEmail: "luizcostacanoas@gmail.com",
+    createdAt: "2026-11-10T20:00:00.000Z"
+  },
   {
     id: "usr-lucas-sender-pr",
     email: "lucas.remetente@topiclog.com.br",
@@ -154,6 +185,10 @@ export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
     vehicleYear: "2022",
     cnhCategory: "B",
     carrierTermsAccepted: true,
+    bankName: "Mercado Pago",
+    pixKeyType: "CPF",
+    pixKey: "98765432109",
+    mpAccountEmail: "marcos.transportador@topiclog.com.br",
     createdAt: "2026-11-10T20:00:00.000Z"
   }
 ];
@@ -221,6 +256,12 @@ export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileRespo
     vehicleYear: u.vehicleYear,
     cnhCategory: u.cnhCategory,
     carrierTermsAccepted: u.carrierTermsAccepted,
+    pixKeyType: u.pixKeyType,
+    pixKey: u.pixKey,
+    bankName: u.bankName,
+    bankAgency: u.bankAgency,
+    bankAccount: u.bankAccount,
+    mpAccountEmail: u.mpAccountEmail,
     createdAtUtc: u.createdAt,
     updatedAtUtc: u.createdAt
   };
@@ -673,7 +714,13 @@ export async function updatePrivateProfileApi(
               vehiclePlate: request.vehiclePlate !== undefined ? request.vehiclePlate : parsed.profile.vehiclePlate,
               vehicleYear: request.vehicleYear !== undefined ? request.vehicleYear : parsed.profile.vehicleYear,
               cnhCategory: request.cnhCategory !== undefined ? request.cnhCategory : parsed.profile.cnhCategory,
-              carrierTermsAccepted: request.acceptCarrierTerms !== undefined ? request.acceptCarrierTerms : parsed.profile.carrierTermsAccepted
+              carrierTermsAccepted: request.acceptCarrierTerms !== undefined ? request.acceptCarrierTerms : parsed.profile.carrierTermsAccepted,
+              pixKeyType: request.pixKeyType !== undefined ? request.pixKeyType : parsed.profile.pixKeyType,
+              pixKey: request.pixKey !== undefined ? request.pixKey : parsed.profile.pixKey,
+              bankName: request.bankName !== undefined ? request.bankName : parsed.profile.bankName,
+              bankAgency: request.bankAgency !== undefined ? request.bankAgency : parsed.profile.bankAgency,
+              bankAccount: request.bankAccount !== undefined ? request.bankAccount : parsed.profile.bankAccount,
+              mpAccountEmail: request.mpAccountEmail !== undefined ? request.mpAccountEmail : parsed.profile.mpAccountEmail
             };
             const updatedSession = { ...parsed, profile: updatedProfile };
             window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));

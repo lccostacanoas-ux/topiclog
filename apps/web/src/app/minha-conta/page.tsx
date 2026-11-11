@@ -24,6 +24,10 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editVehicleYear, setEditVehicleYear] = useState<string>("");
   const [editCnhCategory, setEditCnhCategory] = useState<string>("B");
   const [editAcceptTerms, setEditAcceptTerms] = useState<boolean>(true);
+  const [editPixKeyType, setEditPixKeyType] = useState<string>("CPF");
+  const [editPixKey, setEditPixKey] = useState<string>("");
+  const [editBankName, setEditBankName] = useState<string>("Mercado Pago");
+  const [editMpAccountEmail, setEditMpAccountEmail] = useState<string>("");
   const [carrierValidationMsg, setCarrierValidationMsg] = useState<string | null>(null);
 
   const [publicCard, setPublicCard] = useState<PublicUserCardResponse | null>(null);
@@ -45,6 +49,10 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditVehicleYear(user.vehicleYear || "");
       setEditCnhCategory(user.cnhCategory || "B");
       setEditAcceptTerms(user.carrierTermsAccepted ?? true);
+      setEditPixKeyType(user.pixKeyType || "CPF");
+      setEditPixKey(user.pixKey || "");
+      setEditBankName(user.bankName || "Mercado Pago");
+      setEditMpAccountEmail(user.mpAccountEmail || user.email || "");
     }
   }, [user]);
 
@@ -106,7 +114,11 @@ export default function MyAccountPage(): React.JSX.Element {
         vehiclePlate: editRoles.includes("CARRIER") ? editVehiclePlate.trim().toUpperCase() : undefined,
         vehicleYear: editRoles.includes("CARRIER") ? editVehicleYear.trim() || undefined : undefined,
         cnhCategory: editRoles.includes("CARRIER") ? editCnhCategory : undefined,
-        acceptCarrierTerms: editRoles.includes("CARRIER") ? editAcceptTerms : undefined
+        acceptCarrierTerms: editRoles.includes("CARRIER") ? editAcceptTerms : undefined,
+        pixKeyType: editRoles.includes("CARRIER") ? editPixKeyType : undefined,
+        pixKey: editRoles.includes("CARRIER") ? editPixKey.trim() : undefined,
+        bankName: editRoles.includes("CARRIER") ? editBankName.trim() : undefined,
+        mpAccountEmail: editRoles.includes("CARRIER") ? editMpAccountEmail.trim() : undefined
       });
 
       if (result.ok && result.data) {
@@ -298,6 +310,32 @@ export default function MyAccountPage(): React.JSX.Element {
                   ) : (
                     <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#92400E" }}>
                       ⚠️ <strong>Nenhum veículo cadastrado.</strong> Você possui perfil de transportador ativo. Clique em <em>&ldquo;Editar Dados&rdquo;</em> para informar o modelo e a placa do seu veículo.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Seção de Dados Bancários para Recebimento de Repasses */}
+              {(user.roles.includes("CARRIER") || user.pixKey || user.bankName) && (
+                <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>💳</span>
+                    <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados Bancários para Repasse de Frete</strong>
+                  </div>
+                  {user.pixKey || user.mpAccountEmail ? (
+                    <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
+                      <p style={{ margin: "2px 0" }}><strong>Instituição / Banco:</strong> {user.bankName || "Mercado Pago"}</p>
+                      <p style={{ margin: "2px 0" }}><strong>Chave Pix:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>{user.pixKey || "Não informada"}</span> ({user.pixKeyType || "CPF"})</p>
+                      {user.mpAccountEmail && (
+                        <p style={{ margin: "2px 0" }}><strong>Conta Mercado Pago (Repasse Instantâneo):</strong> {user.mpAccountEmail}</p>
+                      )}
+                      <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#166534" }}>
+                        ✓ Conta cadastrada para receber repasses em custódia após entrega validada por PIN.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#92400E" }}>
+                      ⚠️ <strong>Chave Pix / Conta bancária não cadastrada.</strong> Para receber o repasse líquido dos seus fretes, clique em <em>&ldquo;Editar Dados&rdquo;</em> e informe sua chave Pix ou conta Mercado Pago.
                     </div>
                   )}
                 </div>
@@ -495,6 +533,80 @@ export default function MyAccountPage(): React.JSX.Element {
                       Declaro sob as penas da lei (Art. 299 CP) que sou o condutor habilitado do veículo acima, possuo CNH válida compatível com a categoria, CRLV regularizado e que o veículo não possui restrição judicial ou administrativa para circular.
                     </span>
                   </label>
+
+                  {/* Seção Bancária e Chave Pix para Recebimento */}
+                  <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed #86EFAC" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
+                      <span style={{ fontSize: "16px" }}>💳</span>
+                      <strong style={{ fontSize: "13px", color: "#14532D" }}>
+                        Dados Bancários e Chave Pix para Recebimento de Repasses
+                      </strong>
+                    </div>
+
+                    <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: "12px" }}>Banco / Instituição</label>
+                        <select
+                          className="form-input"
+                          value={editBankName}
+                          onChange={e => setEditBankName(e.target.value)}
+                          disabled={isSaving}
+                        >
+                          <option value="Mercado Pago">Mercado Pago (Recomendado)</option>
+                          <option value="Nubank">Nubank</option>
+                          <option value="Banco do Brasil">Banco do Brasil</option>
+                          <option value="Itaú">Itaú Unibanco</option>
+                          <option value="Bradesco">Bradesco</option>
+                          <option value="Caixa Econômica">Caixa Econômica</option>
+                          <option value="Banco Inter">Banco Inter</option>
+                          <option value="Santander">Santander</option>
+                          <option value="Outro">Outra Instituição Financeira</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: "12px" }}>Tipo de Chave Pix</label>
+                        <select
+                          className="form-input"
+                          value={editPixKeyType}
+                          onChange={e => setEditPixKeyType(e.target.value)}
+                          disabled={isSaving}
+                        >
+                          <option value="CPF">CPF</option>
+                          <option value="CNPJ">CNPJ</option>
+                          <option value="EMAIL">E-mail</option>
+                          <option value="TELEFONE">Telefone Celular</option>
+                          <option value="ALEATORIA">Chave Aleatória (EVP)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: "12px" }}>Sua Chave Pix</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Informe sua chave Pix para receber os fretes"
+                          value={editPixKey}
+                          onChange={e => setEditPixKey(e.target.value)}
+                          disabled={isSaving}
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: "12px" }}>E-mail Mercado Pago (opcional)</label>
+                        <input
+                          type="email"
+                          className="form-input"
+                          placeholder="seu.email@mercadopago.com"
+                          value={editMpAccountEmail}
+                          onChange={e => setEditMpAccountEmail(e.target.value)}
+                          disabled={isSaving}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 

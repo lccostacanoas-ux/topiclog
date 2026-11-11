@@ -136,17 +136,17 @@ const INITIAL_SHIPMENTS: DemoShipment[] = [
 const INITIAL_TRIPS: DemoTrip[] = [
   {
     id: "via-foz-cascavel-01",
-    carrierId: "usr-marcos-carrier-pr",
-    carrierName: "Marcos Oliveira",
+    carrierId: "usr-luiz-carrier",
+    carrierName: "Luiz Carlos Costa",
     carrierKycVerified: true,
     vehicleType: "CAR",
-    vehicleModel: "Chevrolet Onix Plus (Placa PR-FOZ1A23)",
+    vehicleModel: "Fiat Strada Endurance (Placa BRA2E19)",
     originCity: "Foz do Iguaçu",
     destinationCity: "Cascavel",
     intermediateStops: ["Santa Terezinha de Itaipu", "Medianeira"],
     departureDate: "Hoje",
     departureTime: "17:00",
-    availableCapacityGrams: 18000,
+    availableCapacityGrams: 20000,
     flexiblePickup: true,
     suggestedPricePerKgCents: 600, // R$ 6,00 tarifa da viagem
     status: "SCHEDULED",
@@ -161,12 +161,12 @@ const INITIAL_PROPOSALS: DemoProposal[] = [
     shipmentTitle: "Documentos e Peças Leves (Foz ➔ Cascavel)",
     route: "Foz do Iguaçu ➔ Cascavel",
     senderName: "Lucas Silveira",
-    carrierName: "Marcos Oliveira",
+    carrierName: "Luiz Carlos Costa",
     originalPriceCents: 500, // R$ 5,00 proposto pelo remetente
-    proposedPriceCents: 600, // R$ 6,00 proposto pelo transportador
-    platformCommissionCents: 120, // 20%
-    carrierNetCents: 480,
-    message: "Olá Lucas! Faço essa rota Foz ➔ Cascavel hoje às 17h no meu Onix. Consigo levar por R$ 6,00 com entrega direta no seu destino.",
+    proposedPriceCents: 600, // R$ 6,00 acordado pelo transportador Luiz
+    platformCommissionCents: 120, // 20% TopicLog = R$ 1,20
+    carrierNetCents: 480, // Líquido que o Luiz receberá = R$ 4,80
+    message: "Olá Lucas! Faço essa rota Foz ➔ Cascavel hoje às 17h na minha Fiat Strada. Consigo levar por R$ 6,00 com entrega direta no seu destino.",
     status: "PENDING",
     isCurrentUserCarrier: false,
     createdAt: new Date().toISOString()
@@ -177,10 +177,10 @@ const INITIAL_THREADS: DemoChatThread[] = [
   {
     id: "chat-foz-cascavel-01",
     contextTitle: "Documentos e Peças Leves (Foz ➔ Cascavel)",
-    counterpartName: "Marcos Oliveira (Transportador)",
+    counterpartName: "Luiz Carlos Costa (Transportador)",
     counterpartRole: "TRANSPORTADOR",
     counterpartKycVerified: true,
-    lastMessage: "Acabei de registrar a proposta de R$ 6,00 aqui. Basta clicar em Aceitar & Pagar com Pix!",
+    lastMessage: "Acabei de registrar a proposta de R$ 6,00 aqui. Você receberá líquido R$ 4,80 e a taxa TopicLog é R$ 1,20.",
     lastMessageTime: "15:15",
     unreadCount: 1,
     messages: [
@@ -188,21 +188,21 @@ const INITIAL_THREADS: DemoChatThread[] = [
         id: "msg-1",
         senderName: "Lucas Silveira",
         isCurrentUser: true,
-        text: "Olá Marcos! Preciso enviar um envelope com peças leves de Foz para Cascavel hoje. Sugeri R$ 5,00 no mural.",
+        text: "Olá Luiz! Preciso enviar um envelope com peças leves de Foz para Cascavel hoje. Sugeri R$ 5,00 no mural.",
         timestamp: "15:05"
       },
       {
         id: "msg-2",
-        senderName: "Marcos Oliveira",
+        senderName: "Luiz Carlos Costa",
         isCurrentUser: false,
-        text: "Boa tarde Lucas! Estou saindo de Foz do Iguaçu às 17h no meu Onix. Por R$ 6,00 eu entrego em mãos no Centro de Cascavel com código de segurança PIN.",
+        text: "Boa tarde Lucas! Estou saindo de Foz do Iguaçu às 17h na minha Strada. Por R$ 6,00 eu entrego em mãos no Centro de Cascavel com código de segurança PIN.",
         timestamp: "15:12"
       },
       {
         id: "msg-3",
-        senderName: "Marcos Oliveira",
+        senderName: "Luiz Carlos Costa",
         isCurrentUser: false,
-        text: "Acabei de registrar a proposta de R$ 6,00 aqui. Basta clicar em Aceitar & Pagar com Pix para formalizarmos a custódia!",
+        text: "Acabei de registrar a proposta de R$ 6,00 aqui. A divisão é: R$ 1,20 para a plataforma (20%) e R$ 4,80 para mim em repasse direto na minha conta Mercado Pago / Pix após a entrega!",
         timestamp: "15:15"
       }
     ]

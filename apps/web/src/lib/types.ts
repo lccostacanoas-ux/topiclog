@@ -140,6 +140,12 @@ export interface UpdateProfileRequest {
   readonly vehicleYear?: string;
   readonly cnhCategory?: string;
   readonly acceptCarrierTerms?: boolean;
+  readonly pixKeyType?: string;
+  readonly pixKey?: string;
+  readonly bankName?: string;
+  readonly bankAgency?: string;
+  readonly bankAccount?: string;
+  readonly mpAccountEmail?: string;
 }
 
 export interface PrivateUserProfileResponse {
@@ -164,6 +170,12 @@ export interface PrivateUserProfileResponse {
   readonly vehicleYear?: string;
   readonly cnhCategory?: string;
   readonly carrierTermsAccepted?: boolean;
+  readonly pixKeyType?: string;
+  readonly pixKey?: string;
+  readonly bankName?: string;
+  readonly bankAgency?: string;
+  readonly bankAccount?: string;
+  readonly mpAccountEmail?: string;
   readonly createdAtUtc: string;
   readonly updatedAtUtc: string;
 }
