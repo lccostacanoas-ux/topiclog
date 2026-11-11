@@ -146,6 +146,14 @@ export interface UpdateProfileRequest {
   readonly bankAgency?: string;
   readonly bankAccount?: string;
   readonly mpAccountEmail?: string;
+  readonly cnhDocumentName?: string;
+  readonly cnhDocumentData?: string;
+  readonly crlvDocumentName?: string;
+  readonly crlvDocumentData?: string;
+  readonly identityDocumentName?: string;
+  readonly identityDocumentData?: string;
+  readonly selfieDocumentName?: string;
+  readonly selfieDocumentData?: string;
 }
 
 export interface PrivateUserProfileResponse {
@@ -176,6 +184,14 @@ export interface PrivateUserProfileResponse {
   readonly bankAgency?: string;
   readonly bankAccount?: string;
   readonly mpAccountEmail?: string;
+  readonly cnhDocumentName?: string;
+  readonly cnhDocumentData?: string;
+  readonly crlvDocumentName?: string;
+  readonly crlvDocumentData?: string;
+  readonly identityDocumentName?: string;
+  readonly identityDocumentData?: string;
+  readonly selfieDocumentName?: string;
+  readonly selfieDocumentData?: string;
   readonly createdAtUtc: string;
   readonly updatedAtUtc: string;
 }

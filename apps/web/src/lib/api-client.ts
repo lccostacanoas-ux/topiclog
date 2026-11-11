@@ -120,6 +120,14 @@ export interface LocalMockUser {
   bankAgency?: string;
   bankAccount?: string;
   mpAccountEmail?: string;
+  cnhDocumentName?: string;
+  cnhDocumentData?: string;
+  crlvDocumentName?: string;
+  crlvDocumentData?: string;
+  identityDocumentName?: string;
+  identityDocumentData?: string;
+  selfieDocumentName?: string;
+  selfieDocumentData?: string;
   createdAt: string;
 }
 
@@ -149,6 +157,9 @@ export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
     pixKeyType: "CPF",
     pixKey: "55042724567",
     mpAccountEmail: "luizcostacanoas@gmail.com",
+    cnhDocumentName: "cnh_luiz_carlos_costa.pdf",
+    crlvDocumentName: "crlv_fiat_strada_bra2e19.pdf",
+    identityDocumentName: "rg_luiz_carlos.pdf",
     createdAt: "2026-11-10T20:00:00.000Z"
   },
   {
@@ -720,7 +731,15 @@ export async function updatePrivateProfileApi(
               bankName: request.bankName !== undefined ? request.bankName : parsed.profile.bankName,
               bankAgency: request.bankAgency !== undefined ? request.bankAgency : parsed.profile.bankAgency,
               bankAccount: request.bankAccount !== undefined ? request.bankAccount : parsed.profile.bankAccount,
-              mpAccountEmail: request.mpAccountEmail !== undefined ? request.mpAccountEmail : parsed.profile.mpAccountEmail
+              mpAccountEmail: request.mpAccountEmail !== undefined ? request.mpAccountEmail : parsed.profile.mpAccountEmail,
+              cnhDocumentName: request.cnhDocumentName !== undefined ? request.cnhDocumentName : parsed.profile.cnhDocumentName,
+              cnhDocumentData: request.cnhDocumentData !== undefined ? request.cnhDocumentData : parsed.profile.cnhDocumentData,
+              crlvDocumentName: request.crlvDocumentName !== undefined ? request.crlvDocumentName : parsed.profile.crlvDocumentName,
+              crlvDocumentData: request.crlvDocumentData !== undefined ? request.crlvDocumentData : parsed.profile.crlvDocumentData,
+              identityDocumentName: request.identityDocumentName !== undefined ? request.identityDocumentName : parsed.profile.identityDocumentName,
+              identityDocumentData: request.identityDocumentData !== undefined ? request.identityDocumentData : parsed.profile.identityDocumentData,
+              selfieDocumentName: request.selfieDocumentName !== undefined ? request.selfieDocumentName : parsed.profile.selfieDocumentName,
+              selfieDocumentData: request.selfieDocumentData !== undefined ? request.selfieDocumentData : parsed.profile.selfieDocumentData
             };
             const updatedSession = { ...parsed, profile: updatedProfile };
             window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));

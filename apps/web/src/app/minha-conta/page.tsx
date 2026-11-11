@@ -28,12 +28,35 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editPixKey, setEditPixKey] = useState<string>("");
   const [editBankName, setEditBankName] = useState<string>("Mercado Pago");
   const [editMpAccountEmail, setEditMpAccountEmail] = useState<string>("");
+  const [editCnhDocName, setEditCnhDocName] = useState<string>("");
+  const [editCnhDocData, setEditCnhDocData] = useState<string>("");
+  const [editCrlvDocName, setEditCrlvDocName] = useState<string>("");
+  const [editCrlvDocData, setEditCrlvDocData] = useState<string>("");
+  const [editIdentityDocName, setEditIdentityDocName] = useState<string>("");
+  const [editIdentityDocData, setEditIdentityDocData] = useState<string>("");
   const [carrierValidationMsg, setCarrierValidationMsg] = useState<string | null>(null);
 
   const [publicCard, setPublicCard] = useState<PublicUserCardResponse | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [problem, setProblem] = useState<ProblemDetailsDto | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setName: (name: string) => void,
+    setData: (data: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setData(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Carrega valores do perfil para edição
   useEffect(() => {
@@ -53,6 +76,12 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditPixKey(user.pixKey || "");
       setEditBankName(user.bankName || "Mercado Pago");
       setEditMpAccountEmail(user.mpAccountEmail || user.email || "");
+      setEditCnhDocName(user.cnhDocumentName || "");
+      setEditCnhDocData(user.cnhDocumentData || "");
+      setEditCrlvDocName(user.crlvDocumentName || "");
+      setEditCrlvDocData(user.crlvDocumentData || "");
+      setEditIdentityDocName(user.identityDocumentName || "");
+      setEditIdentityDocData(user.identityDocumentData || "");
     }
   }, [user]);
 
@@ -118,7 +147,13 @@ export default function MyAccountPage(): React.JSX.Element {
         pixKeyType: editRoles.includes("CARRIER") ? editPixKeyType : undefined,
         pixKey: editRoles.includes("CARRIER") ? editPixKey.trim() : undefined,
         bankName: editRoles.includes("CARRIER") ? editBankName.trim() : undefined,
-        mpAccountEmail: editRoles.includes("CARRIER") ? editMpAccountEmail.trim() : undefined
+        mpAccountEmail: editRoles.includes("CARRIER") ? editMpAccountEmail.trim() : undefined,
+        cnhDocumentName: editRoles.includes("CARRIER") ? (editCnhDocName || undefined) : undefined,
+        cnhDocumentData: editRoles.includes("CARRIER") ? (editCnhDocData || undefined) : undefined,
+        crlvDocumentName: editRoles.includes("CARRIER") ? (editCrlvDocName || undefined) : undefined,
+        crlvDocumentData: editRoles.includes("CARRIER") ? (editCrlvDocData || undefined) : undefined,
+        identityDocumentName: editIdentityDocName || undefined,
+        identityDocumentData: editIdentityDocData || undefined
       });
 
       if (result.ok && result.data) {
@@ -229,11 +264,19 @@ export default function MyAccountPage(): React.JSX.Element {
               ? "Sua identidade foi confirmada e sua conta possui selo de confiança na plataforma."
               : "Seus dados básicos estão ativos. Você pode enviar seus documentos para obter o selo de perfil verificado quando desejar."}
           </p>
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill
               label={user.kycStatus === "VERIFIED" ? "Perfil com Selo Verificado" : "Cadastro Básico Concluído"}
               tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
             />
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              className="btn btn--outline"
+              style={{ padding: "4px 12px", fontSize: "12px", borderColor: "#16A34A", color: "#16A34A", fontWeight: 700 }}
+            >
+              📸 Anexar / Ver Fotos de Documentos
+            </button>
             {user.kycStatus !== "VERIFIED" && (
               <Link href="/verificacao-kyc" className="btn btn--secondary" style={{ padding: "4px 12px", fontSize: "13px" }}>
                 Verificar Documentos
@@ -340,6 +383,39 @@ export default function MyAccountPage(): React.JSX.Element {
                   )}
                 </div>
               )}
+
+              {/* Seção de Fotos e Documentos Enviados */}
+              <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "16px" }}>📸</span>
+                  <strong style={{ fontSize: "14px", color: "#0F172A" }}>Fotos e Documentos Cadastrados</strong>
+                </div>
+                <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <span><strong>Foto CNH / RG:</strong></span>
+                    {user.cnhDocumentName || user.identityDocumentName ? (
+                      <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ Anexado ({user.cnhDocumentName || user.identityDocumentName})</span>
+                    ) : (
+                      <span style={{ color: "#D97706", fontWeight: 600 }}>⚠️ Não anexado</span>
+                    )}
+                  </div>
+                  {user.roles.includes("CARRIER") && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <span><strong>Documento CRLV (Veículo):</strong></span>
+                      {user.crlvDocumentName ? (
+                        <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ Anexado ({user.crlvDocumentName})</span>
+                      ) : (
+                        <span style={{ color: "#D97706", fontWeight: 600 }}>⚠️ Não anexado</span>
+                      )}
+                    </div>
+                  )}
+                  {(!user.cnhDocumentName && !user.crlvDocumentName) && (
+                    <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#64748B" }}>
+                      Clique em <em>&ldquo;Editar Dados&rdquo;</em> para anexar fotos ou PDFs dos seus documentos.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSaveProfile}>
@@ -533,82 +609,218 @@ export default function MyAccountPage(): React.JSX.Element {
                       Declaro sob as penas da lei (Art. 299 CP) que sou o condutor habilitado do veículo acima, possuo CNH válida compatível com a categoria, CRLV regularizado e que o veículo não possui restrição judicial ou administrativa para circular.
                     </span>
                   </label>
-
-                  {/* Seção Bancária e Chave Pix para Recebimento */}
-                  <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed #86EFAC" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
-                      <span style={{ fontSize: "16px" }}>💳</span>
-                      <strong style={{ fontSize: "13px", color: "#14532D" }}>
-                        Dados Bancários e Chave Pix para Recebimento de Repasses
-                      </strong>
-                    </div>
-
-                    <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: "12px" }}>Banco / Instituição</label>
-                        <select
-                          className="form-input"
-                          value={editBankName}
-                          onChange={e => setEditBankName(e.target.value)}
-                          disabled={isSaving}
-                        >
-                          <option value="Mercado Pago">Mercado Pago (Recomendado)</option>
-                          <option value="Nubank">Nubank</option>
-                          <option value="Banco do Brasil">Banco do Brasil</option>
-                          <option value="Itaú">Itaú Unibanco</option>
-                          <option value="Bradesco">Bradesco</option>
-                          <option value="Caixa Econômica">Caixa Econômica</option>
-                          <option value="Banco Inter">Banco Inter</option>
-                          <option value="Santander">Santander</option>
-                          <option value="Outro">Outra Instituição Financeira</option>
-                        </select>
-                      </div>
-
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: "12px" }}>Tipo de Chave Pix</label>
-                        <select
-                          className="form-input"
-                          value={editPixKeyType}
-                          onChange={e => setEditPixKeyType(e.target.value)}
-                          disabled={isSaving}
-                        >
-                          <option value="CPF">CPF</option>
-                          <option value="CNPJ">CNPJ</option>
-                          <option value="EMAIL">E-mail</option>
-                          <option value="TELEFONE">Telefone Celular</option>
-                          <option value="ALEATORIA">Chave Aleatória (EVP)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: "12px" }}>Sua Chave Pix</label>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Informe sua chave Pix para receber os fretes"
-                          value={editPixKey}
-                          onChange={e => setEditPixKey(e.target.value)}
-                          disabled={isSaving}
-                        />
-                      </div>
-
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: "12px" }}>E-mail Mercado Pago (opcional)</label>
-                        <input
-                          type="email"
-                          className="form-input"
-                          placeholder="seu.email@mercadopago.com"
-                          value={editMpAccountEmail}
-                          onChange={e => setEditMpAccountEmail(e.target.value)}
-                          disabled={isSaving}
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
+
+              {/* Seção de Fotos e Documentos (Upload Real) */}
+              <div
+                style={{
+                  backgroundColor: "#F8FAFC",
+                  border: "1px solid #CBD5E1",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  margin: "16px 0"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "18px" }}>📸</span>
+                  <strong style={{ fontSize: "14px", color: "#0F172A" }}>
+                    Envio de Fotos de Documentos (Identidade, CNH e CRLV)
+                  </strong>
+                </div>
+                <p style={{ fontSize: "12px", color: "#64748B", margin: "0 0 14px 0" }}>
+                  Anexe fotos ou PDFs dos seus documentos. Caso acesse pelo celular, você pode tirar fotos diretamente pela câmera.
+                </p>
+
+                {/* Documento 1: CNH ou RG */}
+                <div style={{ marginBottom: "14px" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                    {editRoles.includes("CARRIER") ? "Foto da CNH (Frente e Verso ou PDF) *" : "Foto do Documento de Identidade (RG ou CNH) *"}
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "8px 14px",
+                        borderRadius: "6px",
+                        backgroundColor: "#2563EB",
+                        color: "#FFFFFF",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      📷 Escolher Foto / Tirar Foto
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        style={{ display: "none" }}
+                        onChange={e => handleFileChange(e, setEditCnhDocName, setEditCnhDocData)}
+                      />
+                    </label>
+                    {editCnhDocName ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#DCFCE7", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", color: "#166534" }}>
+                        <span>✓ {editCnhDocName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setEditCnhDocName(""); setEditCnhDocData(""); }}
+                          style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700, marginLeft: "4px" }}
+                          title="Remover anexo"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: "12px", color: "#94A3B8" }}>Nenhum documento anexado</span>
+                    )}
+                  </div>
+                  {editCnhDocData && editCnhDocData.startsWith("data:image") && (
+                    <div style={{ marginTop: "8px" }}>
+                      <img src={editCnhDocData} alt="Prévia CNH" style={{ maxHeight: "80px", borderRadius: "6px", border: "1px solid #CBD5E1" }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Documento 2: CRLV (Apenas para Transportadores) */}
+                {editRoles.includes("CARRIER") && (
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                      Foto ou PDF do Documento do Veículo (CRLV Regularizado) *
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "8px 14px",
+                          borderRadius: "6px",
+                          backgroundColor: "#0D9488",
+                          color: "#FFFFFF",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        📄 Escolher CRLV / Tirar Foto
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          style={{ display: "none" }}
+                          onChange={e => handleFileChange(e, setEditCrlvDocName, setEditCrlvDocData)}
+                        />
+                      </label>
+                      {editCrlvDocName ? (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#DCFCE7", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", color: "#166534" }}>
+                          <span>✓ {editCrlvDocName}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setEditCrlvDocName(""); setEditCrlvDocData(""); }}
+                            style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700, marginLeft: "4px" }}
+                            title="Remover anexo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: "12px", color: "#94A3B8" }}>Nenhum CRLV anexado</span>
+                      )}
+                    </div>
+                    {editCrlvDocData && editCrlvDocData.startsWith("data:image") && (
+                      <div style={{ marginTop: "8px" }}>
+                        <img src={editCrlvDocData} alt="Prévia CRLV" style={{ maxHeight: "80px", borderRadius: "6px", border: "1px solid #CBD5E1" }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Seção Bancária e Chave Pix para Recebimento de Repasses */}
+              <div
+                style={{
+                  backgroundColor: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  margin: "16px 0"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "18px" }}>💳</span>
+                  <strong style={{ fontSize: "14px", color: "#1E40AF" }}>
+                    Dados Bancários e Chave Pix para Recebimento de Repasses
+                  </strong>
+                </div>
+                <p style={{ fontSize: "12px", color: "#475569", margin: "0 0 12px 0" }}>
+                  Informe seus dados bancários e chave Pix para receber os valores de fretes concluídos diretamente na sua conta.
+                </p>
+
+                <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Banco / Instituição</label>
+                    <select
+                      className="form-input"
+                      value={editBankName}
+                      onChange={e => setEditBankName(e.target.value)}
+                      disabled={isSaving}
+                    >
+                      <option value="Mercado Pago">Mercado Pago (Recomendado)</option>
+                      <option value="Nubank">Nubank</option>
+                      <option value="Banco do Brasil">Banco do Brasil</option>
+                      <option value="Itaú">Itaú Unibanco</option>
+                      <option value="Bradesco">Bradesco</option>
+                      <option value="Caixa Econômica">Caixa Econômica</option>
+                      <option value="Banco Inter">Banco Inter</option>
+                      <option value="Santander">Santander</option>
+                      <option value="Outro">Outra Instituição Financeira</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Tipo de Chave Pix</label>
+                    <select
+                      className="form-input"
+                      value={editPixKeyType}
+                      onChange={e => setEditPixKeyType(e.target.value)}
+                      disabled={isSaving}
+                    >
+                      <option value="CPF">CPF</option>
+                      <option value="CNPJ">CNPJ</option>
+                      <option value="EMAIL">E-mail</option>
+                      <option value="TELEFONE">Telefone Celular</option>
+                      <option value="ALEATORIA">Chave Aleatória (EVP)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Sua Chave Pix</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Informe sua chave Pix para receber os fretes"
+                      value={editPixKey}
+                      onChange={e => setEditPixKey(e.target.value)}
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>E-mail Mercado Pago (opcional)</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      placeholder="seu.email@mercadopago.com"
+                      value={editMpAccountEmail}
+                      onChange={e => setEditMpAccountEmail(e.target.value)}
+                      disabled={isSaving}
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
                 <button type="submit" className="btn btn--primary" disabled={isSaving}>
