@@ -21,8 +21,10 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editVehicleType, setEditVehicleType] = useState<string>("CARRO");
   const [editVehicleModel, setEditVehicleModel] = useState<string>("");
   const [editVehiclePlate, setEditVehiclePlate] = useState<string>("");
+  const [editRenavam, setEditRenavam] = useState<string>("");
   const [editVehicleYear, setEditVehicleYear] = useState<string>("");
   const [editCnhCategory, setEditCnhCategory] = useState<string>("B");
+  const [editCnhNumber, setEditCnhNumber] = useState<string>("");
   const [editAcceptTerms, setEditAcceptTerms] = useState<boolean>(true);
   const [editPixKeyType, setEditPixKeyType] = useState<string>("CPF");
   const [editPixKey, setEditPixKey] = useState<string>("");
@@ -69,8 +71,10 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditVehicleType(user.vehicleType || "CARRO");
       setEditVehicleModel(user.vehicleModel || "");
       setEditVehiclePlate(user.vehiclePlate || "");
+      setEditRenavam(user.renavam || "");
       setEditVehicleYear(user.vehicleYear || "");
       setEditCnhCategory(user.cnhCategory || "B");
+      setEditCnhNumber(user.cnhNumber || "");
       setEditAcceptTerms(user.carrierTermsAccepted ?? true);
       setEditPixKeyType(user.pixKeyType || "CPF");
       setEditPixKey(user.pixKey || "");
@@ -118,8 +122,20 @@ export default function MyAccountPage(): React.JSX.Element {
     setCarrierValidationMsg(null);
 
     if (editRoles.includes("CARRIER")) {
-      if (!editVehicleModel.trim() && !editVehiclePlate.trim() && !editPixKey.trim() && !editCnhDocName) {
-        setCarrierValidationMsg("Preencha ao menos os dados do veículo, CNH ou chave Pix para atualizar o perfil.");
+      if (!editVehiclePlate.trim()) {
+        setCarrierValidationMsg("A placa do veículo é obrigatória.");
+        return;
+      }
+      if (!editRenavam.trim()) {
+        setCarrierValidationMsg("O número do RENAVAM é obrigatório.");
+        return;
+      }
+      if (!editVehicleYear.trim()) {
+        setCarrierValidationMsg("O ano de fabricação do veículo é obrigatório para o cálculo da idade da frota.");
+        return;
+      }
+      if (!editCnhNumber.trim()) {
+        setCarrierValidationMsg("O número da CNH é obrigatório para transportadores parceiros.");
         return;
       }
     }
@@ -135,19 +151,17 @@ export default function MyAccountPage(): React.JSX.Element {
         stateUf: "MG",
         roles: editRoles,
         vehicleType: editRoles.includes("CARRIER") ? editVehicleType : undefined,
-        vehicleModel: editRoles.includes("CARRIER") ? editVehicleModel.trim() : undefined,
+        vehicleModel: editRoles.includes("CARRIER") ? (editVehicleModel.trim() || undefined) : undefined,
         vehiclePlate: editRoles.includes("CARRIER") ? editVehiclePlate.trim().toUpperCase() : undefined,
-        vehicleYear: editRoles.includes("CARRIER") ? editVehicleYear.trim() || undefined : undefined,
+        vehicleYear: editRoles.includes("CARRIER") ? editVehicleYear.trim() : undefined,
+        renavam: editRoles.includes("CARRIER") ? editRenavam.trim() : undefined,
         cnhCategory: editRoles.includes("CARRIER") ? editCnhCategory : undefined,
+        cnhNumber: editRoles.includes("CARRIER") ? editCnhNumber.trim() : undefined,
         acceptCarrierTerms: editRoles.includes("CARRIER") ? editAcceptTerms : undefined,
         pixKeyType: editRoles.includes("CARRIER") ? editPixKeyType : undefined,
         pixKey: editRoles.includes("CARRIER") ? editPixKey.trim() : undefined,
         bankName: editRoles.includes("CARRIER") ? editBankName.trim() : undefined,
         mpAccountEmail: editRoles.includes("CARRIER") ? editMpAccountEmail.trim() : undefined,
-        cnhDocumentName: editRoles.includes("CARRIER") ? (editCnhDocName || undefined) : undefined,
-        cnhDocumentData: editRoles.includes("CARRIER") ? (editCnhDocData || undefined) : undefined,
-        crlvDocumentName: editRoles.includes("CARRIER") ? (editCrlvDocName || undefined) : undefined,
-        crlvDocumentData: editRoles.includes("CARRIER") ? (editCrlvDocData || undefined) : undefined,
         identityDocumentName: editIdentityDocName || undefined,
         identityDocumentData: editIdentityDocData || undefined
       });
@@ -271,7 +285,7 @@ export default function MyAccountPage(): React.JSX.Element {
               className="btn btn--outline"
               style={{ padding: "4px 12px", fontSize: "12px", borderColor: "#16A34A", color: "#16A34A", fontWeight: 700 }}
             >
-              📸 Anexar / Ver Fotos de Documentos
+              ✏️ Atualizar Dados / CNH
             </button>
             {user.kycStatus !== "VERIFIED" && (
               <Link href="/verificacao-kyc" className="btn btn--secondary" style={{ padding: "4px 12px", fontSize: "13px" }}>
@@ -335,20 +349,21 @@ export default function MyAccountPage(): React.JSX.Element {
                     <span style={{ fontSize: "16px" }}>🚗</span>
                     <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados do Veículo e Habilitação</strong>
                   </div>
-                  {user.vehicleModel || user.vehiclePlate ? (
+                  {user.vehiclePlate || user.renavam || user.cnhNumber ? (
                     <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
                       <p style={{ margin: "2px 0" }}><strong>Tipo:</strong> {user.vehicleType === "MOTO" ? "Moto" : user.vehicleType === "VAN" ? "Van / Utilitário" : user.vehicleType === "CAMINHAO" ? "Caminhão" : user.vehicleType === "BICICLETA" ? "Bicicleta" : "Carro de Passeio"}</p>
-                      <p style={{ margin: "2px 0" }}><strong>Modelo:</strong> {user.vehicleModel || "Não especificado"}</p>
-                      <p style={{ margin: "2px 0" }}><strong>Placa:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>{user.vehiclePlate || "Não informada"}</span></p>
-                      {user.vehicleYear && <p style={{ margin: "2px 0" }}><strong>Ano:</strong> {user.vehicleYear}</p>}
-                      <p style={{ margin: "2px 0" }}><strong>Categoria CNH:</strong> {user.cnhCategory || "B"}</p>
+                      {user.vehicleModel && <p style={{ margin: "2px 0" }}><strong>Modelo:</strong> {user.vehicleModel}</p>}
+                      <p style={{ margin: "2px 0" }}><strong>Placa do Veículo:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>{user.vehiclePlate || "Não informada"}</span></p>
+                      <p style={{ margin: "2px 0" }}><strong>Número do RENAVAM:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{user.renavam || "Não informado"}</span></p>
+                      <p style={{ margin: "2px 0" }}><strong>Ano de Fabricação:</strong> {user.vehicleYear || "Não informado"}</p>
+                      <p style={{ margin: "2px 0" }}><strong>Número da CNH:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{user.cnhNumber || "Não informada"}</span> (Categoria {user.cnhCategory || "B"})</p>
                       <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#166534" }}>
-                        ✓ Declaração de responsabilidade legal (Art. 299 CP, CRLV regularizado e CNH compatível).
+                        ✓ Veículo e habilitação cadastrados em conformidade com o Art. 299 CP e regras de idade da frota.
                       </p>
                     </div>
                   ) : (
                     <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#92400E" }}>
-                      ⚠️ <strong>Nenhum veículo cadastrado.</strong> Você possui perfil de transportador ativo. Clique em <em>&ldquo;Editar Dados&rdquo;</em> para informar o modelo e a placa do seu veículo.
+                      ⚠️ <strong>Dados de veículo e CNH pendentes.</strong> Você possui perfil de transportador ativo. Clique em <em>&ldquo;Editar Dados&rdquo;</em> para informar Placa, RENAVAM, Ano de Fabricação e Número da CNH.
                     </div>
                   )}
                 </div>
@@ -393,39 +408,6 @@ export default function MyAccountPage(): React.JSX.Element {
                   )}
                 </div>
               )}
-
-              {/* Seção de Fotos e Documentos Enviados */}
-              <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "16px" }}>📸</span>
-                  <strong style={{ fontSize: "14px", color: "#0F172A" }}>Fotos e Documentos Cadastrados</strong>
-                </div>
-                <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                    <span><strong>Foto CNH / RG:</strong></span>
-                    {user.cnhDocumentName || user.identityDocumentName ? (
-                      <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ Anexado ({user.cnhDocumentName || user.identityDocumentName})</span>
-                    ) : (
-                      <span style={{ color: "#D97706", fontWeight: 600 }}>⚠️ Não anexado</span>
-                    )}
-                  </div>
-                  {user.roles.includes("CARRIER") && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <span><strong>Documento CRLV (Veículo):</strong></span>
-                      {user.crlvDocumentName ? (
-                        <span style={{ color: "#16A34A", fontWeight: 700 }}>✓ Anexado ({user.crlvDocumentName})</span>
-                      ) : (
-                        <span style={{ color: "#D97706", fontWeight: 600 }}>⚠️ Não anexado</span>
-                      )}
-                    </div>
-                  )}
-                  {(!user.cnhDocumentName && !user.crlvDocumentName) && (
-                    <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#64748B" }}>
-                      Clique em <em>&ldquo;Editar Dados&rdquo;</em> para anexar fotos ou PDFs dos seus documentos.
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
           ) : (
             <form onSubmit={handleSaveProfile}>
@@ -551,6 +533,64 @@ export default function MyAccountPage(): React.JSX.Element {
                     </div>
 
                     <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Modelo do Veículo</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Ex: Fiat Strada"
+                        value={editVehicleModel}
+                        onChange={e => setEditVehicleModel(e.target.value)}
+                        disabled={isSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Placa do Veículo *</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="Ex: ABC1D23"
+                        maxLength={8}
+                        value={editVehiclePlate}
+                        onChange={e => setEditVehiclePlate(e.target.value.toUpperCase())}
+                        disabled={isSaving}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Número do RENAVAM *</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="Ex: 00987654321"
+                        maxLength={11}
+                        value={editRenavam}
+                        onChange={e => setEditRenavam(e.target.value.replace(/\D/g, ""))}
+                        disabled={isSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Ano de Fabricação * (Cálculo da idade do veículo)</label>
+                      <input
+                        type="text"
+                        required
+                        className="form-input"
+                        placeholder="Ex: 2023"
+                        maxLength={4}
+                        value={editVehicleYear}
+                        onChange={e => setEditVehicleYear(e.target.value.replace(/\D/g, ""))}
+                        disabled={isSaving}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label" style={{ fontSize: "12px" }}>Categoria CNH *</label>
                       <select
                         className="form-input"
@@ -569,41 +609,16 @@ export default function MyAccountPage(): React.JSX.Element {
                     </div>
                   </div>
 
-                  <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: "12px" }}>Modelo do Veículo *</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Ex: Fiat Strada, Hyundai HB20"
-                        value={editVehicleModel}
-                        onChange={e => setEditVehicleModel(e.target.value)}
-                        disabled={isSaving}
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: "12px" }}>Placa do Veículo *</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="Ex: ABC1D23"
-                        maxLength={8}
-                        value={editVehiclePlate}
-                        onChange={e => setEditVehiclePlate(e.target.value.toUpperCase())}
-                        disabled={isSaving}
-                      />
-                    </div>
-                  </div>
-
                   <div className="form-group" style={{ marginBottom: "12px" }}>
-                    <label className="form-label" style={{ fontSize: "12px" }}>Ano de Fabricação (Opcional)</label>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Número da CNH * (Campo obrigatório que substitui fotos)</label>
                     <input
-                      type="number"
+                      type="text"
+                      required
                       className="form-input"
-                      placeholder="Ex: 2022"
-                      value={editVehicleYear}
-                      onChange={e => setEditVehicleYear(e.target.value)}
+                      placeholder="Ex: 04982314560"
+                      maxLength={11}
+                      value={editCnhNumber}
+                      onChange={e => setEditCnhNumber(e.target.value.replace(/\D/g, ""))}
                       disabled={isSaving}
                     />
                   </div>
@@ -616,136 +631,11 @@ export default function MyAccountPage(): React.JSX.Element {
                       style={{ marginTop: "2px" }}
                     />
                     <span>
-                      Declaro sob as penas da lei (Art. 299 CP) que sou o condutor habilitado do veículo acima, possuo CNH válida compatível com a categoria, CRLV regularizado e que o veículo não possui restrição judicial ou administrativa para circular.
+                      Declaro sob as penas da lei (Art. 299 CP) que sou o condutor habilitado do veículo acima, possuo CNH válida compatível com a categoria, RENAVAM regularizado e que o veículo não possui restrição judicial ou administrativa para circular.
                     </span>
                   </label>
                 </div>
               )}
-
-              {/* Seção de Fotos e Documentos (Upload Real) */}
-              <div
-                style={{
-                  backgroundColor: "#F8FAFC",
-                  border: "1px solid #CBD5E1",
-                  borderRadius: "10px",
-                  padding: "16px",
-                  margin: "16px 0"
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "18px" }}>📸</span>
-                  <strong style={{ fontSize: "14px", color: "#0F172A" }}>
-                    Envio de Fotos de Documentos (Identidade, CNH e CRLV)
-                  </strong>
-                </div>
-                <p style={{ fontSize: "12px", color: "#64748B", margin: "0 0 14px 0" }}>
-                  Anexe fotos ou PDFs dos seus documentos. Caso acesse pelo celular, você pode tirar fotos diretamente pela câmera.
-                </p>
-
-                {/* Documento 1: CNH ou RG */}
-                <div style={{ marginBottom: "14px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                    {editRoles.includes("CARRIER") ? "Foto da CNH (Frente e Verso ou PDF) *" : "Foto do Documento de Identidade (RG ou CNH) *"}
-                  </label>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "8px 14px",
-                        borderRadius: "6px",
-                        backgroundColor: "#2563EB",
-                        color: "#FFFFFF",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      📷 Escolher Foto / Tirar Foto
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        style={{ display: "none" }}
-                        onChange={e => handleFileChange(e, setEditCnhDocName, setEditCnhDocData)}
-                      />
-                    </label>
-                    {editCnhDocName ? (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#DCFCE7", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", color: "#166534" }}>
-                        <span>✓ {editCnhDocName}</span>
-                        <button
-                          type="button"
-                          onClick={() => { setEditCnhDocName(""); setEditCnhDocData(""); }}
-                          style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700, marginLeft: "4px" }}
-                          title="Remover anexo"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: "12px", color: "#94A3B8" }}>Nenhum documento anexado</span>
-                    )}
-                  </div>
-                  {editCnhDocData && editCnhDocData.startsWith("data:image") && (
-                    <div style={{ marginTop: "8px" }}>
-                      <img src={editCnhDocData} alt="Prévia CNH" style={{ maxHeight: "80px", borderRadius: "6px", border: "1px solid #CBD5E1" }} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Documento 2: CRLV (Apenas para Transportadores) */}
-                {editRoles.includes("CARRIER") && (
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
-                      Foto ou PDF do Documento do Veículo (CRLV Regularizado) *
-                    </label>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                      <label
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "8px 14px",
-                          borderRadius: "6px",
-                          backgroundColor: "#0D9488",
-                          color: "#FFFFFF",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer"
-                        }}
-                      >
-                        📄 Escolher CRLV / Tirar Foto
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          style={{ display: "none" }}
-                          onChange={e => handleFileChange(e, setEditCrlvDocName, setEditCrlvDocData)}
-                        />
-                      </label>
-                      {editCrlvDocName ? (
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#DCFCE7", padding: "6px 10px", borderRadius: "6px", fontSize: "12px", color: "#166534" }}>
-                          <span>✓ {editCrlvDocName}</span>
-                          <button
-                            type="button"
-                            onClick={() => { setEditCrlvDocName(""); setEditCrlvDocData(""); }}
-                            style={{ background: "none", border: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700, marginLeft: "4px" }}
-                            title="Remover anexo"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: "12px", color: "#94A3B8" }}>Nenhum CRLV anexado</span>
-                      )}
-                    </div>
-                    {editCrlvDocData && editCrlvDocData.startsWith("data:image") && (
-                      <div style={{ marginTop: "8px" }}>
-                        <img src={editCrlvDocData} alt="Prévia CRLV" style={{ maxHeight: "80px", borderRadius: "6px", border: "1px solid #CBD5E1" }} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
 
               {/* Seção Bancária e Chave Pix para Recebimento de Repasses */}
               <div

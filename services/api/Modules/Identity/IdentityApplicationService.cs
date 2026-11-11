@@ -178,7 +178,9 @@ public sealed class IdentityApplicationService
             VehicleModel = request.VehicleModel?.Trim(),
             VehiclePlate = request.VehiclePlate?.Trim().ToUpperInvariant(),
             VehicleYear = request.VehicleYear?.Trim(),
+            Renavam = request.Renavam?.Trim(),
             CnhCategory = request.CnhCategory?.Trim().ToUpperInvariant(),
+            CnhNumber = request.CnhNumber?.Trim(),
             CarrierTermsAccepted = assignedRoles.Contains(UserRole.CARRIER) && request.AcceptCarrierTerms,
             CarrierTermsAcceptedAtUtc = assignedRoles.Contains(UserRole.CARRIER) && request.AcceptCarrierTerms ? nowUtc : null,
             UpdatedAtUtc = nowUtc
@@ -599,7 +601,9 @@ public sealed class IdentityApplicationService
         if (request.VehicleModel is not null) profile.VehicleModel = request.VehicleModel;
         if (request.VehiclePlate is not null) profile.VehiclePlate = request.VehiclePlate;
         if (request.VehicleYear is not null) profile.VehicleYear = request.VehicleYear;
+        if (request.Renavam is not null) profile.Renavam = request.Renavam;
         if (request.CnhCategory is not null) profile.CnhCategory = request.CnhCategory;
+        if (request.CnhNumber is not null) profile.CnhNumber = request.CnhNumber;
         if (request.AcceptCarrierTerms.HasValue) profile.CarrierTermsAccepted = request.AcceptCarrierTerms.Value;
         if (request.PixKeyType is not null) profile.PixKeyType = request.PixKeyType;
         if (request.PixKey is not null) profile.PixKey = request.PixKey;
@@ -719,7 +723,9 @@ public sealed class IdentityApplicationService
             VehicleModel: profile.VehicleModel,
             VehiclePlate: profile.VehiclePlate,
             VehicleYear: profile.VehicleYear,
+            Renavam: profile.Renavam,
             CnhCategory: profile.CnhCategory,
+            CnhNumber: profile.CnhNumber,
             CarrierTermsAccepted: profile.CarrierTermsAccepted,
             PixKeyType: profile.PixKeyType,
             PixKey: profile.PixKey,

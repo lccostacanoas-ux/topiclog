@@ -92,7 +92,11 @@ public sealed class UserProfileEntity
 
     public string? VehicleYear { get; set; }
 
+    public string? Renavam { get; set; }
+
     public string? CnhCategory { get; set; }
+
+    public string? CnhNumber { get; set; }
 
     public bool CarrierTermsAccepted { get; set; }
 
@@ -181,7 +185,9 @@ public sealed record RegisterUserRequest(
     string? VehicleModel = null,
     string? VehiclePlate = null,
     string? VehicleYear = null,
+    string? Renavam = null,
     string? CnhCategory = null,
+    string? CnhNumber = null,
     bool AcceptCarrierTerms = false);
 
 public sealed record LoginRequest(
@@ -205,7 +211,9 @@ public sealed record UpdateProfileRequest(
     string? VehicleModel = null,
     string? VehiclePlate = null,
     string? VehicleYear = null,
+    string? Renavam = null,
     string? CnhCategory = null,
+    string? CnhNumber = null,
     bool? AcceptCarrierTerms = null,
     string? PixKeyType = null,
     string? PixKey = null,
@@ -250,7 +258,9 @@ public sealed record PrivateUserProfileResponse(
     string? VehicleModel = null,
     string? VehiclePlate = null,
     string? VehicleYear = null,
+    string? Renavam = null,
     string? CnhCategory = null,
+    string? CnhNumber = null,
     bool CarrierTermsAccepted = false,
     string? PixKeyType = null,
     string? PixKey = null,

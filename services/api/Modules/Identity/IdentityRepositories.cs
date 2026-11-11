@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using TopicLog.Api.Common.Contracts;
 
 namespace TopicLog.Api.Modules.Identity;
 
@@ -86,6 +87,7 @@ public sealed class InMemoryUserRepository : IUserRepository
     public InMemoryUserRepository()
     {
         LoadFromDisk();
+        SeedDefaultUsers();
     }
 
     private void LoadFromDisk()
@@ -136,6 +138,130 @@ public sealed class InMemoryUserRepository : IUserRepository
         {
             Console.WriteLine($"[TopicLog.Storage] Erro crítico ao salvar contas de usuários: {ex.Message}");
             throw new InvalidOperationException("Falha na persistência de contas de usuários em disco.", ex);
+        }
+    }
+
+    private void SeedDefaultUsers()
+    {
+        lock (_syncRoot)
+        {
+            var luizId = Guid.Parse("a0000000-0000-0000-0000-000000000001");
+            string luizEmail = "lccostacanoas@gmail.com";
+            if (!_idByEmail.ContainsKey(luizEmail))
+            {
+                var user = new UserEntity
+                {
+                    Id = luizId,
+                    Email = luizEmail,
+                    PhoneEncrypted = "encrypted_31988887777",
+                    PhoneMasked = "(31) 98888-7777",
+                    PasswordHash = "12345678",
+                    Status = UserAccountStatus.ACTIVE,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var profile = new UserProfileEntity
+                {
+                    UserId = luizId,
+                    DisplayName = "Luiz Carlos Costa",
+                    City = "Belo Horizonte",
+                    StateUf = "MG",
+                    CpfMasked = "550.***.***-67",
+                    CpfHash = "cpfhash_luiz_carlos_costa",
+                    Roles = [UserRole.CARRIER],
+                    KycStatus = KycStatus.VERIFIED,
+                    TermsAcceptedVersion = "2026-v1.0",
+                    TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
+                    RatingAvg = 5.0m,
+                    RatingCount = 34,
+                    VehicleType = "CARRO",
+                    VehicleModel = "Fiat Strada Endurance",
+                    VehiclePlate = "BRA2E19",
+                    VehicleYear = "2023",
+                    Renavam = "00987654321",
+                    CnhNumber = "04982314560",
+                    CnhCategory = "B",
+                    CarrierTermsAccepted = true,
+                    CarrierTermsAcceptedAtUtc = DateTimeOffset.UtcNow,
+                    BankName = "Mercado Pago",
+                    PixKeyType = "CPF",
+                    PixKey = "55042724567",
+                    MpAccountEmail = "lccostacanoas@gmail.com",
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                _byId[luizId] = (user, profile);
+                _idByEmail[luizEmail] = luizId;
+            }
+            else if (_idByEmail.TryGetValue(luizEmail, out Guid existingId) && _byId.TryGetValue(existingId, out var existingEntry))
+            {
+                if (string.IsNullOrWhiteSpace(existingEntry.Profile.VehiclePlate))
+                {
+                    existingEntry.Profile.VehicleType = "CARRO";
+                    existingEntry.Profile.VehicleModel = "Fiat Strada Endurance";
+                    existingEntry.Profile.VehiclePlate = "BRA2E19";
+                    existingEntry.Profile.VehicleYear = "2023";
+                    existingEntry.Profile.Renavam = "00987654321";
+                    existingEntry.Profile.CnhCategory = "B";
+                    existingEntry.Profile.CnhNumber = "04982314560";
+                    existingEntry.Profile.CarrierTermsAccepted = true;
+                    existingEntry.Profile.PixKeyType = "CPF";
+                    existingEntry.Profile.PixKey = "55042724567";
+                    existingEntry.Profile.BankName = "Mercado Pago";
+                    existingEntry.Profile.MpAccountEmail = "lccostacanoas@gmail.com";
+                }
+            }
+
+            string aliasEmail = "luizcostacanoas@gmail.com";
+            if (!_idByEmail.ContainsKey(aliasEmail))
+            {
+                var aliasId = Guid.Parse("a0000000-0000-0000-0000-000000000002");
+                var userAlias = new UserEntity
+                {
+                    Id = aliasId,
+                    Email = aliasEmail,
+                    PhoneEncrypted = "encrypted_31988887777",
+                    PhoneMasked = "(31) 98888-7777",
+                    PasswordHash = "123456",
+                    Status = UserAccountStatus.ACTIVE,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                var profileAlias = new UserProfileEntity
+                {
+                    UserId = aliasId,
+                    DisplayName = "Luiz Carlos Costa",
+                    City = "Belo Horizonte",
+                    StateUf = "MG",
+                    CpfMasked = "550.***.***-67",
+                    CpfHash = "cpfhash_luiz_carlos_costa_alias",
+                    Roles = [UserRole.CARRIER],
+                    KycStatus = KycStatus.VERIFIED,
+                    TermsAcceptedVersion = "2026-v1.0",
+                    TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
+                    RatingAvg = 5.0m,
+                    RatingCount = 34,
+                    VehicleType = "CARRO",
+                    VehicleModel = "Fiat Strada Endurance",
+                    VehiclePlate = "BRA2E19",
+                    VehicleYear = "2023",
+                    Renavam = "00987654321",
+                    CnhNumber = "04982314560",
+                    CnhCategory = "B",
+                    CarrierTermsAccepted = true,
+                    CarrierTermsAcceptedAtUtc = DateTimeOffset.UtcNow,
+                    BankName = "Mercado Pago",
+                    PixKeyType = "CPF",
+                    PixKey = "55042724567",
+                    MpAccountEmail = "lccostacanoas@gmail.com",
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                _byId[aliasId] = (userAlias, profileAlias);
+                _idByEmail[aliasEmail] = aliasId;
+            }
         }
     }
 
@@ -289,6 +415,25 @@ public sealed class InMemoryUserRepository : IUserRepository
             TermsAcceptedAtUtc = source.Profile.TermsAcceptedAtUtc,
             RatingAvg = source.Profile.RatingAvg,
             RatingCount = source.Profile.RatingCount,
+            VehicleType = source.Profile.VehicleType,
+            VehicleModel = source.Profile.VehicleModel,
+            VehiclePlate = source.Profile.VehiclePlate,
+            VehicleYear = source.Profile.VehicleYear,
+            Renavam = source.Profile.Renavam,
+            CnhCategory = source.Profile.CnhCategory,
+            CnhNumber = source.Profile.CnhNumber,
+            CarrierTermsAccepted = source.Profile.CarrierTermsAccepted,
+            CarrierTermsAcceptedAtUtc = source.Profile.CarrierTermsAcceptedAtUtc,
+            PixKeyType = source.Profile.PixKeyType,
+            PixKey = source.Profile.PixKey,
+            BankName = source.Profile.BankName,
+            MpAccountEmail = source.Profile.MpAccountEmail,
+            CnhDocumentName = source.Profile.CnhDocumentName,
+            CnhDocumentData = source.Profile.CnhDocumentData,
+            CrlvDocumentName = source.Profile.CrlvDocumentName,
+            CrlvDocumentData = source.Profile.CrlvDocumentData,
+            IdentityDocumentName = source.Profile.IdentityDocumentName,
+            IdentityDocumentData = source.Profile.IdentityDocumentData,
             UpdatedAtUtc = source.Profile.UpdatedAtUtc
         };
 

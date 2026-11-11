@@ -112,7 +112,9 @@ export interface LocalMockUser {
   vehicleModel?: string;
   vehiclePlate?: string;
   vehicleYear?: string;
+  renavam?: string;
   cnhCategory?: string;
+  cnhNumber?: string;
   carrierTermsAccepted?: boolean;
   pixKeyType?: string;
   pixKey?: string;
@@ -151,7 +153,9 @@ export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
     vehicleModel: "Fiat Strada Endurance",
     vehiclePlate: "BRA2E19",
     vehicleYear: "2023",
+    renavam: "00987654321",
     cnhCategory: "B",
+    cnhNumber: "04982314560",
     carrierTermsAccepted: true,
     bankName: "Mercado Pago",
     pixKeyType: "CPF",
@@ -179,7 +183,9 @@ export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
     vehicleModel: "Fiat Strada Endurance",
     vehiclePlate: "BRA2E19",
     vehicleYear: "2023",
+    renavam: "00987654321",
     cnhCategory: "B",
+    cnhNumber: "04982314560",
     carrierTermsAccepted: true,
     bankName: "Mercado Pago",
     pixKeyType: "CPF",
@@ -293,7 +299,9 @@ export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileRespo
     vehicleModel: u.vehicleModel,
     vehiclePlate: u.vehiclePlate,
     vehicleYear: u.vehicleYear,
+    renavam: u.renavam,
     cnhCategory: u.cnhCategory,
+    cnhNumber: u.cnhNumber,
     carrierTermsAccepted: u.carrierTermsAccepted,
     pixKeyType: u.pixKeyType,
     pixKey: u.pixKey,
@@ -618,17 +626,17 @@ export async function loginUserApi(
     return result;
   }
 
-  // Fallback para Netlify estático ou ausência de backend ativo (404, status 0 ou 405)
-  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+  // Fallback para Netlify estático ou ausência de backend ativo (404, status 0 ou 405) ou 401 para mock user
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405 || result.status === 401) {
     if (typeof window !== "undefined") {
       const users = getLocalMockUsers();
       const loginTerm = request.email.trim().toLowerCase();
       const isLuizAlias = loginTerm === "lccostacanoas@gmail.com" || loginTerm === "luizcostacanoas@gmail.com";
       const matched = users.find(
         (u) =>
-          u.email.toLowerCase() === loginTerm ||
-          u.displayName.toLowerCase() === loginTerm ||
-          (isLuizAlias && (u.email.toLowerCase() === "luizcostacanoas@gmail.com" || u.email.toLowerCase() === "lccostacanoas@gmail.com"))
+          (u.email && u.email.toLowerCase() === loginTerm) ||
+          (u.displayName && u.displayName.toLowerCase() === loginTerm) ||
+          (isLuizAlias && (u.email?.toLowerCase() === "luizcostacanoas@gmail.com" || u.email?.toLowerCase() === "lccostacanoas@gmail.com"))
       );
 
       const isPasswordValid = Boolean(
@@ -774,7 +782,9 @@ export async function updatePrivateProfileApi(
             vehicleModel: request.vehicleModel !== undefined ? request.vehicleModel : parsed.profile.vehicleModel,
             vehiclePlate: request.vehiclePlate !== undefined ? request.vehiclePlate : parsed.profile.vehiclePlate,
             vehicleYear: request.vehicleYear !== undefined ? request.vehicleYear : parsed.profile.vehicleYear,
+            renavam: request.renavam !== undefined ? request.renavam : parsed.profile.renavam,
             cnhCategory: request.cnhCategory !== undefined ? request.cnhCategory : parsed.profile.cnhCategory,
+            cnhNumber: request.cnhNumber !== undefined ? request.cnhNumber : parsed.profile.cnhNumber,
             carrierTermsAccepted: request.acceptCarrierTerms !== undefined ? request.acceptCarrierTerms : parsed.profile.carrierTermsAccepted,
             pixKeyType: request.pixKeyType !== undefined ? request.pixKeyType : parsed.profile.pixKeyType,
             pixKey: request.pixKey !== undefined ? request.pixKey : parsed.profile.pixKey,
@@ -809,7 +819,9 @@ export async function updatePrivateProfileApi(
               vehicleModel: prof.vehicleModel,
               vehiclePlate: prof.vehiclePlate,
               vehicleYear: prof.vehicleYear,
+              renavam: prof.renavam,
               cnhCategory: prof.cnhCategory,
+              cnhNumber: prof.cnhNumber,
               carrierTermsAccepted: prof.carrierTermsAccepted,
               pixKeyType: prof.pixKeyType,
               pixKey: prof.pixKey,

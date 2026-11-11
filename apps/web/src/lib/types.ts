@@ -110,7 +110,9 @@ export interface RegisterUserRequest {
   readonly vehicleModel?: string;
   readonly vehiclePlate?: string;
   readonly vehicleYear?: string;
+  readonly renavam?: string;
   readonly cnhCategory?: string;
+  readonly cnhNumber?: string;
   readonly acceptCarrierTerms?: boolean;
 }
 
@@ -138,7 +140,9 @@ export interface UpdateProfileRequest {
   readonly vehicleModel?: string;
   readonly vehiclePlate?: string;
   readonly vehicleYear?: string;
+  readonly renavam?: string;
   readonly cnhCategory?: string;
+  readonly cnhNumber?: string;
   readonly acceptCarrierTerms?: boolean;
   readonly pixKeyType?: string;
   readonly pixKey?: string;
@@ -176,7 +180,9 @@ export interface PrivateUserProfileResponse {
   readonly vehicleModel?: string;
   readonly vehiclePlate?: string;
   readonly vehicleYear?: string;
+  readonly renavam?: string;
   readonly cnhCategory?: string;
+  readonly cnhNumber?: string;
   readonly carrierTermsAccepted?: boolean;
   readonly pixKeyType?: string;
   readonly pixKey?: string;
