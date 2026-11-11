@@ -301,6 +301,12 @@ export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileRespo
     bankAgency: u.bankAgency,
     bankAccount: u.bankAccount,
     mpAccountEmail: u.mpAccountEmail,
+    cnhDocumentName: u.cnhDocumentName,
+    cnhDocumentData: u.cnhDocumentData,
+    crlvDocumentName: u.crlvDocumentName,
+    crlvDocumentData: u.crlvDocumentData,
+    identityDocumentName: u.identityDocumentName,
+    identityDocumentData: u.identityDocumentData,
     createdAtUtc: u.createdAt,
     updatedAtUtc: u.createdAt
   };
@@ -705,6 +711,24 @@ export async function getPrivateProfileApi(
   token: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
+  if (typeof window !== "undefined") {
+    try {
+      const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
+      if (rawAuth) {
+        const parsed = JSON.parse(rawAuth);
+        if (parsed?.profile && (parsed.accessToken === token || (token && token.startsWith("local_jwt_")))) {
+          return {
+            ok: true,
+            status: 200,
+            data: parsed.profile,
+            correlationId: customCorrelationId || `local-${Date.now()}`,
+            isFallback: true
+          };
+        }
+      }
+    } catch {}
+  }
+
   if (token && token.startsWith("local_jwt_") && typeof window !== "undefined") {
     const parts = token.split("_");
     const userId = parts.slice(2, -1).join("_");
@@ -733,6 +757,77 @@ export async function updatePrivateProfileApi(
   request: UpdateProfileRequest,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
+  // Atualiza imediatamente a sessão local e o mock user para consistência instantânea no frontend
+  let localUpdatedProfile: PrivateUserProfileResponse | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
+      if (rawAuth) {
+        const parsed = JSON.parse(rawAuth);
+        if (parsed?.profile) {
+          localUpdatedProfile = {
+            ...parsed.profile,
+            displayName: request.displayName || parsed.profile.displayName,
+            city: request.city || parsed.profile.city,
+            roles: request.roles ? [...request.roles] : parsed.profile.roles,
+            vehicleType: request.vehicleType !== undefined ? request.vehicleType : parsed.profile.vehicleType,
+            vehicleModel: request.vehicleModel !== undefined ? request.vehicleModel : parsed.profile.vehicleModel,
+            vehiclePlate: request.vehiclePlate !== undefined ? request.vehiclePlate : parsed.profile.vehiclePlate,
+            vehicleYear: request.vehicleYear !== undefined ? request.vehicleYear : parsed.profile.vehicleYear,
+            cnhCategory: request.cnhCategory !== undefined ? request.cnhCategory : parsed.profile.cnhCategory,
+            carrierTermsAccepted: request.acceptCarrierTerms !== undefined ? request.acceptCarrierTerms : parsed.profile.carrierTermsAccepted,
+            pixKeyType: request.pixKeyType !== undefined ? request.pixKeyType : parsed.profile.pixKeyType,
+            pixKey: request.pixKey !== undefined ? request.pixKey : parsed.profile.pixKey,
+            bankName: request.bankName !== undefined ? request.bankName : parsed.profile.bankName,
+            bankAgency: request.bankAgency !== undefined ? request.bankAgency : parsed.profile.bankAgency,
+            bankAccount: request.bankAccount !== undefined ? request.bankAccount : parsed.profile.bankAccount,
+            mpAccountEmail: request.mpAccountEmail !== undefined ? request.mpAccountEmail : parsed.profile.mpAccountEmail,
+            cnhDocumentName: request.cnhDocumentName !== undefined ? request.cnhDocumentName : parsed.profile.cnhDocumentName,
+            cnhDocumentData: request.cnhDocumentData !== undefined ? request.cnhDocumentData : parsed.profile.cnhDocumentData,
+            crlvDocumentName: request.crlvDocumentName !== undefined ? request.crlvDocumentName : parsed.profile.crlvDocumentName,
+            crlvDocumentData: request.crlvDocumentData !== undefined ? request.crlvDocumentData : parsed.profile.crlvDocumentData,
+            identityDocumentName: request.identityDocumentName !== undefined ? request.identityDocumentName : parsed.profile.identityDocumentName,
+            identityDocumentData: request.identityDocumentData !== undefined ? request.identityDocumentData : parsed.profile.identityDocumentData,
+            selfieDocumentName: request.selfieDocumentName !== undefined ? request.selfieDocumentName : parsed.profile.selfieDocumentName,
+            selfieDocumentData: request.selfieDocumentData !== undefined ? request.selfieDocumentData : parsed.profile.selfieDocumentData
+          };
+          const updatedSession = { ...parsed, profile: localUpdatedProfile };
+          window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
+          window.localStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
+
+          // Atualiza também na lista de usuários locais persistidos
+          const users = getLocalMockUsers();
+          const targetUser = users.find(u => u.id === parsed.profile.userId || u.email.toLowerCase() === parsed.profile.email.toLowerCase());
+          const prof = localUpdatedProfile;
+          if (targetUser && prof) {
+            saveLocalMockUser({
+              ...targetUser,
+              displayName: prof.displayName,
+              city: prof.city,
+              roles: prof.roles.filter((r): r is "SENDER" | "CARRIER" => r === "SENDER" || r === "CARRIER"),
+              vehicleType: prof.vehicleType,
+              vehicleModel: prof.vehicleModel,
+              vehiclePlate: prof.vehiclePlate,
+              vehicleYear: prof.vehicleYear,
+              cnhCategory: prof.cnhCategory,
+              carrierTermsAccepted: prof.carrierTermsAccepted,
+              pixKeyType: prof.pixKeyType,
+              pixKey: prof.pixKey,
+              bankName: prof.bankName,
+              mpAccountEmail: prof.mpAccountEmail,
+              cnhDocumentName: prof.cnhDocumentName,
+              cnhDocumentData: prof.cnhDocumentData,
+              crlvDocumentName: prof.crlvDocumentName,
+              crlvDocumentData: prof.crlvDocumentData,
+              identityDocumentName: prof.identityDocumentName,
+              identityDocumentData: prof.identityDocumentData
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
   const result = await apiRequest<PrivateUserProfileResponse>("/api/v1/me", {
     method: "PATCH",
     token,
@@ -741,57 +836,26 @@ export async function updatePrivateProfileApi(
   });
 
   if (result.ok && result.data) {
+    if (localUpdatedProfile) {
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          ...localUpdatedProfile
+        }
+      };
+    }
     return result;
   }
 
-  // Fallback resiliente para ambiente sem backend dedicado (Vercel)
-  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
-    if (typeof window !== "undefined") {
-      try {
-        const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
-        if (rawAuth) {
-          const parsed = JSON.parse(rawAuth);
-          if (parsed?.profile) {
-            const updatedProfile: PrivateUserProfileResponse = {
-              ...parsed.profile,
-              displayName: request.displayName || parsed.profile.displayName,
-              city: request.city || parsed.profile.city,
-              roles: request.roles ? [...request.roles] : parsed.profile.roles,
-              vehicleType: request.vehicleType !== undefined ? request.vehicleType : parsed.profile.vehicleType,
-              vehicleModel: request.vehicleModel !== undefined ? request.vehicleModel : parsed.profile.vehicleModel,
-              vehiclePlate: request.vehiclePlate !== undefined ? request.vehiclePlate : parsed.profile.vehiclePlate,
-              vehicleYear: request.vehicleYear !== undefined ? request.vehicleYear : parsed.profile.vehicleYear,
-              cnhCategory: request.cnhCategory !== undefined ? request.cnhCategory : parsed.profile.cnhCategory,
-              carrierTermsAccepted: request.acceptCarrierTerms !== undefined ? request.acceptCarrierTerms : parsed.profile.carrierTermsAccepted,
-              pixKeyType: request.pixKeyType !== undefined ? request.pixKeyType : parsed.profile.pixKeyType,
-              pixKey: request.pixKey !== undefined ? request.pixKey : parsed.profile.pixKey,
-              bankName: request.bankName !== undefined ? request.bankName : parsed.profile.bankName,
-              bankAgency: request.bankAgency !== undefined ? request.bankAgency : parsed.profile.bankAgency,
-              bankAccount: request.bankAccount !== undefined ? request.bankAccount : parsed.profile.bankAccount,
-              mpAccountEmail: request.mpAccountEmail !== undefined ? request.mpAccountEmail : parsed.profile.mpAccountEmail,
-              cnhDocumentName: request.cnhDocumentName !== undefined ? request.cnhDocumentName : parsed.profile.cnhDocumentName,
-              cnhDocumentData: request.cnhDocumentData !== undefined ? request.cnhDocumentData : parsed.profile.cnhDocumentData,
-              crlvDocumentName: request.crlvDocumentName !== undefined ? request.crlvDocumentName : parsed.profile.crlvDocumentName,
-              crlvDocumentData: request.crlvDocumentData !== undefined ? request.crlvDocumentData : parsed.profile.crlvDocumentData,
-              identityDocumentName: request.identityDocumentName !== undefined ? request.identityDocumentName : parsed.profile.identityDocumentName,
-              identityDocumentData: request.identityDocumentData !== undefined ? request.identityDocumentData : parsed.profile.identityDocumentData,
-              selfieDocumentName: request.selfieDocumentName !== undefined ? request.selfieDocumentName : parsed.profile.selfieDocumentName,
-              selfieDocumentData: request.selfieDocumentData !== undefined ? request.selfieDocumentData : parsed.profile.selfieDocumentData
-            };
-            const updatedSession = { ...parsed, profile: updatedProfile };
-            window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
-            window.localStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
-            return {
-              ok: true,
-              status: 200,
-              data: updatedProfile,
-              correlationId: customCorrelationId || `local-${Date.now()}`,
-              isFallback: true
-            };
-          }
-        }
-      } catch {}
-    }
+  if (localUpdatedProfile) {
+    return {
+      ok: true,
+      status: 200,
+      data: localUpdatedProfile,
+      correlationId: customCorrelationId || `local-${Date.now()}`,
+      isFallback: true
+    };
   }
 
   return result;

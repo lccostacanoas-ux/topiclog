@@ -98,6 +98,26 @@ public sealed class UserProfileEntity
 
     public DateTimeOffset? CarrierTermsAcceptedAtUtc { get; set; }
 
+    public string? PixKeyType { get; set; }
+
+    public string? PixKey { get; set; }
+
+    public string? BankName { get; set; } = "Mercado Pago";
+
+    public string? MpAccountEmail { get; set; }
+
+    public string? CnhDocumentName { get; set; }
+
+    public string? CnhDocumentData { get; set; }
+
+    public string? CrlvDocumentName { get; set; }
+
+    public string? CrlvDocumentData { get; set; }
+
+    public string? IdentityDocumentName { get; set; }
+
+    public string? IdentityDocumentData { get; set; }
+
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -180,7 +200,23 @@ public sealed record UpdateProfileRequest(
     string? Cpf,
     string? City,
     string? StateUf,
-    IReadOnlyList<string>? Roles);
+    IReadOnlyList<string>? Roles,
+    string? VehicleType = null,
+    string? VehicleModel = null,
+    string? VehiclePlate = null,
+    string? VehicleYear = null,
+    string? CnhCategory = null,
+    bool? AcceptCarrierTerms = null,
+    string? PixKeyType = null,
+    string? PixKey = null,
+    string? BankName = null,
+    string? MpAccountEmail = null,
+    string? CnhDocumentName = null,
+    string? CnhDocumentData = null,
+    string? CrlvDocumentName = null,
+    string? CrlvDocumentData = null,
+    string? IdentityDocumentName = null,
+    string? IdentityDocumentData = null);
 
 public sealed record AuthSessionResponse(
     string AccessToken,
@@ -209,7 +245,23 @@ public sealed record PrivateUserProfileResponse(
     decimal RatingAvg,
     int RatingCount,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    string? VehicleType = null,
+    string? VehicleModel = null,
+    string? VehiclePlate = null,
+    string? VehicleYear = null,
+    string? CnhCategory = null,
+    bool CarrierTermsAccepted = false,
+    string? PixKeyType = null,
+    string? PixKey = null,
+    string? BankName = null,
+    string? MpAccountEmail = null,
+    string? CnhDocumentName = null,
+    string? CnhDocumentData = null,
+    string? crlvDocumentName = null,
+    string? crlvDocumentData = null,
+    string? IdentityDocumentName = null,
+    string? IdentityDocumentData = null);
 
 /// <summary>
 /// Cartão público mínimo exibido para contrapartes na plataforma (LGPD / Minimização).

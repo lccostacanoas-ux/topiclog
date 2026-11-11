@@ -118,12 +118,8 @@ export default function MyAccountPage(): React.JSX.Element {
     setCarrierValidationMsg(null);
 
     if (editRoles.includes("CARRIER")) {
-      if (!editVehicleModel.trim() || !editVehiclePlate.trim()) {
-        setCarrierValidationMsg("Para atuar como Transportador, o Modelo e a Placa do veículo são obrigatórios.");
-        return;
-      }
-      if (!editAcceptTerms) {
-        setCarrierValidationMsg("É necessário aceitar os termos de responsabilidade sobre o veículo e condução.");
+      if (!editVehicleModel.trim() && !editVehiclePlate.trim() && !editPixKey.trim() && !editCnhDocName) {
+        setCarrierValidationMsg("Preencha ao menos os dados do veículo, CNH ou chave Pix para atualizar o perfil.");
         return;
       }
     }
@@ -824,7 +820,7 @@ export default function MyAccountPage(): React.JSX.Element {
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Sua Chave Pix (Mercado Pago) *</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Sua Chave Pix (Mercado Pago)</label>
                     <input
                       type="text"
                       className="form-input"
@@ -832,12 +828,11 @@ export default function MyAccountPage(): React.JSX.Element {
                       value={editPixKey}
                       onChange={e => setEditPixKey(e.target.value)}
                       disabled={isSaving}
-                      required
                     />
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>E-mail da Conta Mercado Pago *</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>E-mail da Conta Mercado Pago</label>
                     <input
                       type="email"
                       className="form-input"
@@ -845,11 +840,22 @@ export default function MyAccountPage(): React.JSX.Element {
                       value={editMpAccountEmail}
                       onChange={e => setEditMpAccountEmail(e.target.value)}
                       disabled={isSaving}
-                      required
                     />
                   </div>
                 </div>
               </div>
+
+              {carrierValidationMsg && (
+                <div style={{ backgroundColor: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", padding: "10px 14px", color: "#991B1B", fontSize: "13px", fontWeight: 600, marginTop: "12px" }}>
+                  ⚠️ {carrierValidationMsg}
+                </div>
+              )}
+
+              {problem && (
+                <div style={{ backgroundColor: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", padding: "10px 14px", color: "#991B1B", fontSize: "13px", fontWeight: 600, marginTop: "12px" }}>
+                  ⚠️ {problem.detail || problem.title || "Erro ao atualizar dados."}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
                 <button type="submit" className="btn btn--primary" disabled={isSaving}>

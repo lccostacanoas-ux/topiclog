@@ -595,6 +595,23 @@ public sealed class IdentityApplicationService
             }
         }
 
+        if (request.VehicleType is not null) profile.VehicleType = request.VehicleType;
+        if (request.VehicleModel is not null) profile.VehicleModel = request.VehicleModel;
+        if (request.VehiclePlate is not null) profile.VehiclePlate = request.VehiclePlate;
+        if (request.VehicleYear is not null) profile.VehicleYear = request.VehicleYear;
+        if (request.CnhCategory is not null) profile.CnhCategory = request.CnhCategory;
+        if (request.AcceptCarrierTerms.HasValue) profile.CarrierTermsAccepted = request.AcceptCarrierTerms.Value;
+        if (request.PixKeyType is not null) profile.PixKeyType = request.PixKeyType;
+        if (request.PixKey is not null) profile.PixKey = request.PixKey;
+        if (request.BankName is not null) profile.BankName = request.BankName;
+        if (request.MpAccountEmail is not null) profile.MpAccountEmail = request.MpAccountEmail;
+        if (request.CnhDocumentName is not null) profile.CnhDocumentName = request.CnhDocumentName;
+        if (request.CnhDocumentData is not null) profile.CnhDocumentData = request.CnhDocumentData;
+        if (request.CrlvDocumentName is not null) profile.CrlvDocumentName = request.CrlvDocumentName;
+        if (request.CrlvDocumentData is not null) profile.CrlvDocumentData = request.CrlvDocumentData;
+        if (request.IdentityDocumentName is not null) profile.IdentityDocumentName = request.IdentityDocumentName;
+        if (request.IdentityDocumentData is not null) profile.IdentityDocumentData = request.IdentityDocumentData;
+
         user.UpdatedAtUtc = nowUtc;
         profile.UpdatedAtUtc = nowUtc;
         await _userRepository.UpdateAsync(user, profile, cancellationToken).ConfigureAwait(false);
@@ -697,7 +714,23 @@ public sealed class IdentityApplicationService
             RatingAvg: profile.RatingAvg,
             RatingCount: profile.RatingCount,
             CreatedAtUtc: user.CreatedAtUtc,
-            UpdatedAtUtc: profile.UpdatedAtUtc);
+            UpdatedAtUtc: profile.UpdatedAtUtc,
+            VehicleType: profile.VehicleType,
+            VehicleModel: profile.VehicleModel,
+            VehiclePlate: profile.VehiclePlate,
+            VehicleYear: profile.VehicleYear,
+            CnhCategory: profile.CnhCategory,
+            CarrierTermsAccepted: profile.CarrierTermsAccepted,
+            PixKeyType: profile.PixKeyType,
+            PixKey: profile.PixKey,
+            BankName: profile.BankName,
+            MpAccountEmail: profile.MpAccountEmail,
+            CnhDocumentName: profile.CnhDocumentName,
+            CnhDocumentData: profile.CnhDocumentData,
+            crlvDocumentName: profile.CrlvDocumentName,
+            crlvDocumentData: profile.CrlvDocumentData,
+            IdentityDocumentName: profile.IdentityDocumentName,
+            IdentityDocumentData: profile.IdentityDocumentData);
     }
 
     private static string NormalizeAndValidateEmail(string email)
