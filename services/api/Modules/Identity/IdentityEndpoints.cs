@@ -99,6 +99,23 @@ public static class IdentityEndpoints
             return Results.NoContent();
         });
 
+        app.MapPost("/api/v1/auth/change-password", async (
+            ChangePasswordRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IdentityApplicationService identityService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            await identityService.ChangePasswordAsync(
+                actor,
+                request,
+                httpContext.TraceIdentifier,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.NoContent();
+        });
+
         // Endpoint restrito exclusivamente ao harness de testes automatizados (P0 - Auditoria 29/10/2026)
         // Requer flag explícita EnableSandboxAuthEndpoints=true, ambiente Testing, ausência de proxy reverso e chave interna.
         app.MapPost("/api/v1/auth/sandbox-token", (

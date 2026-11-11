@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "../../lib/auth-context";
-import { getDemoProposals } from "../../lib/demo-marketplace-store";
+import { listProposalsForSenderApi, listProposalsByCarrierApi } from "../../lib/api-client";
+import type { ProposalDto } from "../../lib/types";
 
 export default function MensagensPage(): React.JSX.Element {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Estado do formulário de contato com a administração via e-mail
   const [subject, setSubject] = useState("Dúvida sobre Negociação e Pagamento");
@@ -14,15 +15,58 @@ export default function MensagensPage(): React.JSX.Element {
   const [protocol, setProtocol] = useState<string | null>(null);
   const [sentSuccess, setSentSuccess] = useState(false);
 
-  // Propostas aceitas/fechadas com pagamento confirmado para listagem na aba de negociação
-  const closedPaidProposals = React.useMemo(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return getDemoProposals().filter((p) => p.status === "ACCEPTED");
-    } catch {
-      return [];
+  // Somente negociações reais fechadas (ACCEPTED) vindas da API oficial
+  const [closedPaidProposals, setClosedPaidProposals] = useState<ProposalDto[]>([]);
+  const [loadingProposals, setLoadingProposals] = useState(false);
+
+  useEffect(() => {
+    if (!token || !user?.userId) {
+      setClosedPaidProposals([]);
+      return;
     }
-  }, []);
+
+    let cancelled = false;
+    setLoadingProposals(true);
+
+    const loadAccepted = async () => {
+      try {
+        const requests: Promise<Awaited<ReturnType<typeof listProposalsForSenderApi>>>[] = [
+          listProposalsForSenderApi(user.userId, token)
+        ];
+        if (user.roles?.includes("CARRIER")) {
+          requests.push(listProposalsByCarrierApi(user.userId, token));
+        }
+
+        const results = await Promise.all(requests);
+        const byId = new Map<string, ProposalDto>();
+        for (const res of results) {
+          if (res.ok && !res.isFallback && Array.isArray(res.data)) {
+            for (const p of res.data) {
+              if (p.status === "ACCEPTED") {
+                byId.set(p.id, p);
+              }
+            }
+          }
+        }
+        if (!cancelled) {
+          setClosedPaidProposals(Array.from(byId.values()));
+        }
+      } catch {
+        if (!cancelled) {
+          setClosedPaidProposals([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProposals(false);
+        }
+      }
+    };
+
+    void loadAccepted();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user]);
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -317,7 +361,11 @@ export default function MensagensPage(): React.JSX.Element {
         <h3 style={{ fontSize: "16px", fontWeight: 800, margin: "0 0 12px 0", color: "#0F172A" }}>
           Suas Negociações com Pagamento Confirmado
         </h3>
-        {closedPaidProposals.length > 0 ? (
+        {loadingProposals ? (
+          <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
+            Verificando negociações fechadas...
+          </p>
+        ) : closedPaidProposals.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {closedPaidProposals.map((p) => (
               <div
@@ -336,10 +384,10 @@ export default function MensagensPage(): React.JSX.Element {
               >
                 <div>
                   <strong style={{ fontSize: "14px", color: "#1E293B", display: "block" }}>
-                    {p.shipmentTitle}
+                    Encomenda #{p.shipmentId.slice(0, 8)} • R$ {(p.amountCents / 100).toFixed(2).replace(".", ",")}
                   </strong>
                   <span style={{ fontSize: "12px", color: "#64748B" }}>
-                    Rota: {p.route} • Participantes: {p.senderName} e {p.carrierName}
+                    Participantes: {p.senderName} e {p.carrierName}
                   </span>
                 </div>
                 <Link

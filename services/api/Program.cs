@@ -91,13 +91,26 @@ namespace TopicLog.Api
                 ?? builder.Configuration.GetValue<bool>("FeatureFlags:RunWorkerInProcess", true);
             builder.Services.AddTopicLogWorker(registerHostedService: runWorkerInProcess);
 
-            // 5. CORS restrito ao Frontend Next.js local com exposição de X-Correlation-Id
+            // 5. CORS para o Frontend Web (local + Vercel produção + origens configuráveis) com exposição de X-Correlation-Id
+            string? extraOriginsRaw = Environment.GetEnvironmentVariable("TOPICLOG_ALLOWED_ORIGINS");
+            string[] extraOrigins = string.IsNullOrWhiteSpace(extraOriginsRaw)
+                ? []
+                : extraOriginsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            string[] allowedOrigins =
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "https://topiclog-web.vercel.app",
+                .. extraOrigins
+            ];
+
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("LocalWebFrontend", policy =>
                 {
-                    policy.WithOrigins("http://localhost:3000", "http://127.0.0.1:3000")
-                          .WithMethods("GET", "POST", "PATCH", "OPTIONS")
+                    policy.WithOrigins(allowedOrigins)
+                          .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                           .WithHeaders("Content-Type", "Accept", "Authorization", CorrelationIdMiddleware.HeaderName, "Idempotency-Key")
                           .WithExposedHeaders(CorrelationIdMiddleware.HeaderName);
                 });

@@ -46,10 +46,10 @@ const ALLOWED_CITIES = [
   "ALL",
   "João Monlevade",
   "Belo Horizonte",
-  "Ipatinga",
-  "Itabira",
-  "Nova Era",
-  "Ouro Preto"
+  "São Paulo",
+  "Rio de Janeiro",
+  "Curitiba",
+  "Brasília"
 ] as const;
 
 const BRAZILIAN_UFS = [
@@ -194,7 +194,6 @@ function FeedContent(): React.JSX.Element {
   const requestGps = () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
       setGpsStatus("DENIED");
-      setUserCoords({ lat: -19.8100, lon: -43.1736 }); // Fallback João Monlevade
       return;
     }
 
@@ -208,9 +207,6 @@ function FeedContent(): React.JSX.Element {
       },
       () => {
         setGpsStatus("DENIED");
-        const fallbackCoords = { lat: -19.8100, lon: -43.1736 }; // Fallback centroide João Monlevade
-        setUserCoords(fallbackCoords);
-        loadNearby(fallbackCoords, false);
       },
       { timeout: 8000 }
     );
@@ -302,7 +298,7 @@ function FeedContent(): React.JSX.Element {
     };
   }, [selectedItem]);
 
-  const [shipments, setShipments] = useState<DemoShipment[]>([...getDemoShipments()]);
+  const [shipments, setShipments] = useState<DemoShipment[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -311,7 +307,7 @@ function FeedContent(): React.JSX.Element {
         const merged: DemoShipment[] = [];
         const seenIds = new Set<string>();
 
-        // 1. Prioriza encomendas do backend
+        // 1. Encomendas oficiais do servidor
         for (const s of res.data) {
           seenIds.add(s.id);
           merged.push({
@@ -321,16 +317,16 @@ function FeedContent(): React.JSX.Element {
             category: (s.category as ShipmentCategory) || "GERAL",
             dimensions: { lengthCm: 30, widthCm: 25, heightCm: 20 },
             specialCare: ["Carga Verificada"],
-            originCity: s.originCity || "Belo Horizonte",
-            originNeighborhood: s.originNeighborhood || "Centro",
-            destinationCity: s.destinationCity || "Belo Horizonte",
-            destinationNeighborhood: s.destinationNeighborhood || "Centro",
+            originCity: s.originCity || "",
+            originNeighborhood: s.originNeighborhood || "",
+            destinationCity: s.destinationCity || "",
+            destinationNeighborhood: s.destinationNeighborhood || "",
             weightGrams: s.weightGrams ?? null,
             maxVehicleType: s.vehicleType || "MOTORCYCLE",
             suggestedPriceCents: s.suggestedPriceCents || 0,
             deadlineDate: s.deliveryWindow || "A combinar",
             senderName: s.senderName || "Remetente",
-            senderKycVerified: true,
+            senderKycVerified: false,
             status: s.status === "DELIVERED" ? "DELIVERED" : s.status === "IN_TRANSIT" ? "IN_TRANSIT" : "OPEN",
             interestedInInsurance: false,
             photoIcon: "📦",
@@ -338,12 +334,14 @@ function FeedContent(): React.JSX.Element {
           });
         }
 
-        // 2. Mescla com locais apenas se não for duplicata por ID
-        const demoLocal = getDemoShipments();
-        for (const d of demoLocal) {
-          if (!seenIds.has(d.id)) {
-            seenIds.add(d.id);
-            merged.push(d);
+        // 2. Mescla com localStorage apenas em modo fallback local (nunca dados demo em produção)
+        if (res.isFallback) {
+          const demoLocal = getDemoShipments();
+          for (const d of demoLocal) {
+            if (!seenIds.has(d.id)) {
+              seenIds.add(d.id);
+              merged.push(d);
+            }
           }
         }
         setShipments(merged);
@@ -651,7 +649,7 @@ function FeedContent(): React.JSX.Element {
               <div style={{ fontSize: "13px", color: "#166534" }}>
                 {gpsStatus === "LOCATING" && "Buscando localização GPS do seu dispositivo..."}
                 {gpsStatus === "GRANTED" && "📍 GPS Conectado com sucesso!"}
-                {gpsStatus === "DENIED" && "⚠️ GPS recusado ou indisponível. Utilizando ponto padrão de referência (João Monlevade)."}
+                {gpsStatus === "DENIED" && "⚠️ GPS recusado ou indisponível. Informe ou escolha qualquer cidade para buscar."}
                 {gpsStatus === "IDLE" && "Clique para buscar oportunidades próximas ao seu local atual."}
               </div>
 
@@ -747,7 +745,7 @@ function FeedContent(): React.JSX.Element {
               <div style={{ position: "relative", flex: "1 1 200px" }}>
                 <input
                   type="text"
-                  placeholder="Digite o município (ex: João Monlevade, Belo Horizonte)..."
+                  placeholder="Digite qualquer cidade do Brasil..."
                   value={selectedRegionalCity || regionalCityQuery}
                   onChange={(e) => {
                     setSelectedRegionalCity("");

@@ -99,26 +99,6 @@ export function NavigationHeader(): React.JSX.Element {
                   aria-label="Ver notificações"
                 >
                   <span style={{ fontSize: "22px" }}>🔔</span>
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "2px",
-                      right: "0px",
-                      backgroundColor: "#DC2626",
-                      color: "#FFFFFF",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      borderRadius: "50%",
-                      width: "18px",
-                      height: "18px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      border: "2px solid #0F172A"
-                    }}
-                  >
-                    3
-                  </span>
                 </button>
 
                 <Link
@@ -649,9 +629,6 @@ export function NavigationHeader(): React.JSX.Element {
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontSize: "20px" }}>🔔</span>
                 <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 700 }}>Notificações</h3>
-                <span style={{ backgroundColor: "#EF4444", color: "#FFFFFF", fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "10px" }}>
-                  3 novas
-                </span>
               </div>
               <button
                 type="button"
@@ -663,34 +640,21 @@ export function NavigationHeader(): React.JSX.Element {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "320px", overflowY: "auto" }}>
-              <div style={{ backgroundColor: "#0F172A", padding: "12px", borderRadius: "12px", borderLeft: "4px solid #10B981" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#10B981", marginBottom: "2px" }}>
-                  📦 Nova Encomenda Próxima
+              <div
+                style={{
+                  backgroundColor: "#0F172A",
+                  padding: "18px 14px",
+                  borderRadius: "12px",
+                  border: "1px solid #334155",
+                  textAlign: "center"
+                }}
+              >
+                <div style={{ fontSize: "14px", fontWeight: 700, color: "#E2E8F0", marginBottom: "4px" }}>
+                  Nenhuma notificação no momento
                 </div>
-                <div style={{ fontSize: "12px", color: "#E2E8F0" }}>
-                  Trajeto João Monlevade ➔ Belo Horizonte (R$ 85,00). 12 kg (carro ou moto).
+                <div style={{ fontSize: "12px", color: "#94A3B8" }}>
+                  Novas propostas, pagamentos e atualizações de entregas reais aparecerão aqui.
                 </div>
-                <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>Há 15 minutos</div>
-              </div>
-
-              <div style={{ backgroundColor: "#0F172A", padding: "12px", borderRadius: "12px", borderLeft: "4px solid #38BDF8" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#38BDF8", marginBottom: "2px" }}>
-                  🛡️ Identidade e Documentação Confirmadas
-                </div>
-                <div style={{ fontSize: "12px", color: "#E2E8F0" }}>
-                  Seu perfil está apto e autorizado para realizar fretes em Minas Gerais.
-                </div>
-                <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>Há 2 horas</div>
-              </div>
-
-              <div style={{ backgroundColor: "#0F172A", padding: "12px", borderRadius: "12px", borderLeft: "4px solid #F59E0B" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#F59E0B", marginBottom: "2px" }}>
-                  🔐 Lembrete de Segurança
-                </div>
-                <div style={{ fontSize: "12px", color: "#E2E8F0" }}>
-                  Na entrega, solicite a senha/código confidencial de 4 dígitos para liberação imediata do repasse.
-                </div>
-                <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>Hoje</div>
               </div>
             </div>
 
@@ -722,10 +686,12 @@ export function NavigationHeader(): React.JSX.Element {
           style={{
             backgroundColor: "var(--color-brand-deep-navy)",
             borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-            padding: "16px 20px 24px 20px",
+            padding: "16px 20px 88px 20px",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
+            maxHeight: "calc(100vh - 64px)",
+            overflowY: "auto",
             boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)"
           }}
         >

@@ -100,18 +100,10 @@ public sealed class SecurityCryptoService
             return false;
         }
 
-        string trimmed = plainTextPassword.Trim();
-        if ((trimmed == "123456" || trimmed == "12345678") && 
-            (storedPasswordHash == "123456" || storedPasswordHash == "12345678" || storedPasswordHash.Contains("XM/QSkC64pLvWOvRVb3SJDoKqMiDMw7Yxab9yfIkQMA=")))
-        {
-            return true;
-        }
-
         string[] parts = storedPasswordHash.Split('$', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 5)
         {
-            // Fallback tolerante para credenciais de teste em ambiente de desenvolvimento local
-            return string.Equals(storedPasswordHash.Trim(), plainTextPassword.Trim(), StringComparison.Ordinal);
+            return false;
         }
 
         string version = parts[0];

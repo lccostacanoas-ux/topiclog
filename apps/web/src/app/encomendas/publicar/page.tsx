@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import BrazilianAddressInput, { type ConfirmedAddress, buildFormattedAddress } from "../../../components/BrazilianAddressInput";
-import { addDemoShipment } from "../../../lib/demo-marketplace-store";
 import { useAuth } from "../../../lib/auth-context";
 import type { CreateShipmentPayload } from "../../../lib/types";
 import { createShipmentApi } from "../../../lib/api-client";
@@ -92,8 +91,8 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
     street: "",
     number: "",
     neighborhood: "",
-    city: "Belo Horizonte",
-    stateUf: "MG",
+    city: "",
+    stateUf: "",
     postalCode: "",
     lat: null,
     lon: null,
@@ -108,8 +107,8 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
     street: "",
     number: "",
     neighborhood: "",
-    city: "Belo Horizonte",
-    stateUf: "MG",
+    city: "",
+    stateUf: "",
     postalCode: "",
     lat: null,
     lon: null,
@@ -341,70 +340,65 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
       }
       const weightGrams = rawWeight && !isNaN(rawWeight) && rawWeight > 0 ? Math.round(rawWeight * 1000) : undefined;
 
-      // Salva localmente garantindo persistência imediata com os dados reais do remetente
-      addDemoShipment({
+      if (!origin.city.trim() || !origin.stateUf.trim() || !destination.city.trim() || !destination.stateUf.trim()) {
+        setErrorMsg("Informe Estado (UF) e Cidade tanto na retirada quanto na entrega.");
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      if (!token) {
+        setErrorMsg("Sua sessão expirou. Faça login novamente antes de publicar.");
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      const apiPayload: CreateShipmentPayload = {
         title,
         description: desc,
         category: "GERAL",
-        dimensions: { lengthCm: 30, widthCm: 25, heightCm: 20 },
-        specialCare: observations.trim() ? [observations.trim()] : ["Pacote embalado"],
-        originCity: origin.city,
-        originNeighborhood: origin.neighborhood || origin.street || "Centro",
-        destinationCity: destination.city,
-        destinationNeighborhood: destination.neighborhood || destination.street || "Centro",
-        weightGrams: weightGrams ?? null,
-        maxVehicleType: "CAR",
+        weightGrams: weightGrams,
+        dimensionsLengthCm: 30,
+        dimensionsWidthCm: 25,
+        dimensionsHeightCm: 20,
         suggestedPriceCents: priceCents,
-        deadlineDate: "Hoje ou a combinar",
-        senderName: user?.displayName || "Remetente",
-        senderKycVerified: Boolean(user?.kycStatus === "VERIFIED" || user?.canContractDelivery),
-        interestedInInsurance: false,
-        photoIcon: "📦"
-      });
-
-      if (token) {
-        // Envia para o backend caso ativo
-        try {
-          const apiPayload: CreateShipmentPayload = {
-            title,
-            description: desc,
-            category: "GERAL",
-            weightGrams: weightGrams,
-            dimensionsLengthCm: 30,
-            dimensionsWidthCm: 25,
-            dimensionsHeightCm: 20,
-            suggestedPriceCents: priceCents,
-            origin: {
-              streetAndNumber: origin.number ? `${origin.street}, ${origin.number}` : origin.street || "Rua Principal",
-              neighborhood: origin.neighborhood || "Centro",
-              city: origin.city,
-              stateUf: origin.stateUf,
-              postalCode: origin.postalCode || "30000-000",
-              latitude: origin.lat,
-              longitude: origin.lon,
-              formattedAddress: origin.formattedAddress,
-              complement: origin.complement
-            },
-            destination: {
-              streetAndNumber: destination.number ? `${destination.street}, ${destination.number}` : destination.street || "Rua Principal",
-              neighborhood: destination.neighborhood || "Centro",
-              city: destination.city,
-              stateUf: destination.stateUf,
-              postalCode: destination.postalCode || "30000-000",
-              latitude: destination.lat,
-              longitude: destination.lon,
-              formattedAddress: destination.formattedAddress,
-              complement: destination.complement
-            }
-          };
-
-          await createShipmentApi(apiPayload, token);
-        } catch (apiErr) {
-          console.warn("Backend API offline, encomenda persistida localmente com sucesso:", apiErr);
+        origin: {
+          streetAndNumber: origin.number ? `${origin.street}, ${origin.number}` : origin.street || "Rua Principal",
+          neighborhood: origin.neighborhood || "Centro",
+          city: origin.city.trim(),
+          stateUf: origin.stateUf.trim().toUpperCase(),
+          postalCode: origin.postalCode?.trim() || undefined,
+          latitude: origin.lat,
+          longitude: origin.lon,
+          formattedAddress: origin.formattedAddress,
+          complement: origin.complement
+        },
+        destination: {
+          streetAndNumber: destination.number ? `${destination.street}, ${destination.number}` : destination.street || "Rua Principal",
+          neighborhood: destination.neighborhood || "Centro",
+          city: destination.city.trim(),
+          stateUf: destination.stateUf.trim().toUpperCase(),
+          postalCode: destination.postalCode?.trim() || undefined,
+          latitude: destination.lat,
+          longitude: destination.lon,
+          formattedAddress: destination.formattedAddress,
+          complement: destination.complement
         }
+      };
+
+      const res = await createShipmentApi(apiPayload, token);
+      if (!res.ok) {
+        setErrorMsg(
+          res.problem?.detail ||
+            "Não foi possível publicar sua encomenda no servidor oficial da Topic Log. Verifique sua conexão e tente novamente."
+        );
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
       }
 
-      setSuccessMsg("✓ Encomenda publicada com sucesso! Redirecionando para suas encomendas...");
+      setSuccessMsg("✓ Encomenda publicada com sucesso no mural oficial! Redirecionando para suas encomendas...");
       setTimeout(() => {
         router.push("/encomendas");
       }, 1200);

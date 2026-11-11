@@ -103,6 +103,11 @@ export interface RegisterUserRequest {
   readonly cpf?: string;
   readonly city?: string;
   readonly stateUf?: string;
+  readonly postalCode?: string;
+  readonly street?: string;
+  readonly number?: string;
+  readonly neighborhood?: string;
+  readonly complement?: string;
   readonly initialRoles?: readonly UserRole[];
   readonly acceptTerms: boolean;
   readonly termsVersion?: string;
@@ -135,6 +140,11 @@ export interface UpdateProfileRequest {
   readonly cpf?: string;
   readonly city?: string;
   readonly stateUf?: string;
+  readonly postalCode?: string;
+  readonly street?: string;
+  readonly number?: string;
+  readonly neighborhood?: string;
+  readonly complement?: string;
   readonly roles?: readonly UserRole[];
   readonly vehicleType?: string;
   readonly vehicleModel?: string;
@@ -168,6 +178,11 @@ export interface PrivateUserProfileResponse {
   readonly cpfMasked?: string;
   readonly city: string;
   readonly stateUf: string;
+  readonly postalCode?: string;
+  readonly street?: string;
+  readonly number?: string;
+  readonly neighborhood?: string;
+  readonly complement?: string;
   readonly roles: readonly UserRole[];
   readonly kycStatus: KycStatus;
   readonly canNavigatePlatform: boolean;
@@ -430,7 +445,9 @@ export interface CreateTripPayload {
   readonly vehicleType: VehicleTypeCode;
   readonly vehicleModel?: string;
   readonly originCity: string;
+  readonly originStateUf?: string;
   readonly destinationCity: string;
+  readonly destinationStateUf?: string;
   readonly intermediateStops?: readonly string[];
   readonly departureDate: string;
   readonly departureTime?: string;

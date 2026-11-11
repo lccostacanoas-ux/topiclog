@@ -175,11 +175,26 @@ a:focus {
 }
 
 @media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
   .topiclog-mobile-nav {
     display: block !important;
   }
   body {
-    padding-bottom: 72px !important;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .btn {
+    min-height: 44px;
+  }
+  .card {
+    padding: 16px !important;
+  }
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: 16px !important;
   }
 }
 
@@ -250,6 +265,27 @@ a:focus {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-4);
+  }
+}
+
+/* Grades responsivas de Endereço (Mobile 1 coluna, Desktop lado a lado) */
+.address-grid-uf-city,
+.address-grid-street,
+.address-grid-half {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 640px) {
+  .address-grid-uf-city {
+    grid-template-columns: 145px 155px 1fr;
+  }
+  .address-grid-street {
+    grid-template-columns: 1fr 115px auto;
+  }
+  .address-grid-half {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

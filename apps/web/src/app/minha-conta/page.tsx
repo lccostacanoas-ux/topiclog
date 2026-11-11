@@ -5,9 +5,10 @@ import React, { useEffect, useState } from "react";
 import { AlertBanner } from "../../components/AlertBanner";
 import { StatusPill } from "../../components/StatusPill";
 import { StarRatingDisplay } from "../../components/StarRatingDisplay";
-import { getPublicUserCardApi, updatePrivateProfileApi } from "../../lib/api-client";
+import { changePasswordApi, getPublicUserCardApi, updatePrivateProfileApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
+import { BRAZILIAN_STATES, formatCep, lookupCepViaCep } from "../../lib/brazil-address";
 import type { ProblemDetailsDto, PublicUserCardResponse, UserRole } from "../../lib/types";
 
 export default function MyAccountPage(): React.JSX.Element {
@@ -18,7 +19,19 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editPhone, setEditPhone] = useState("");
   const [editCpf, setEditCpf] = useState("");
   const [editCpfTouched, setEditCpfTouched] = useState(false);
+  const [editPostalCode, setEditPostalCode] = useState("");
+  const [editCepLoading, setEditCepLoading] = useState(false);
+  const [editStateUf, setEditStateUf] = useState("");
   const [editCity, setEditCity] = useState("");
+  const [editStreet, setEditStreet] = useState("");
+  const [editNumber, setEditNumber] = useState("");
+  const [editNeighborhood, setEditNeighborhood] = useState("");
+  const [editComplement, setEditComplement] = useState("");
+  const [currentPasswordInput, setCurrentPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState("");
+  const [passwordStatusMsg, setPasswordStatusMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [editRoles, setEditRoles] = useState<UserRole[]>(["SENDER"]);
   const [editVehicleType, setEditVehicleType] = useState<string>("CARRO");
   const [editVehicleModel, setEditVehicleModel] = useState<string>("");
@@ -68,7 +81,13 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditDisplayName(user.displayName);
       setEditPhone("");
       setEditCpf("");
-      setEditCity(user.city);
+      setEditPostalCode(user.postalCode || "");
+      setEditStateUf(user.stateUf || "");
+      setEditCity(user.city || "");
+      setEditStreet(user.street || "");
+      setEditNumber(user.number || "");
+      setEditNeighborhood(user.neighborhood || "");
+      setEditComplement(user.complement || "");
       setEditRoles([...user.roles]);
       setEditVehicleType(user.vehicleType || "CARRO");
       setEditVehicleModel(user.vehicleModel || "");
@@ -162,7 +181,12 @@ export default function MyAccountPage(): React.JSX.Element {
         phone: editPhone.trim() || undefined,
         cpf: editCpf.trim() || undefined,
         city: editCity.trim() || undefined,
-        stateUf: "MG",
+        stateUf: editStateUf.trim().toUpperCase() || undefined,
+        postalCode: editPostalCode.trim() || undefined,
+        street: editStreet.trim() || undefined,
+        number: editNumber.trim() || undefined,
+        neighborhood: editNeighborhood.trim() || undefined,
+        complement: editComplement.trim() || undefined,
         roles: editRoles,
         vehicleType: editRoles.includes("CARRIER") ? editVehicleType : undefined,
         vehicleModel: editRoles.includes("CARRIER") ? (editVehicleModel.trim() || undefined) : undefined,
@@ -269,7 +293,7 @@ export default function MyAccountPage(): React.JSX.Element {
             Envio de Encomendas
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "14px", margin: "0 0 12px 0" }}>
-            Você pode publicar pedidos de transporte e receber propostas de motoristas para qualquer localidade de Minas Gerais.
+            Você pode publicar pedidos de transporte e receber propostas de motoristas para qualquer município do Brasil.
           </p>
           <StatusPill label="Envios Liberados na Plataforma" tone="success" />
         </div>
@@ -281,12 +305,12 @@ export default function MyAccountPage(): React.JSX.Element {
           }}
         >
           <h2 style={{ fontSize: "18px", marginTop: 0, marginBottom: "8px" }}>
-            Verificação de Identidade
+            O que é o Perfil Verificado (Selo de Confiança)?
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "14px", margin: "0 0 12px 0" }}>
             {user.kycStatus === "VERIFIED"
-              ? "Sua identidade foi confirmada e sua conta possui selo de confiança na plataforma."
-              : "Seus dados básicos estão ativos. Você pode enviar seus documentos para obter o selo de perfil verificado quando desejar."}
+              ? "Sua identidade foi validada (CPF, documento oficial e comprovante cadastral), garantindo mais segurança e credibilidade nas negociações."
+              : "O Perfil Verificado indica que você enviou documento oficial (RG/CNH), CPF e comprovante cadastral e foi aprovado na conferência de segurança (KYC), exibindo o selo de confiança para outros usuários."}
           </p>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill
@@ -334,7 +358,14 @@ export default function MyAccountPage(): React.JSX.Element {
               <p><strong>E-mail:</strong> {user.email}</p>
               <p><strong>Telefone:</strong> {user.phoneMasked}</p>
               <p><strong>CPF:</strong> {user.cpfMasked ?? "Não informado"}</p>
-              <p><strong>Município:</strong> {user.city} - {user.stateUf}</p>
+              <p><strong>CEP:</strong> {user.postalCode || "Não informado"}</p>
+              <p>
+                <strong>Endereço:</strong>{" "}
+                {user.street
+                  ? `${user.street}${user.number ? `, ${user.number}` : ""}${user.neighborhood ? ` — ${user.neighborhood}` : ""}${user.complement ? ` (${user.complement})` : ""}`
+                  : "Não informado"}
+              </p>
+              <p><strong>Cidade / UF:</strong> {user.city || "Não informada"}{user.stateUf ? ` - ${user.stateUf}` : ""}</p>
               <p>
                 <strong>Meu Perfil:</strong>{" "}
                 {user.roles.map(r => (
@@ -409,7 +440,7 @@ export default function MyAccountPage(): React.JSX.Element {
                         </p>
                       )}
                       <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed #BBF7D0", fontSize: "11px", color: "#166534", lineHeight: 1.4 }}>
-                        ✓ Conta habilitada para split automático de fretes (80% Transportador / 20% TopicLog) e liquidação sob custódia garantida.
+                        ✓ Conta habilitada para split automático de fretes conforme Política Comercial vigente (85% Transportador / 15% Topic Log) e liquidação sob custódia garantida.
                       </div>
                     </div>
                   ) : (
@@ -500,16 +531,123 @@ export default function MyAccountPage(): React.JSX.Element {
                 })()}
               </div>
 
-              <div className="form-group">
-                <label htmlFor="edit-city" className="form-label">Município (MG)</label>
-                <input
-                  id="edit-city"
-                  type="text"
-                  className="form-input"
-                  value={editCity}
-                  onChange={e => setEditCity(e.target.value)}
-                  disabled={isSaving}
-                />
+              <div className="address-grid-uf-city" style={{ marginBottom: "14px" }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-cep" className="form-label">
+                    CEP {editCepLoading ? "..." : ""}
+                  </label>
+                  <input
+                    id="edit-cep"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={9}
+                    className="form-input"
+                    placeholder="00000-000"
+                    value={editPostalCode}
+                    onChange={async e => {
+                      const formatted = formatCep(e.target.value);
+                      setEditPostalCode(formatted);
+                      const digits = formatted.replace(/\D/g, "");
+                      if (digits.length === 8) {
+                        setEditCepLoading(true);
+                        const found = await lookupCepViaCep(digits);
+                        setEditCepLoading(false);
+                        if (found) {
+                          if (found.street) setEditStreet(found.street);
+                          if (found.neighborhood) setEditNeighborhood(found.neighborhood);
+                          if (found.city) setEditCity(found.city);
+                          if (found.stateUf) setEditStateUf(found.stateUf);
+                        }
+                      }
+                    }}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-uf" className="form-label">Estado (UF)</label>
+                  <select
+                    id="edit-uf"
+                    className="form-input"
+                    value={editStateUf}
+                    onChange={e => setEditStateUf(e.target.value)}
+                    disabled={isSaving}
+                  >
+                    <option value="">UF...</option>
+                    {BRAZILIAN_STATES.map(st => (
+                      <option key={st.uf} value={st.uf}>{st.uf} - {st.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-city" className="form-label">Cidade / Município (Todo o Brasil)</label>
+                  <input
+                    id="edit-city"
+                    type="text"
+                    className="form-input"
+                    placeholder="Qualquer cidade do Brasil"
+                    value={editCity}
+                    onChange={e => setEditCity(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+              </div>
+
+              <div className="address-grid-street" style={{ marginBottom: "14px" }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-street" className="form-label">Rua / Logradouro</label>
+                  <input
+                    id="edit-street"
+                    type="text"
+                    className="form-input"
+                    placeholder="Rua, Avenida..."
+                    value={editStreet}
+                    onChange={e => setEditStreet(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-number" className="form-label">Número</label>
+                  <input
+                    id="edit-number"
+                    type="text"
+                    className="form-input"
+                    placeholder="Ex: 120"
+                    value={editNumber}
+                    onChange={e => setEditNumber(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+              </div>
+
+              <div className="address-grid-half" style={{ marginBottom: "16px" }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-neighborhood" className="form-label">Bairro</label>
+                  <input
+                    id="edit-neighborhood"
+                    type="text"
+                    className="form-input"
+                    placeholder="Bairro"
+                    value={editNeighborhood}
+                    onChange={e => setEditNeighborhood(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label htmlFor="edit-complement" className="form-label">Complemento (Opcional)</label>
+                  <input
+                    id="edit-complement"
+                    type="text"
+                    className="form-input"
+                    placeholder="Apto, Bloco..."
+                    value={editComplement}
+                    onChange={e => setEditComplement(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
               </div>
 
               <fieldset className="form-group" style={{ border: "none", padding: 0 }}>
@@ -870,22 +1008,127 @@ export default function MyAccountPage(): React.JSX.Element {
       {/* Segurança da Conta e Encerramento de Sessão */}
       <section className="card">
         <h2 style={{ fontSize: "18px", marginTop: 0, marginBottom: "8px" }}>
-          Segurança da Conta
+          Segurança da Conta e Alteração de Senha
         </h2>
         <p style={{ color: "var(--color-muted)", fontSize: "14px", marginBottom: "16px" }}>
-          Sua conta está conectada de forma segura com proteção de dados e autenticação criptográfica.
+          Defina uma senha forte exclusiva (mínimo 8 caracteres com letras e números). Nunca compartilhe sua senha com terceiros.
         </p>
 
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn btn--danger"
-            onClick={() => void logout()}
-            style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
-          >
-            🚪 Sair da Conta (Encerrar Sessão)
-          </button>
-        </div>
+        <form
+          onSubmit={async e => {
+            e.preventDefault();
+            setPasswordStatusMsg(null);
+            if (!token) return;
+            if (!currentPasswordInput || !newPasswordInput || !confirmNewPasswordInput) {
+              setPasswordStatusMsg({ ok: false, text: "Preencha a senha atual, a nova senha e a confirmação." });
+              return;
+            }
+            if (newPasswordInput.length < 8) {
+              setPasswordStatusMsg({ ok: false, text: "A nova senha deve ter no mínimo 8 caracteres (letras e números)." });
+              return;
+            }
+            if (newPasswordInput !== confirmNewPasswordInput) {
+              setPasswordStatusMsg({ ok: false, text: "A confirmação da nova senha não confere." });
+              return;
+            }
+            setIsChangingPassword(true);
+            try {
+              const res = await changePasswordApi(token, {
+                currentPassword: currentPasswordInput,
+                newPassword: newPasswordInput
+              });
+              if (res.ok) {
+                setPasswordStatusMsg({ ok: true, text: "✓ Senha alterada com sucesso! Use a nova senha nos próximos acessos." });
+                setCurrentPasswordInput("");
+                setNewPasswordInput("");
+                setConfirmNewPasswordInput("");
+              } else {
+                setPasswordStatusMsg({ ok: false, text: res.problem?.detail || "Não foi possível alterar a senha." });
+              }
+            } finally {
+              setIsChangingPassword(false);
+            }
+          }}
+          style={{ marginBottom: "20px", maxWidth: "520px" }}
+        >
+          {passwordStatusMsg && (
+            <div
+              role="status"
+              style={{
+                marginBottom: "12px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 600,
+                backgroundColor: passwordStatusMsg.ok ? "#ECFDF5" : "#FEF2F2",
+                color: passwordStatusMsg.ok ? "#065F46" : "#991B1B",
+                border: `1px solid ${passwordStatusMsg.ok ? "#A7F3D0" : "#FECACA"}`
+              }}
+            >
+              {passwordStatusMsg.text}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label htmlFor="sec-current-pw" className="form-label">Senha atual</label>
+            <input
+              id="sec-current-pw"
+              type="password"
+              className="form-input"
+              value={currentPasswordInput}
+              onChange={e => setCurrentPasswordInput(e.target.value)}
+              disabled={isChangingPassword}
+            />
+          </div>
+
+          <div className="grid-two" style={{ gap: "12px" }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor="sec-new-pw" className="form-label">Nova senha forte</label>
+              <input
+                id="sec-new-pw"
+                type="password"
+                className="form-input"
+                placeholder="Mín. 8 chars (letras + números)"
+                value={newPasswordInput}
+                onChange={e => setNewPasswordInput(e.target.value)}
+                disabled={isChangingPassword}
+              />
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor="sec-confirm-pw" className="form-label">Confirmar nova senha</label>
+              <input
+                id="sec-confirm-pw"
+                type="password"
+                className="form-input"
+                placeholder="Repita a nova senha"
+                value={confirmNewPasswordInput}
+                onChange={e => setConfirmNewPasswordInput(e.target.value)}
+                disabled={isChangingPassword}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: "12px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={isChangingPassword}
+              style={{ padding: "10px 18px", fontSize: "14px", fontWeight: 700 }}
+            >
+              {isChangingPassword ? "Salvando nova senha..." : "🔐 Atualizar Senha"}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => void logout()}
+              style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
+            >
+              🚪 Sair da Conta (Encerrar Sessão)
+            </button>
+          </div>
+        </form>
       </section>
     </main>
   );

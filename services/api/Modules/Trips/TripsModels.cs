@@ -60,7 +60,9 @@ public sealed record CreateTripRequest(
     string? DepartureTime,
     int AvailableCapacityGrams,
     bool FlexiblePickup,
-    long SuggestedPricePerKgCents);
+    long SuggestedPricePerKgCents,
+    string? OriginStateUf = null,
+    string? DestinationStateUf = null);
 
 public sealed record TripResponse(
     Guid Id,

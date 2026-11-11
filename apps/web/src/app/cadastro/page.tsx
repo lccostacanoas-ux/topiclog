@@ -7,6 +7,7 @@ import { AlertBanner } from "../../components/AlertBanner";
 import { getTermsManifestApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
+import { BRAZILIAN_STATES, formatCep, lookupCepViaCep } from "../../lib/brazil-address";
 import type { ProblemDetailsDto } from "../../lib/types";
 
 export default function RegisterPage(): React.JSX.Element {
@@ -22,7 +23,14 @@ export default function RegisterPage(): React.JSX.Element {
   const [phone, setPhone] = useState("");
   const [cpf, setCpf] = useState("");
   const [cpfTouched, setCpfTouched] = useState(false);
-  const [city, setCity] = useState("João Monlevade");
+  const [postalCode, setPostalCode] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const [stateUf, setStateUf] = useState("");
+  const [city, setCity] = useState("");
+  const [street, setStreet] = useState("");
+  const [houseNumber, setHouseNumber] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [complement, setComplement] = useState("");
   const [isSender, setIsSender] = useState(true);
   const [isCarrier, setIsCarrier] = useState(true);
   const [vehicleType, setVehicleType] = useState("CAR");
@@ -58,15 +66,53 @@ export default function RegisterPage(): React.JSX.Element {
     setCpf(formatted);
   };
 
+  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCep(e.target.value);
+    setPostalCode(formatted);
+    const digits = formatted.replace(/\D/g, "");
+    if (digits.length === 8) {
+      setCepLoading(true);
+      const found = await lookupCepViaCep(digits);
+      setCepLoading(false);
+      if (found) {
+        if (found.street) setStreet(found.street);
+        if (found.neighborhood) setNeighborhood(found.neighborhood);
+        if (found.city) setCity(found.city);
+        if (found.stateUf) setStateUf(found.stateUf);
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setProblem(null);
 
-    if (!displayName.trim() || !email.trim() || !password || !confirmPassword || !phone.trim() || !cpf.trim()) {
+    if (
+      !displayName.trim() ||
+      !email.trim() ||
+      !password ||
+      !confirmPassword ||
+      !phone.trim() ||
+      !cpf.trim() ||
+      !postalCode.replace(/\D/g, "") ||
+      !city.trim() ||
+      !stateUf.trim() ||
+      !street.trim() ||
+      !houseNumber.trim()
+    ) {
       setProblem({
         title: "Campos obrigatórios pendentes",
         status: 400,
-        detail: "Preencha todos os campos obrigatórios (Nome, E-mail, Telefone, Senha, Confirmação e CPF)."
+        detail: "Preencha todos os campos obrigatórios (Nome, E-mail, Telefone, Senha, CPF, CEP, Estado, Cidade, Rua e Número)."
+      });
+      return;
+    }
+
+    if (postalCode.replace(/\D/g, "").length !== 8) {
+      setProblem({
+        title: "CEP inválido",
+        status: 400,
+        detail: "Informe um CEP válido com 8 dígitos (formato 00000-000)."
       });
       return;
     }
@@ -159,7 +205,12 @@ export default function RegisterPage(): React.JSX.Element {
         phone: phone.trim(),
         cpf: cpf.trim(),
         city: city.trim(),
-        stateUf: "MG",
+        stateUf: stateUf.trim().toUpperCase(),
+        postalCode: postalCode.trim(),
+        street: street.trim(),
+        number: houseNumber.trim(),
+        neighborhood: neighborhood.trim() || undefined,
+        complement: complement.trim() || undefined,
         initialRoles,
         acceptTerms: true,
         termsVersion,
@@ -199,7 +250,7 @@ export default function RegisterPage(): React.JSX.Element {
             Criar Conta Gratuita
           </h1>
           <p style={{ color: "var(--color-muted, #64748B)", fontSize: "14px", marginBottom: "20px" }}>
-            Crie sua conta para enviar ou transportar encomendas com segurança em Minas Gerais.
+            Crie sua conta para enviar ou transportar encomendas com segurança em todo o Brasil.
           </p>
 
           {problem && (
@@ -439,37 +490,152 @@ export default function RegisterPage(): React.JSX.Element {
               </div>
 
               <div className="form-group">
+                <label htmlFor="reg-cep" className="form-label">
+                  CEP * {cepLoading && <span style={{ fontSize: "11px", color: "#2563EB" }}>(Buscando...)</span>}
+                </label>
+                <input
+                  id="reg-cep"
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  maxLength={9}
+                  className="form-input"
+                  placeholder="00000-000"
+                  value={postalCode}
+                  onChange={handleCepChange}
+                  disabled={isSubmitting}
+                />
+                <span className="form-help">Preenche automaticamente rua, bairro, cidade e estado.</span>
+              </div>
+            </div>
+
+            <div className="grid-two" style={{ gap: "16px", marginBottom: 0 }}>
+              <div className="form-group">
+                <label htmlFor="reg-uf" className="form-label">
+                  Estado (UF) *
+                </label>
+                <select
+                  id="reg-uf"
+                  required
+                  className="form-input"
+                  value={stateUf}
+                  onChange={e => setStateUf(e.target.value)}
+                  disabled={isSubmitting}
+                >
+                  <option value="">Selecione o estado...</option>
+                  {BRAZILIAN_STATES.map(st => (
+                    <option key={st.uf} value={st.uf}>
+                      {st.uf} - {st.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label htmlFor="reg-city" className="form-label">
-                  Município em Minas Gerais *
+                  Cidade / Município (Todo o Brasil) *
                 </label>
                 <input
                   id="reg-city"
                   type="text"
                   required
                   className="form-input"
-                  placeholder="Ex.: João Monlevade, Belo Horizonte, etc."
+                  placeholder="Digite qualquer cidade do Brasil"
                   value={city}
                   onChange={e => setCity(e.target.value)}
                   disabled={isSubmitting}
                 />
-                <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: "6px", marginTop: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: "11px", color: "#64748B" }}>Sugestões rápidas:</span>
                   <button
                     type="button"
                     className="btn btn--outline"
                     style={{ padding: "3px 8px", fontSize: "11px" }}
-                    onClick={() => setCity("João Monlevade")}
+                    onClick={() => {
+                      setStateUf("MG");
+                      setCity("João Monlevade");
+                    }}
                   >
-                    João Monlevade
+                    João Monlevade - MG
                   </button>
                   <button
                     type="button"
                     className="btn btn--outline"
                     style={{ padding: "3px 8px", fontSize: "11px" }}
-                    onClick={() => setCity("Belo Horizonte")}
+                    onClick={() => {
+                      setStateUf("MG");
+                      setCity("Belo Horizonte");
+                    }}
                   >
-                    Belo Horizonte
+                    Belo Horizonte - MG
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid-two" style={{ gap: "16px", marginBottom: 0 }}>
+              <div className="form-group">
+                <label htmlFor="reg-street" className="form-label">
+                  Rua / Logradouro *
+                </label>
+                <input
+                  id="reg-street"
+                  type="text"
+                  required
+                  className="form-input"
+                  placeholder="Ex.: Rua das Flores"
+                  value={street}
+                  onChange={e => setStreet(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="reg-number" className="form-label">
+                  Número *
+                </label>
+                <input
+                  id="reg-number"
+                  type="text"
+                  required
+                  className="form-input"
+                  placeholder="Ex.: 120 ou S/N"
+                  value={houseNumber}
+                  onChange={e => setHouseNumber(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            <div className="grid-two" style={{ gap: "16px", marginBottom: 0 }}>
+              <div className="form-group">
+                <label htmlFor="reg-neighborhood" className="form-label">
+                  Bairro
+                </label>
+                <input
+                  id="reg-neighborhood"
+                  type="text"
+                  className="form-input"
+                  placeholder="Ex.: Centro"
+                  value={neighborhood}
+                  onChange={e => setNeighborhood(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="reg-complement" className="form-label">
+                  Complemento (Opcional)
+                </label>
+                <input
+                  id="reg-complement"
+                  type="text"
+                  className="form-input"
+                  placeholder="Ex.: Apto 201, Bloco B"
+                  value={complement}
+                  onChange={e => setComplement(e.target.value)}
+                  disabled={isSubmitting}
+                />
               </div>
             </div>
 

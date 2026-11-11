@@ -68,9 +68,19 @@ public sealed class UserProfileEntity
 
     public string? CpfMasked { get; set; }
 
-    public string City { get; set; } = "João Monlevade";
+    public string City { get; set; } = string.Empty;
 
-    public string StateUf { get; set; } = "MG";
+    public string StateUf { get; set; } = string.Empty;
+
+    public string? PostalCode { get; set; }
+
+    public string? Street { get; set; }
+
+    public string? Number { get; set; }
+
+    public string? Neighborhood { get; set; }
+
+    public string? Complement { get; set; }
 
     public HashSet<UserRole> Roles { get; init; } = [UserRole.SENDER];
 
@@ -188,7 +198,16 @@ public sealed record RegisterUserRequest(
     string? Renavam = null,
     string? CnhCategory = null,
     string? CnhNumber = null,
-    bool AcceptCarrierTerms = false);
+    bool AcceptCarrierTerms = false,
+    string? PostalCode = null,
+    string? Street = null,
+    string? Number = null,
+    string? Neighborhood = null,
+    string? Complement = null);
+
+public sealed record ChangePasswordRequest(
+    string CurrentPassword,
+    string NewPassword);
 
 public sealed record LoginRequest(
     string Email,
@@ -224,7 +243,12 @@ public sealed record UpdateProfileRequest(
     string? CrlvDocumentName = null,
     string? CrlvDocumentData = null,
     string? IdentityDocumentName = null,
-    string? IdentityDocumentData = null);
+    string? IdentityDocumentData = null,
+    string? PostalCode = null,
+    string? Street = null,
+    string? Number = null,
+    string? Neighborhood = null,
+    string? Complement = null);
 
 public sealed record AuthSessionResponse(
     string AccessToken,
@@ -271,7 +295,12 @@ public sealed record PrivateUserProfileResponse(
     string? crlvDocumentName = null,
     string? crlvDocumentData = null,
     string? IdentityDocumentName = null,
-    string? IdentityDocumentData = null);
+    string? IdentityDocumentData = null,
+    string? PostalCode = null,
+    string? Street = null,
+    string? Number = null,
+    string? Neighborhood = null,
+    string? Complement = null);
 
 /// <summary>
 /// Cartão público mínimo exibido para contrapartes na plataforma (LGPD / Minimização).

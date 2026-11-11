@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
-import { getDemoShipments, getRatingsSummary, type RatingsSummary } from "../lib/demo-marketplace-store";
+import { getRatingsSummary, type RatingsSummary } from "../lib/demo-marketplace-store";
+import { listShipmentsApi } from "../lib/api-client";
+import type { ShipmentSummaryDto } from "../lib/types";
 
 function renderStars(rating: number) {
   return (
@@ -96,7 +98,7 @@ export default function HomePage(): React.JSX.Element {
   const router = useRouter();
   const { user } = useAuth();
   const displayName = user?.displayName ? user.displayName.split(" ")[0] : null;
-  const recentShipments = getDemoShipments().slice(0, 3);
+  const [recentShipments, setRecentShipments] = useState<ShipmentSummaryDto[]>([]);
   const [ratingsSummary, setRatingsSummary] = useState<RatingsSummary>({
     carrierCount: 0,
     carrierAvg: 0,
@@ -116,6 +118,11 @@ export default function HomePage(): React.JSX.Element {
 
   React.useEffect(() => {
     setRatingsSummary(getRatingsSummary());
+    void listShipmentsApi().then((res) => {
+      if (res.ok && !res.isFallback && Array.isArray(res.data)) {
+        setRecentShipments(res.data.slice(0, 3));
+      }
+    });
   }, []);
 
   React.useEffect(() => {
@@ -155,8 +162,8 @@ export default function HomePage(): React.JSX.Element {
           </h1>
           <p style={{ margin: 0, fontSize: "14px", color: "#64748B", fontWeight: 500 }}>
             {user
-              ? `Conectado como ${activeRole === "CARRIER" ? "Transportador" : "Remetente"} • Minas Gerais`
-              : "Marketplace de Encomendas & Rotas • Minas Gerais"}
+              ? `Conectado como ${activeRole === "CARRIER" ? "Transportador" : "Remetente"} • ${user.city && user.stateUf ? `${user.city} (${user.stateUf})` : "Todo o Brasil"}`
+              : "Marketplace de Encomendas & Rotas • Todo o Brasil"}
           </p>
 
           {hasBothRoles && (
@@ -1234,12 +1241,12 @@ export default function HomePage(): React.JSX.Element {
               <span style={{ fontSize: "12px", fontWeight: 800, color: "#1E293B" }}>TOPIC LOG</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "14px" }}>🔺</span>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>MINAS GERAIS</span>
+              <span style={{ fontSize: "14px" }}>🇧🇷</span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>TODO O BRASIL</span>
             </div>
           </div>
           <p style={{ margin: 0, fontSize: "11px", color: "#94A3B8" }}>
-            Piloto Homologado: João Monlevade • Belo Horizonte • Todo o Estado de MG
+            Cobertura Nacional: Todos os municípios e estados do Brasil
           </p>
         </footer>
       </div>

@@ -215,8 +215,8 @@ export default function CadastrarViagemPage(): React.JSX.Element {
 
   const [vehicleType, setVehicleType] = useState<VehicleTypeCode>("CAR");
   const [vehicleModel, setVehicleModel] = useState("");
-  const [originCity, setOriginCity] = useState("Belo Horizonte");
-  const [destinationCity, setDestinationCity] = useState("João Monlevade");
+  const [originCity, setOriginCity] = useState("");
+  const [destinationCity, setDestinationCity] = useState("");
   const [stopsList, setStopsList] = useState<IntermediateStopItem[]>([]);
   const [newStopInput, setNewStopInput] = useState("");
 

@@ -105,8 +105,13 @@ export interface LocalMockUser {
   cpf?: string;
   city: string;
   stateUf: string;
+  postalCode?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  complement?: string;
   roles: ("SENDER" | "CARRIER")[];
-  kycStatus: "PENDING" | "VERIFIED" | "REJECTED";
+  kycStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
   ratingAvg?: number;
   ratingCount?: number;
   vehicleType?: string;
@@ -136,38 +141,28 @@ export interface LocalMockUser {
 
 const LOCAL_USERS_KEY = "topiclog_users";
 
-export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
-  {
-    id: "usr-luiz-carrier",
-    email: "lccostacanoas@gmail.com",
-    password: "12345678",
-    displayName: "Luiz Carlos Costa",
-    phone: "(31) 98888-7777",
-    cpf: "55042724567",
-    city: "Belo Horizonte",
-    stateUf: "MG",
-    roles: ["CARRIER"],
-    kycStatus: "VERIFIED",
-    ratingAvg: 0,
-    ratingCount: 0,
-    vehicleType: "CARRO",
-    vehicleModel: "Fiat Strada Endurance",
-    vehiclePlate: "BRA2E19",
-    vehicleYear: "2023",
-    renavam: "00987654321",
-    cnhCategory: "B",
-    cnhNumber: "04982314560",
-    carrierTermsAccepted: true,
-    bankName: "Mercado Pago",
-    pixKeyType: "CPF",
-    pixKey: "55042724567",
-    mpAccountEmail: "lccostacanoas@gmail.com",
-    cnhDocumentName: "cnh_luiz_carlos_costa.pdf",
-    crlvDocumentName: "crlv_fiat_strada_bra2e19.pdf",
-    identityDocumentName: "rg_luiz_carlos.pdf",
-    createdAt: "2026-11-10T20:00:00.000Z"
-  }
-];
+function allowLocalDemoFallback(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+function buildApiUnreachableResult<T>(correlationId?: string, status = 503): ApiFetchResult<T> {
+  return {
+    ok: false,
+    status: status || 503,
+    problem: {
+      title: "Servidor temporariamente indisponível",
+      status: status || 503,
+      ruleCode: "API_UNREACHABLE",
+      detail: "Não foi possível conectar ao servidor oficial da Topic Log no momento. Tente novamente em instantes."
+    },
+    correlationId: correlationId || `err-${Date.now()}`,
+    isFallback: false
+  };
+}
+
+export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [];
 
 export function getLocalMockUsers(): LocalMockUser[] {
   const map = new Map<string, LocalMockUser>();
@@ -216,12 +211,17 @@ export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileRespo
     email: u.email,
     phoneMasked: maskedPhone,
     cpfMasked: maskedCpf,
-    city: u.city || "Belo Horizonte",
-    stateUf: u.stateUf || "MG",
+    city: u.city || "",
+    stateUf: u.stateUf || "",
+    postalCode: u.postalCode,
+    street: u.street,
+    number: u.number,
+    neighborhood: u.neighborhood,
+    complement: u.complement,
     roles: u.roles,
-    kycStatus: u.kycStatus === "VERIFIED" ? "VERIFIED" : "PENDING",
+    kycStatus: u.kycStatus || "NOT_STARTED",
     canNavigatePlatform: true,
-    canContractDelivery: true,
+    canContractDelivery: u.kycStatus === "VERIFIED",
     termsAcceptedVersion: "2026-v1.0",
     termsAcceptedAtUtc: u.createdAt,
     ratingAvg: u.ratingAvg ?? 0,
@@ -472,8 +472,11 @@ export async function registerUserApi(
     return result;
   }
 
-  // Fallback para Netlify estático ou ausência de backend ativo (404, falha de rede status 0 ou 405)
+  // Fallback apenas em desenvolvimento local quando o backend não está ativo
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<AuthSessionResponse>(customCorrelationId, result.status);
+    }
     if (typeof window !== "undefined") {
       const existing = getLocalMockUsers();
       const normEmail = request.email.trim().toLowerCase();
@@ -528,10 +531,15 @@ export async function registerUserApi(
         password: request.password,
         phone: request.phone.trim(),
         cpf: request.cpf ? request.cpf.trim() : undefined,
-        city: request.city ? request.city.trim() : "João Monlevade",
-        stateUf: request.stateUf || "MG",
+        city: request.city ? request.city.trim() : "",
+        stateUf: request.stateUf ? request.stateUf.trim().toUpperCase() : "",
+        postalCode: request.postalCode?.trim() || undefined,
+        street: request.street?.trim() || undefined,
+        number: request.number?.trim() || undefined,
+        neighborhood: request.neighborhood?.trim() || undefined,
+        complement: request.complement?.trim() || undefined,
         roles: (request.initialRoles as ("SENDER" | "CARRIER")[]) || ["SENDER"],
-        kycStatus: "VERIFIED",
+        kycStatus: "NOT_STARTED",
         vehicleType: request.vehicleType,
         vehicleModel: request.vehicleModel,
         vehiclePlate: request.vehiclePlate,
@@ -571,29 +579,16 @@ export async function loginUserApi(
     return result;
   }
 
-  // Fallback para Netlify estático ou ausência de backend ativo (404, status 0 ou 405) ou 401 para mock user
-  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405 || result.status === 401) {
+  // Fallback apenas em desenvolvimento local quando backend não estiver rodando (nunca em produção)
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<AuthSessionResponse>(customCorrelationId, result.status);
+    }
     if (typeof window !== "undefined") {
       const users = getLocalMockUsers();
       const loginTerm = request.email.trim().toLowerCase();
-      const isLuizAlias =
-        loginTerm === "lccostacanoas@gmail.com" ||
-        loginTerm === "luizcostacanoas@gmail.com" ||
-        loginTerm === "lccosstacanoas@gmail.com" ||
-        (loginTerm.includes("canoas") && (loginTerm.includes("costa") || loginTerm.startsWith("lc")));
-      const matched = users.find(
-        (u) =>
-          (u.email && u.email.toLowerCase() === loginTerm) ||
-          (u.displayName && u.displayName.toLowerCase() === loginTerm) ||
-          (isLuizAlias && (u.email?.toLowerCase() === "luizcostacanoas@gmail.com" || u.email?.toLowerCase() === "lccostacanoas@gmail.com"))
-      );
-
-      const isPasswordValid = Boolean(
-        matched && (
-          matched.password === request.password ||
-          (isLuizAlias && (request.password === "12345678" || request.password === "123456"))
-        )
-      );
+      const matched = users.find((u) => u.email && u.email.toLowerCase() === loginTerm);
+      const isPasswordValid = Boolean(matched && matched.password === request.password);
 
       if (matched && isPasswordValid) {
         const session = buildLocalMockSession(matched);
@@ -651,6 +646,19 @@ export async function getSandboxTokenApi(
 }
 
 
+export async function changePasswordApi(
+  token: string,
+  payload: { currentPassword: string; newPassword: string },
+  customCorrelationId?: string
+): Promise<ApiFetchResult<void>> {
+  return apiRequest<void>("/api/v1/auth/change-password", {
+    method: "POST",
+    token,
+    body: payload,
+    customCorrelationId
+  });
+}
+
 export async function logoutUserApi(
   token: string,
   request: LogoutRequest,
@@ -668,12 +676,12 @@ export async function getPrivateProfileApi(
   token: string,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
-  if (typeof window !== "undefined") {
+  if (token && token.startsWith("local_jwt_") && allowLocalDemoFallback()) {
     try {
       const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
       if (rawAuth) {
         const parsed = JSON.parse(rawAuth);
-        if (parsed?.profile && (parsed.accessToken === token || (token && token.startsWith("local_jwt_")))) {
+        if (parsed?.profile && parsed.accessToken === token) {
           return {
             ok: true,
             status: 200,
@@ -684,9 +692,7 @@ export async function getPrivateProfileApi(
         }
       }
     } catch {}
-  }
 
-  if (token && token.startsWith("local_jwt_") && typeof window !== "undefined") {
     const parts = token.split("_");
     const userId = parts.slice(2, -1).join("_");
     const users = getLocalMockUsers();
@@ -714,18 +720,44 @@ export async function updatePrivateProfileApi(
   request: UpdateProfileRequest,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
-  // Atualiza imediatamente a sessão local e o mock user para consistência instantânea no frontend
-  let localUpdatedProfile: PrivateUserProfileResponse | null = null;
-  if (typeof window !== "undefined") {
+  const result = await apiRequest<PrivateUserProfileResponse>("/api/v1/me", {
+    method: "PATCH",
+    token,
+    body: request,
+    customCorrelationId
+  });
+
+  if (result.ok && result.data) {
+    if (typeof window !== "undefined") {
+      try {
+        const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
+        if (rawAuth) {
+          const parsed = JSON.parse(rawAuth);
+          const updatedSession = { ...parsed, profile: result.data };
+          window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
+          window.localStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
+        }
+      } catch {}
+    }
+    return result;
+  }
+
+  if (allowLocalDemoFallback() && (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405)) {
     try {
       const rawAuth = window.sessionStorage.getItem("topiclog_auth_session_v2") || window.localStorage.getItem("topiclog_auth_session_v2");
       if (rawAuth) {
         const parsed = JSON.parse(rawAuth);
         if (parsed?.profile) {
-          localUpdatedProfile = {
+          const localUpdatedProfile: PrivateUserProfileResponse = {
             ...parsed.profile,
             displayName: request.displayName || parsed.profile.displayName,
             city: request.city || parsed.profile.city,
+            stateUf: request.stateUf || parsed.profile.stateUf,
+            postalCode: request.postalCode !== undefined ? request.postalCode : parsed.profile.postalCode,
+            street: request.street !== undefined ? request.street : parsed.profile.street,
+            number: request.number !== undefined ? request.number : parsed.profile.number,
+            neighborhood: request.neighborhood !== undefined ? request.neighborhood : parsed.profile.neighborhood,
+            complement: request.complement !== undefined ? request.complement : parsed.profile.complement,
             roles: request.roles ? [...request.roles] : parsed.profile.roles,
             vehicleType: request.vehicleType !== undefined ? request.vehicleType : parsed.profile.vehicleType,
             vehicleModel: request.vehicleModel !== undefined ? request.vehicleModel : parsed.profile.vehicleModel,
@@ -754,7 +786,6 @@ export async function updatePrivateProfileApi(
           window.sessionStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
           window.localStorage.setItem("topiclog_auth_session_v2", JSON.stringify(updatedSession));
 
-          // Atualiza também na lista de usuários locais persistidos
           const users = getLocalMockUsers();
           const targetUser = users.find(u => u.id === parsed.profile.userId || u.email.toLowerCase() === parsed.profile.email.toLowerCase());
           const prof = localUpdatedProfile;
@@ -763,6 +794,12 @@ export async function updatePrivateProfileApi(
               ...targetUser,
               displayName: prof.displayName,
               city: prof.city,
+              stateUf: prof.stateUf,
+              postalCode: prof.postalCode,
+              street: prof.street,
+              number: prof.number,
+              neighborhood: prof.neighborhood,
+              complement: prof.complement,
               roles: prof.roles.filter((r): r is "SENDER" | "CARRIER" => r === "SENDER" || r === "CARRIER"),
               vehicleType: prof.vehicleType,
               vehicleModel: prof.vehicleModel,
@@ -784,39 +821,17 @@ export async function updatePrivateProfileApi(
               identityDocumentData: prof.identityDocumentData
             });
           }
+
+          return {
+            ok: true,
+            status: 200,
+            data: localUpdatedProfile,
+            correlationId: customCorrelationId || `local-${Date.now()}`,
+            isFallback: true
+          };
         }
       }
     } catch {}
-  }
-
-  const result = await apiRequest<PrivateUserProfileResponse>("/api/v1/me", {
-    method: "PATCH",
-    token,
-    body: request,
-    customCorrelationId
-  });
-
-  if (result.ok && result.data) {
-    if (localUpdatedProfile) {
-      return {
-        ...result,
-        data: {
-          ...result.data,
-          ...localUpdatedProfile
-        }
-      };
-    }
-    return result;
-  }
-
-  if (localUpdatedProfile) {
-    return {
-      ok: true,
-      status: 200,
-      data: localUpdatedProfile,
-      correlationId: customCorrelationId || `local-${Date.now()}`,
-      isFallback: true
-    };
   }
 
   return result;
@@ -929,6 +944,9 @@ export async function createShipmentApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<ShipmentDetailDto>(customCorrelationId, result.status);
+    }
     const shipmentId = `ship_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const nowIso = new Date().toISOString();
     const vehicleType: VehicleTypeCode = payload.vehicleType || "CAR";
@@ -943,16 +961,16 @@ export async function createShipmentApi(
         heightCm: payload.dimensionsHeightCm || 20
       },
       specialCare: payload.specialCareNotes || [],
-      originCity: payload.origin?.city || "João Monlevade",
+      originCity: payload.origin?.city || "",
       originNeighborhood: payload.origin?.neighborhood || "",
-      destinationCity: payload.destination?.city || "Belo Horizonte",
+      destinationCity: payload.destination?.city || "",
       destinationNeighborhood: payload.destination?.neighborhood || "",
       weightGrams: payload.weightGrams,
       maxVehicleType: vehicleType,
       suggestedPriceCents: payload.suggestedPriceCents,
       deadlineDate: payload.deliveryWindow || nowIso.split("T")[0] || "2026-12-31",
       senderName: "Remetente Cadastrado",
-      senderKycVerified: true,
+      senderKycVerified: false,
       status: "OPEN",
       interestedInInsurance: payload.interestedInInsurance || false,
       photoIcon: "📦",
@@ -980,8 +998,8 @@ export async function createShipmentApi(
         specialCareNotes: payload.specialCareNotes || [],
         origin: {
           kind: "ORIGIN",
-          city: payload.origin?.city || "João Monlevade",
-          stateUf: payload.origin?.stateUf || "MG",
+          city: payload.origin?.city || "",
+          stateUf: payload.origin?.stateUf || "",
           neighborhood: payload.origin?.neighborhood || "",
           approximateLatitude: -19.8,
           approximateLongitude: -43.1,
@@ -989,8 +1007,8 @@ export async function createShipmentApi(
         },
         destination: {
           kind: "DESTINATION",
-          city: payload.destination?.city || "Belo Horizonte",
-          stateUf: payload.destination?.stateUf || "MG",
+          city: payload.destination?.city || "",
+          stateUf: payload.destination?.stateUf || "",
           neighborhood: payload.destination?.neighborhood || "",
           approximateLatitude: -19.9,
           approximateLongitude: -43.9,
@@ -1039,6 +1057,9 @@ export async function listShipmentsApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<ShipmentSummaryDto[]>(customCorrelationId, result.status);
+    }
     const demoItems = getDemoShipments();
     const mapped: ShipmentSummaryDto[] = demoItems.map((s) => ({
       id: s.id,
@@ -1166,6 +1187,9 @@ export async function createTripApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<TripDto>(customCorrelationId, result.status);
+    }
     const tripId = `trip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const vehicleModel = payload.vehicleModel || "Veículo não especificado";
     const departureTime = payload.departureTime || "08:00";
@@ -1598,6 +1622,9 @@ export async function createProposalApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<ProposalDto>(customCorrelationId, result.status);
+    }
     let currentUserName = "Usuário TopicLog";
     let currentUserId = "demo-user-id";
     if (typeof window !== "undefined") {
@@ -1626,7 +1653,7 @@ export async function createProposalApi(
     const shipments = getDemoShipments();
     const matchedShipment = shipments.find((s) => s.id === payload.shipmentId);
 
-    let route = "João Monlevade ➔ Belo Horizonte";
+    let route = "Origem ➔ Destino";
     let senderName = currentUserName;
     let carrierName = "Transportador Parceiro";
     let shipmentTitle = "Transporte de Encomenda";
@@ -1730,6 +1757,9 @@ export async function listProposalsByCarrierApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<ProposalDto[]>(customCorrelationId, result.status);
+    }
     const demos = getDemoProposals().filter((p) => p.isCurrentUserCarrier);
     const mapped: ProposalDto[] = demos.map((d) => ({
       id: d.id,
@@ -1775,6 +1805,9 @@ export async function listProposalsForSenderApi(
   }
 
   if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<ProposalDto[]>(customCorrelationId, result.status);
+    }
     const demos = getDemoProposals().filter((p) => !p.isCurrentUserCarrier);
     const mapped: ProposalDto[] = demos.map((d) => ({
       id: d.id,

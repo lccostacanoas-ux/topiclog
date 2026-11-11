@@ -121,15 +121,6 @@ public sealed class InMemoryUserRepository : IUserRepository
                             continue;
                         }
 
-                        if (item.User.Email.Equals("lccostacanoas@gmail.com", StringComparison.OrdinalIgnoreCase)
-                            && item.Profile.RatingCount == 34
-                            && item.Profile.RatingAvg == 5.0m)
-                        {
-                            item.Profile.RatingAvg = 0m;
-                            item.Profile.RatingCount = 0;
-                            migratedAny = true;
-                        }
-
                         _byId[item.User.Id] = (item.User, item.Profile);
                         _idByEmail[item.User.Email.Trim().ToLowerInvariant()] = item.User.Id;
                     }
@@ -167,82 +158,9 @@ public sealed class InMemoryUserRepository : IUserRepository
         }
     }
 
-    private void SeedDefaultUsers()
+    private static void SeedDefaultUsers()
     {
-        lock (_syncRoot)
-        {
-            var luizId = Guid.Parse("a0000000-0000-0000-0000-000000000001");
-            string luizEmail = "lccostacanoas@gmail.com";
-            if (!_idByEmail.ContainsKey(luizEmail))
-            {
-                var user = new UserEntity
-                {
-                    Id = luizId,
-                    Email = luizEmail,
-                    PhoneEncrypted = "encrypted_31988887777",
-                    PhoneMasked = "(31) 98888-7777",
-                    PasswordHash = "12345678",
-                    Status = UserAccountStatus.ACTIVE,
-                    CreatedAtUtc = DateTimeOffset.UtcNow,
-                    UpdatedAtUtc = DateTimeOffset.UtcNow
-                };
-
-                var profile = new UserProfileEntity
-                {
-                    UserId = luizId,
-                    DisplayName = "Luiz Carlos Costa",
-                    City = "Belo Horizonte",
-                    StateUf = "MG",
-                    CpfMasked = "550.***.***-67",
-                    CpfHash = "cpfhash_luiz_carlos_costa",
-                    Roles = [UserRole.CARRIER],
-                    KycStatus = KycStatus.VERIFIED,
-                    TermsAcceptedVersion = "2026-v1.0",
-                    TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
-                    RatingAvg = 0m,
-                    RatingCount = 0,
-                    VehicleType = "CARRO",
-                    VehicleModel = "Fiat Strada Endurance",
-                    VehiclePlate = "BRA2E19",
-                    VehicleYear = "2023",
-                    Renavam = "00987654321",
-                    CnhNumber = "04982314560",
-                    CnhCategory = "B",
-                    CarrierTermsAccepted = true,
-                    CarrierTermsAcceptedAtUtc = DateTimeOffset.UtcNow,
-                    BankName = "Mercado Pago",
-                    PixKeyType = "CPF",
-                    PixKey = "55042724567",
-                    MpAccountEmail = "lccostacanoas@gmail.com",
-                    UpdatedAtUtc = DateTimeOffset.UtcNow
-                };
-
-                _byId[luizId] = (user, profile);
-                _idByEmail[luizEmail] = luizId;
-            }
-            else if (_idByEmail.TryGetValue(luizEmail, out Guid existingId) && _byId.TryGetValue(existingId, out var existingEntry))
-            {
-                if (string.IsNullOrWhiteSpace(existingEntry.Profile.VehiclePlate))
-                {
-                    existingEntry.Profile.VehicleType = "CARRO";
-                    existingEntry.Profile.VehicleModel = "Fiat Strada Endurance";
-                    existingEntry.Profile.VehiclePlate = "BRA2E19";
-                    existingEntry.Profile.VehicleYear = "2023";
-                    existingEntry.Profile.Renavam = "00987654321";
-                    existingEntry.Profile.CnhCategory = "B";
-                    existingEntry.Profile.CnhNumber = "04982314560";
-                    existingEntry.Profile.CarrierTermsAccepted = true;
-                    existingEntry.Profile.PixKeyType = "CPF";
-                    existingEntry.Profile.PixKey = "55042724567";
-                    existingEntry.Profile.BankName = "Mercado Pago";
-                    existingEntry.Profile.MpAccountEmail = "lccostacanoas@gmail.com";
-                }
-            }
-
-            _idByEmail["lccostacanoas@gmail.com"] = luizId;
-            _idByEmail["luizcostacanoas@gmail.com"] = luizId;
-            _idByEmail["lccosstacanoas@gmail.com"] = luizId;
-        }
+        // Produção: nenhuma conta pessoal ou administrativa com senha fixa é pré-semeada no código.
     }
 
     public Task<(UserEntity User, UserProfileEntity Profile)?> FindByEmailAsync(
@@ -260,26 +178,6 @@ public sealed class InMemoryUserRepository : IUserRepository
                 && _byId.TryGetValue(id, out var entry))
             {
                 return Task.FromResult<(UserEntity, UserProfileEntity)?>(Clone(entry));
-            }
-
-            // Suporte resiliente a variações do e-mail do usuário Luiz Carlos Costa
-            if (cleanEmail.Contains("canoas", StringComparison.OrdinalIgnoreCase) && 
-                (cleanEmail.Contains("costa", StringComparison.OrdinalIgnoreCase) || cleanEmail.StartsWith("lc", StringComparison.OrdinalIgnoreCase)))
-            {
-                var luizId = Guid.Parse("a0000000-0000-0000-0000-000000000001");
-                if (_byId.TryGetValue(luizId, out var luizEntry))
-                {
-                    return Task.FromResult<(UserEntity, UserProfileEntity)?>(Clone(luizEntry));
-                }
-            }
-
-            // Fallback amigável: se o usuário digitou o Nome Completo (ex: "Luiz Carlos Costa")
-            var matchByName = _byId.Values.FirstOrDefault(x =>
-                string.Equals(x.Profile.DisplayName?.Trim(), cleanEmail, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(x.Profile.DisplayName?.Trim().Normalize(System.Text.NormalizationForm.FormD), cleanEmail.Normalize(System.Text.NormalizationForm.FormD), StringComparison.OrdinalIgnoreCase));
-            if (matchByName != default && matchByName.User is not null)
-            {
-                return Task.FromResult<(UserEntity, UserProfileEntity)?>(Clone(matchByName));
             }
 
             return Task.FromResult<(UserEntity, UserProfileEntity)?>(null);
@@ -413,6 +311,11 @@ public sealed class InMemoryUserRepository : IUserRepository
             CpfMasked = source.Profile.CpfMasked,
             City = source.Profile.City,
             StateUf = source.Profile.StateUf,
+            PostalCode = source.Profile.PostalCode,
+            Street = source.Profile.Street,
+            Number = source.Profile.Number,
+            Neighborhood = source.Profile.Neighborhood,
+            Complement = source.Profile.Complement,
             Roles = [.. source.Profile.Roles],
             KycStatus = source.Profile.KycStatus,
             TermsAcceptedVersion = source.Profile.TermsAcceptedVersion,

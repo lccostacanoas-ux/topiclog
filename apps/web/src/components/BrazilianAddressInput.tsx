@@ -341,9 +341,11 @@ export default function BrazilianAddressInput({
   const componentInstanceId = useId();
   const datalistId = `cities-list-${id}-${componentInstanceId}`;
 
-  // Estados locais dos campos decompostos
-  const [stateUf, setStateUf] = useState(value.stateUf || "MG");
-  const [city, setCity] = useState(value.city || "Belo Horizonte");
+  // Estados locais dos campos decompostos (Todo o Brasil, sem cidade travada)
+  const [postalCode, setPostalCode] = useState(value.postalCode || "");
+  const [isCepLoading, setIsCepLoading] = useState(false);
+  const [stateUf, setStateUf] = useState(value.stateUf || "");
+  const [city, setCity] = useState(value.city || "");
   const [streetQuery, setStreetQuery] = useState(value.street || "");
   const [houseNumber, setHouseNumber] = useState(value.number || "");
   const [neighborhood, setNeighborhood] = useState(value.neighborhood || "");
@@ -356,11 +358,15 @@ export default function BrazilianAddressInput({
 
   // Sincroniza estados internos quando as props mudam
   useEffect(() => {
-    setStateUf(value.stateUf || "MG");
+    setPostalCode(value.postalCode || "");
+  }, [value.postalCode]);
+
+  useEffect(() => {
+    setStateUf(value.stateUf || "");
   }, [value.stateUf]);
 
   useEffect(() => {
-    setCity(value.city || "Belo Horizonte");
+    setCity(value.city || "");
   }, [value.city]);
 
   useEffect(() => {
@@ -399,7 +405,7 @@ export default function BrazilianAddressInput({
   // Busca assíncrona ao digitar a rua (debounce 350ms)
   useEffect(() => {
     const cleanStreet = streetQuery.trim();
-    if (cleanStreet.length < 3 || value.isConfirmed) {
+    if (cleanStreet.length < 3 || value.isConfirmed || !city.trim()) {
       setSuggestions([]);
       setIsOpen(false);
       return;
@@ -432,27 +438,77 @@ export default function BrazilianAddressInput({
     };
   }, [streetQuery, houseNumber, neighborhood, city, stateUf, value.isConfirmed]);
 
-  // Manipulador de troca de Estado (UF)
+  // Manipulador de CEP com preenchimento automático via ViaCEP (editável pelo usuário)
+  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+    const formattedCep = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+    setPostalCode(formattedCep);
+
+    if (digits.length === 8) {
+      setIsCepLoading(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
+          headers: { Accept: "application/json" }
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            erro?: boolean;
+            logradouro?: string;
+            bairro?: string;
+            localidade?: string;
+            uf?: string;
+          };
+          if (!data.erro && data.localidade && data.uf) {
+            const nextStreet = (data.logradouro || streetQuery).trim();
+            const nextNeigh = (data.bairro || neighborhood).trim();
+            const nextCity = data.localidade.trim();
+            const nextUf = data.uf.trim().toUpperCase();
+            setStreetQuery(nextStreet);
+            setNeighborhood(nextNeigh);
+            setCity(nextCity);
+            setStateUf(nextUf);
+            setIsOpen(false);
+
+            const formattedAddr = buildFormattedAddress(nextStreet, houseNumber, nextNeigh, nextCity, nextUf);
+            onChange({
+              ...value,
+              postalCode: formattedCep,
+              street: nextStreet,
+              neighborhood: nextNeigh || undefined,
+              city: nextCity,
+              stateUf: nextUf,
+              formattedAddress: formattedAddr,
+              rawInput: formattedAddr,
+              isConfirmed: false
+            });
+            setIsCepLoading(false);
+            return;
+          }
+        }
+      } catch {
+        // segue permitindo edição manual
+      } finally {
+        setIsCepLoading(false);
+      }
+    }
+
+    onChange({
+      ...value,
+      postalCode: formattedCep
+    });
+  };
+
+  // Manipulador de troca de Estado (UF) sem impor município fixo
   const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newUf = e.target.value;
     setStateUf(newUf);
-
-    const popularInState = POPULAR_CITIES_BY_UF[newUf];
-    const defaultCity = (popularInState && popularInState.length > 0 && popularInState[0]) ? popularInState[0] : (city || "Belo Horizonte");
-    setCity(defaultCity);
-
-    const norm = defaultCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const hub = CITY_CENTROIDS[norm];
-
-    const formatted = buildFormattedAddress(streetQuery, houseNumber, neighborhood, defaultCity, newUf);
+    const formatted = buildFormattedAddress(streetQuery, houseNumber, neighborhood, city, newUf);
 
     onChange({
       ...value,
       stateUf: newUf,
-      city: defaultCity,
+      city,
       formattedAddress: formatted,
-      lat: hub ? hub.lat : value.lat,
-      lon: hub ? hub.lon : value.lon,
       isConfirmed: false
     });
   };
@@ -714,8 +770,45 @@ export default function BrazilianAddressInput({
         </div>
       </div>
 
-      {/* Linha 1: Estado (UF) e Cidade (Município) */}
-      <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "10px", marginBottom: "10px" }}>
+      {/* Linha 1: CEP, Estado (UF) e Cidade (Município) */}
+      <div className="address-grid-uf-city" style={{ marginBottom: "10px" }}>
+        <div>
+          <label
+            htmlFor={`cep-input-${id}`}
+            style={{
+              fontSize: "11px",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              color: "#475569",
+              display: "block",
+              marginBottom: "3px"
+            }}
+          >
+            CEP {isCepLoading ? "..." : ""}
+          </label>
+          <input
+            id={`cep-input-${id}`}
+            type="text"
+            inputMode="numeric"
+            maxLength={9}
+            value={postalCode}
+            onChange={handleCepChange}
+            placeholder="00000-000"
+            style={{
+              width: "100%",
+              minHeight: "42px",
+              padding: "6px 10px",
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#0F172A",
+              backgroundColor: "#FFFFFF",
+              border: "1.5px solid #CBD5E1",
+              borderRadius: "8px",
+              outline: "none"
+            }}
+          />
+        </div>
+
         <div>
           <label
             htmlFor={`state-select-${id}`}
@@ -736,9 +829,9 @@ export default function BrazilianAddressInput({
             onChange={handleStateChange}
             style={{
               width: "100%",
-              height: "38px",
+              minHeight: "42px",
               padding: "6px 8px",
-              fontSize: "13px",
+              fontSize: "16px",
               fontWeight: 700,
               color: "#0F172A",
               backgroundColor: "#FFFFFF",
@@ -748,6 +841,7 @@ export default function BrazilianAddressInput({
               cursor: "pointer"
             }}
           >
+            <option value="">UF...</option>
             {BRAZILIAN_STATES.map((st) => (
               <option key={st.uf} value={st.uf}>
                 {st.uf} - {st.name}
@@ -768,7 +862,7 @@ export default function BrazilianAddressInput({
               marginBottom: "3px"
             }}
           >
-            Cidade / Município *
+            Cidade / Município (Todo o Brasil) *
           </label>
           <input
             id={`city-input-${id}`}
@@ -776,12 +870,12 @@ export default function BrazilianAddressInput({
             list={datalistId}
             value={city}
             onChange={handleCityChange}
-            placeholder="Ex.: Belo Horizonte, Contagem, Monlevade..."
+            placeholder="Digite qualquer cidade do Brasil..."
             style={{
               width: "100%",
-              height: "38px",
+              minHeight: "42px",
               padding: "6px 10px",
-              fontSize: "13px",
+              fontSize: "16px",
               fontWeight: 700,
               color: "#0F172A",
               backgroundColor: "#FFFFFF",
@@ -799,8 +893,8 @@ export default function BrazilianAddressInput({
       </div>
 
       {/* Linha 2: Rua / Logradouro + Número da Casa + Botão Localizar */}
-      <div style={{ position: "relative", marginBottom: "10px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 100px auto", gap: "8px" }}>
+      <div style={{ marginBottom: "10px" }}>
+        <div className="address-grid-street">
           <div>
             <label
               htmlFor={`street-input-${id}`}
@@ -834,9 +928,9 @@ export default function BrazilianAddressInput({
               autoComplete="off"
               style={{
                 width: "100%",
-                height: "40px",
+                minHeight: "44px",
                 padding: "8px 12px",
-                fontSize: "14px",
+                fontSize: "16px",
                 fontWeight: 600,
                 color: "#0F172A",
                 backgroundColor: value.isConfirmed ? "#FFFFFF" : "#FFFBEB",
@@ -876,9 +970,9 @@ export default function BrazilianAddressInput({
               placeholder="1200 ou S/N"
               style={{
                 width: "100%",
-                height: "40px",
+                minHeight: "44px",
                 padding: "8px 10px",
-                fontSize: "14px",
+                fontSize: "16px",
                 fontWeight: 700,
                 color: "#0F172A",
                 backgroundColor: "#FFFFFF",
@@ -896,18 +990,20 @@ export default function BrazilianAddressInput({
               onClick={handleDirectLocate}
               disabled={isLoading}
               style={{
-                height: "40px",
+                width: "100%",
+                minHeight: "44px",
                 backgroundColor: "#0F172A",
                 color: "#FFFFFF",
                 border: "none",
                 borderRadius: "8px",
                 padding: "0 14px",
-                fontSize: "12px",
+                fontSize: "13px",
                 fontWeight: 700,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 display: "inline-flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "4px"
               }}
               title="Localizar endereço e marcar ponto exato no mapa"
@@ -917,79 +1013,107 @@ export default function BrazilianAddressInput({
           </div>
         </div>
 
-        {/* Menu dropdown de sugestões de endereços */}
+        {/* Painel em fluxo (sem sobrepor campos no celular) com botão Fechar */}
         {isOpen && suggestions.length > 0 && (
-          <ul
+          <div
             style={{
-              position: "absolute",
-              top: "66px",
-              left: 0,
-              right: 0,
-              zIndex: 1100,
+              marginTop: "8px",
               backgroundColor: "#FFFFFF",
-              border: "1px solid #CBD5E1",
-              borderRadius: "8px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-              listStyle: "none",
-              margin: 0,
-              padding: "4px 0",
-              maxHeight: "260px",
-              overflowY: "auto"
+              border: "1.5px solid #CBD5E1",
+              borderRadius: "10px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              overflow: "hidden"
             }}
           >
-            {suggestions.map((sug, idx) => (
-              <li
-                key={idx}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleSelectSuggestion(sug);
-                }}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                backgroundColor: "#F8FAFC",
+                borderBottom: "1px solid #E2E8F0",
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#475569"
+              }}
+            >
+              <span>Selecione o endereço encontrado ({suggestions.length})</span>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
                 style={{
-                  padding: "10px 14px",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  borderBottom: idx < suggestions.length - 1 ? "1px solid #F1F5F9" : "none",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "8px"
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#F8FAFC";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#FFFFFF";
+                  background: "#E2E8F0",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#0F172A",
+                  cursor: "pointer"
                 }}
               >
-                <span style={{ fontSize: "16px", marginTop: "1px" }}>📍</span>
-                <div style={{ flex: 1 }}>
-                  <strong style={{ color: "#0F172A", display: "block" }}>
-                    {sug.street || sug.formattedAddress}
-                  </strong>
-                  <span style={{ fontSize: "11px", color: "#64748B" }}>
-                    {sug.neighborhood ? `${sug.neighborhood} • ` : ""}{sug.city} - {sug.stateUf}
-                  </span>
-                </div>
-                <span
+                ✕ Fechar
+              </button>
+            </div>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                maxHeight: "220px",
+                overflowY: "auto"
+              }}
+            >
+              {suggestions.map((sug, idx) => (
+                <li
+                  key={idx}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectSuggestion(sug);
+                  }}
                   style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    color: "#166534",
-                    backgroundColor: "#DCFCE7",
-                    padding: "3px 8px",
-                    borderRadius: "4px",
-                    alignSelf: "center"
+                    padding: "10px 12px",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    borderBottom: idx < suggestions.length - 1 ? "1px solid #F1F5F9" : "none",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "8px",
+                    flexWrap: "wrap"
                   }}
                 >
-                  Confirmar Ponto
-                </span>
-              </li>
-            ))}
-          </ul>
+                  <span style={{ fontSize: "16px", marginTop: "1px" }}>📍</span>
+                  <div style={{ flex: 1, minWidth: "160px" }}>
+                    <strong style={{ color: "#0F172A", display: "block" }}>
+                      {sug.street || sug.formattedAddress}
+                    </strong>
+                    <span style={{ fontSize: "11px", color: "#64748B" }}>
+                      {sug.neighborhood ? `${sug.neighborhood} • ` : ""}{sug.city} - {sug.stateUf}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      color: "#166534",
+                      backgroundColor: "#DCFCE7",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      alignSelf: "center"
+                    }}
+                  >
+                    Confirmar
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
       {/* Linha 3: Bairro e Complemento Opcional */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "8px" }}>
+      <div className="address-grid-half" style={{ marginBottom: "8px" }}>
         <div>
           <label
             htmlFor={`neighborhood-input-${id}`}
@@ -1012,9 +1136,9 @@ export default function BrazilianAddressInput({
             placeholder="Ex.: Centro, Savassi, Funcionários..."
             style={{
               width: "100%",
-              height: "36px",
+              minHeight: "42px",
               padding: "6px 10px",
-              fontSize: "13px",
+              fontSize: "16px",
               color: "#0F172A",
               backgroundColor: "#FFFFFF",
               border: "1.5px solid #CBD5E1",
@@ -1053,9 +1177,9 @@ export default function BrazilianAddressInput({
             placeholder="Ex.: Apto 402, Bloco B, Galpão 3..."
             style={{
               width: "100%",
-              height: "36px",
+              minHeight: "42px",
               padding: "6px 10px",
-              fontSize: "13px",
+              fontSize: "16px",
               color: "#0F172A",
               backgroundColor: "#FFFFFF",
               border: "1.5px solid #CBD5E1",

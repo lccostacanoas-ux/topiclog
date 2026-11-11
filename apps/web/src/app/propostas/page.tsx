@@ -247,36 +247,41 @@ export default function PropostasPage(): React.JSX.Element {
       console.warn("Aviso ao buscar propostas da API:", err);
     }
 
-    // Mescla com propostas armazenadas localmente no demo store (com deduplicação estrita por ID)
-    const localDemos = getDemoProposals();
-    const myName = (user.displayName || user.email || "").toLowerCase();
+    // Mescla com propostas locais apenas em ambiente de desenvolvimento local (localhost)
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (isLocalHost) {
+      const localDemos = getDemoProposals();
+      const myName = (user.displayName || user.email || "").toLowerCase();
 
-    for (const d of localDemos) {
-      if (!seenIds.has(d.id)) {
-        const isCarrierOfProposal = d.isCurrentUserCarrier === true || (Boolean(myName) && Boolean(d.carrierName?.toLowerCase().includes(myName)));
-        const isSenderOfProposal = d.isCurrentUserCarrier === false || (Boolean(myName) && Boolean(d.senderName?.toLowerCase().includes(myName)));
+      for (const d of localDemos) {
+        if (!seenIds.has(d.id)) {
+          const isCarrierOfProposal = d.isCurrentUserCarrier === true || (Boolean(myName) && Boolean(d.carrierName?.toLowerCase().includes(myName)));
+          const isSenderOfProposal = d.isCurrentUserCarrier === false || (Boolean(myName) && Boolean(d.senderName?.toLowerCase().includes(myName)));
 
-        const showInSent = activeTab === "SENT" && (isCarrier || isCarrierOfProposal || d.isCurrentUserCarrier);
-        const showInReceived = activeTab === "RECEIVED" && (isSender || isSenderOfProposal || !d.isCurrentUserCarrier);
+          const showInSent = activeTab === "SENT" && (isCarrier || isCarrierOfProposal || d.isCurrentUserCarrier);
+          const showInReceived = activeTab === "RECEIVED" && (isSender || isSenderOfProposal || !d.isCurrentUserCarrier);
 
-        if (showInSent || showInReceived) {
-          seenIds.add(d.id);
-          unifiedList.push({
-            id: d.id,
-            shipmentId: d.shipmentId,
-            carrierId: "demo-carrier",
-            carrierName: d.carrierName || "Transportador Parceiro",
-            senderId: user.userId,
-            senderName: d.senderName || "Remetente",
-            amountCents: d.proposedPriceCents,
-            status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
-            version: 1,
-            counterCount: 0,
-            isExpired: false,
-            notes: d.message || "Proposta registrada via TopicLog Feed",
-            expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
-            createdAtUtc: new Date().toISOString()
-          });
+          if (showInSent || showInReceived) {
+            seenIds.add(d.id);
+            unifiedList.push({
+              id: d.id,
+              shipmentId: d.shipmentId,
+              carrierId: "demo-carrier",
+              carrierName: d.carrierName || "Transportador Parceiro",
+              senderId: user.userId,
+              senderName: d.senderName || "Remetente",
+              amountCents: d.proposedPriceCents,
+              status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
+              version: 1,
+              counterCount: 0,
+              isExpired: false,
+              notes: d.message || "Proposta registrada via TopicLog Feed",
+              expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
+              createdAtUtc: new Date().toISOString()
+            });
+          }
         }
       }
     }

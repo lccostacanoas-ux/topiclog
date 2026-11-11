@@ -100,29 +100,34 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       }
     }
 
-    // 2. Mescla com encomendas locais (demo / localStorage) eliminando duplicatas por ID
-    const localDemos = getDemoShipments();
-    for (const d of localDemos) {
-      if (!seenIds.has(d.id)) {
-        seenIds.add(d.id);
-        unifiedList.push({
-          id: d.id,
-          senderId: user?.userId || "local-user",
-          senderName: d.senderName || user?.displayName || "Você",
-          title: d.title,
-          description: d.description,
-          category: d.category,
-          weightGrams: d.weightGrams,
-          suggestedPriceCents: d.suggestedPriceCents,
-          originCity: d.originCity,
-          originNeighborhood: d.originNeighborhood,
-          destinationCity: d.destinationCity,
-          destinationNeighborhood: d.destinationNeighborhood,
-          deliveryWindow: d.deadlineDate || "A combinar",
-          status: d.status,
-          createdAt: d.createdAt,
-          isBackend: false
-        });
+    // 2. Mescla com encomendas locais apenas em ambiente local de desenvolvimento
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    if (isLocalHost) {
+      const localDemos = getDemoShipments();
+      for (const d of localDemos) {
+        if (!seenIds.has(d.id)) {
+          seenIds.add(d.id);
+          unifiedList.push({
+            id: d.id,
+            senderId: user?.userId || "local-user",
+            senderName: d.senderName || user?.displayName || "Você",
+            title: d.title,
+            description: d.description,
+            category: d.category,
+            weightGrams: d.weightGrams,
+            suggestedPriceCents: d.suggestedPriceCents,
+            originCity: d.originCity,
+            originNeighborhood: d.originNeighborhood,
+            destinationCity: d.destinationCity,
+            destinationNeighborhood: d.destinationNeighborhood,
+            deliveryWindow: d.deadlineDate || "A combinar",
+            status: d.status,
+            createdAt: d.createdAt,
+            isBackend: false
+          });
+        }
       }
     }
 

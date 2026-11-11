@@ -11,9 +11,9 @@ import "leaflet/dist/leaflet.css";
 import "../styles/tokens.css";
 
 export const metadata: Metadata = {
-  title: "Topic Log — Marketplace de Pequenas Encomendas e Rotas em Minas Gerais (Ambiente de Testes)",
+  title: "Topic Log — Marketplace Nacional de Encomendas e Rotas",
   description:
-    "Protótipo técnico da plataforma Topic Log para todo o estado de Minas Gerais, com piloto prioritário em João Monlevade e Belo Horizonte.",
+    "Plataforma de logística colaborativa e transporte sob demanda conectando remetentes e transportadores em todo o Brasil.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

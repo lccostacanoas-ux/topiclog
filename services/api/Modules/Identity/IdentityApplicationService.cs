@@ -171,8 +171,13 @@ public sealed class IdentityApplicationService
             DisplayName = request.DisplayName.Trim(),
             CpfHash = cpfHash,
             CpfMasked = cpfMasked,
-            City = string.IsNullOrWhiteSpace(request.City) ? "João Monlevade" : request.City.Trim(),
-            StateUf = string.IsNullOrWhiteSpace(request.StateUf) ? "MG" : request.StateUf.Trim().ToUpperInvariant(),
+            City = string.IsNullOrWhiteSpace(request.City) ? string.Empty : request.City.Trim(),
+            StateUf = string.IsNullOrWhiteSpace(request.StateUf) ? string.Empty : request.StateUf.Trim().ToUpperInvariant(),
+            PostalCode = string.IsNullOrWhiteSpace(request.PostalCode) ? null : request.PostalCode.Trim(),
+            Street = string.IsNullOrWhiteSpace(request.Street) ? null : request.Street.Trim(),
+            Number = string.IsNullOrWhiteSpace(request.Number) ? null : request.Number.Trim(),
+            Neighborhood = string.IsNullOrWhiteSpace(request.Neighborhood) ? null : request.Neighborhood.Trim(),
+            Complement = string.IsNullOrWhiteSpace(request.Complement) ? null : request.Complement.Trim(),
             Roles = assignedRoles,
             KycStatus = KycStatus.NOT_STARTED,
             TermsAcceptedVersion = termsVersion,
@@ -620,6 +625,11 @@ public sealed class IdentityApplicationService
         if (request.CrlvDocumentData is not null) profile.CrlvDocumentData = request.CrlvDocumentData;
         if (request.IdentityDocumentName is not null) profile.IdentityDocumentName = request.IdentityDocumentName;
         if (request.IdentityDocumentData is not null) profile.IdentityDocumentData = request.IdentityDocumentData;
+        if (request.PostalCode is not null) profile.PostalCode = string.IsNullOrWhiteSpace(request.PostalCode) ? null : request.PostalCode.Trim();
+        if (request.Street is not null) profile.Street = string.IsNullOrWhiteSpace(request.Street) ? null : request.Street.Trim();
+        if (request.Number is not null) profile.Number = string.IsNullOrWhiteSpace(request.Number) ? null : request.Number.Trim();
+        if (request.Neighborhood is not null) profile.Neighborhood = string.IsNullOrWhiteSpace(request.Neighborhood) ? null : request.Neighborhood.Trim();
+        if (request.Complement is not null) profile.Complement = string.IsNullOrWhiteSpace(request.Complement) ? null : request.Complement.Trim();
 
         user.UpdatedAtUtc = nowUtc;
         profile.UpdatedAtUtc = nowUtc;
@@ -741,7 +751,65 @@ public sealed class IdentityApplicationService
             crlvDocumentName: profile.CrlvDocumentName,
             crlvDocumentData: profile.CrlvDocumentData,
             IdentityDocumentName: profile.IdentityDocumentName,
-            IdentityDocumentData: profile.IdentityDocumentData);
+            IdentityDocumentData: profile.IdentityDocumentData,
+            PostalCode: profile.PostalCode,
+            Street: profile.Street,
+            Number: profile.Number,
+            Neighborhood: profile.Neighborhood,
+            Complement: profile.Complement);
+    }
+
+    public async Task ChangePasswordAsync(
+        AuthenticatedActor actor,
+        ChangePasswordRequest request,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var entry = await _userRepository.FindByIdAsync(actor.UserId, cancellationToken).ConfigureAwait(false)
+            ?? throw new DomainRuleViolationException(
+                "USER_NOT_FOUND",
+                "Conta de usuário não encontrada.",
+                StatusCodes.Status404NotFound);
+
+        var (user, profile) = entry;
+
+        if (!SecurityCryptoService.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        {
+            throw new DomainRuleViolationException(
+                "AUTH_INVALID_CREDENTIALS",
+                "A senha atual informada está incorreta.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        ValidatePasswordStrength(request.NewPassword);
+
+        if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+        {
+            throw new DomainRuleViolationException(
+                "PASSWORD_SAME_AS_CURRENT",
+                "A nova senha deve ser diferente da senha atual.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        user.PasswordHash = _crypto.HashPassword(request.NewPassword);
+        user.UpdatedAtUtc = nowUtc;
+        await _userRepository.UpdateAsync(user, profile, cancellationToken).ConfigureAwait(false);
+
+        await _auditRepository.AppendAsync(
+            new AuditEventEntity(
+                Id: Guid.NewGuid(),
+                ActorUserId: actor.UserId,
+                EntityType: "AUTH_SECURITY",
+                EntityId: actor.UserId.ToString("D"),
+                Action: "PASSWORD_CHANGED",
+                CorrelationId: correlationId,
+                MetadataJson: "{}",
+                CreatedAtUtc: nowUtc),
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string NormalizeAndValidateEmail(string email)

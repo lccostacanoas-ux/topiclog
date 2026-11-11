@@ -98,43 +98,6 @@ export default function LoginPage(): React.JSX.Element {
             />
           )}
 
-          {/* Atalho de Login de Testes */}
-          <div
-            style={{
-              backgroundColor: "#F0FDF4",
-              border: "1px solid #BBF7D0",
-              borderRadius: "8px",
-              padding: "10px 12px",
-              marginBottom: "16px",
-              fontSize: "12px"
-            }}
-          >
-            <strong style={{ color: "#166534", display: "block", marginBottom: "6px" }}>
-              ⚡ Acesso Rápido para Testes:
-            </strong>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail("lccostacanoas@gmail.com");
-                setPassword("12345678");
-                setProblem(null);
-              }}
-              style={{
-                background: "#DCFCE7",
-                border: "1px solid #86EFAC",
-                color: "#14532D",
-                padding: "6px 10px",
-                borderRadius: "4px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "inline-block"
-              }}
-            >
-              🚗 Preencher como Luiz Carlos Costa (Transportador)
-            </button>
-          </div>
-
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-group">
               <label htmlFor="login-email" className="form-label">
