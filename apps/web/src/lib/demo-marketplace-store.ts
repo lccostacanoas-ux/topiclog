@@ -175,7 +175,13 @@ export function updateDemoShipment(id: string, updates: Partial<DemoShipment>): 
 }
 
 export function getDemoTrips(): readonly DemoTrip[] {
-  return safeGetStorage<DemoTrip[]>(TRIPS_STORAGE_KEY, INITIAL_TRIPS);
+  const trips = safeGetStorage<DemoTrip[]>(TRIPS_STORAGE_KEY, INITIAL_TRIPS);
+  // Sanitização automática: remove viagens de teste criadas indevidamente por perfil de remetente (Leci)
+  const sanitized = trips.filter((t) => !t.carrierName?.toLowerCase().includes("leci"));
+  if (sanitized.length !== trips.length) {
+    safeSetStorage(TRIPS_STORAGE_KEY, sanitized);
+  }
+  return sanitized;
 }
 
 export function addDemoTrip(trip: Omit<DemoTrip, "id" | "createdAt" | "status">): DemoTrip {
@@ -203,7 +209,13 @@ export function updateDemoTrip(id: string, updates: Partial<DemoTrip>): readonly
 }
 
 export function getDemoProposals(): readonly DemoProposal[] {
-  return safeGetStorage<DemoProposal[]>(PROPOSALS_STORAGE_KEY, INITIAL_PROPOSALS);
+  const proposals = safeGetStorage<DemoProposal[]>(PROPOSALS_STORAGE_KEY, INITIAL_PROPOSALS);
+  // Sanitização automática: remove propostas de teste onde remetente puro (Leci) figurava como transportador
+  const sanitized = proposals.filter((p) => !p.carrierName?.toLowerCase().includes("leci"));
+  if (sanitized.length !== proposals.length) {
+    safeSetStorage(PROPOSALS_STORAGE_KEY, sanitized);
+  }
+  return sanitized;
 }
 
 export function addDemoProposal(proposal: Omit<DemoProposal, "id" | "createdAt" | "status">): DemoProposal {

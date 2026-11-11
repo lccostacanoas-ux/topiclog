@@ -87,8 +87,8 @@ function FeedContent(): React.JSX.Element {
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>("STANDARD");
   const [viewFormat, setViewFormat] = useState<"CARDS" | "LIST">("CARDS");
 
-  // Filtros Padrão existentes
-  const [activeTab, setActiveTab] = useState<"ALL" | "SHIPMENTS" | "TRIPS">("ALL");
+  // Filtros Padrão existentes (Por padrão no Mural de Encomendas, exibe Encomendas)
+  const [activeTab, setActiveTab] = useState<"ALL" | "SHIPMENTS" | "TRIPS">("SHIPMENTS");
   const [selectedCategory, setSelectedCategory] = useState<ShipmentCategory | "ALL">("ALL");
   const [selectedOrigin, setSelectedOrigin] = useState<string>(urlOrigin || "ALL");
   const [selectedDestination, setSelectedDestination] = useState<string>(urlDest || "ALL");
@@ -854,7 +854,7 @@ function FeedContent(): React.JSX.Element {
         </div>
       )}
 
-      {/* Barra de Alternância: Cards vs Lista */}
+      {/* Barra de Alternância: Filtro de Tipo e Cards vs Lista */}
       <div
         style={{
           display: "flex",
@@ -867,16 +867,73 @@ function FeedContent(): React.JSX.Element {
           border: "1px solid #E2E8F0",
           boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           flexWrap: "wrap",
-          gap: "10px"
+          gap: "12px"
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "16px" }}>📦</span>
-          <span style={{ fontSize: "14px", fontWeight: 700, color: "#0F172A" }}>
-            Mural de Encomendas Disponíveis
-          </span>
+        {/* Alternador de Tipo: Encomendas vs Viagens vs Todas */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <div style={{ display: "inline-flex", backgroundColor: "#F8FAFC", padding: "3px", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab("SHIPMENTS")}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "6px",
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                backgroundColor: activeTab === "SHIPMENTS" ? "#2563EB" : "transparent",
+                color: activeTab === "SHIPMENTS" ? "#FFFFFF" : "#64748B",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              📦 Encomendas ({filteredShipments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("TRIPS")}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "6px",
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                backgroundColor: activeTab === "TRIPS" ? "#059669" : "transparent",
+                color: activeTab === "TRIPS" ? "#FFFFFF" : "#64748B",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              🚗 Viagens ({filteredTrips.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("ALL")}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "6px",
+                border: "none",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                backgroundColor: activeTab === "ALL" ? "#475569" : "transparent",
+                color: activeTab === "ALL" ? "#FFFFFF" : "#64748B",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px"
+              }}
+            >
+              🌐 Todas ({filteredShipments.length + filteredTrips.length})
+            </button>
+          </div>
         </div>
 
+        {/* Alternador de Layout: Cards vs Lista */}
         <div style={{ display: "inline-flex", backgroundColor: "#F1F5F9", padding: "3px", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
           <button
             type="button"
