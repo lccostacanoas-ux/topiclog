@@ -134,14 +134,59 @@ export default function TermsPage(): React.JSX.Element {
       {activeTab === "TRANSPORTADOR" && (
         <section className="card" style={{ marginBottom: "24px" }}>
           <h2 style={{ fontSize: "20px", marginTop: 0, color: "var(--color-brand-deep-navy, #0F172A)" }}>
-            2. Termo de Adesão do Transportador Autônomo
+            2. Termo de Adesão e Responsabilidade do Transportador Parceiro
           </h2>
           <p style={{ fontSize: "14px", lineHeight: "22px", color: "var(--color-text, #334155)" }}>
-            Este termo regula o acesso de profissionais e parceiros transportadores autônomos ao mural de oportunidades do TopicLog.
+            Este termo regula formalmente o credenciamento, deveres e as obrigações dos profissionais e transportadores parceiros no TopicLog.
           </p>
 
+          <div
+            style={{
+              backgroundColor: "#FEF2F2",
+              border: "1.5px solid #F87171",
+              borderRadius: "10px",
+              padding: "16px",
+              marginBottom: "18px"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <span style={{ fontSize: "20px" }}>⚖️</span>
+              <strong style={{ fontSize: "14px", color: "#991B1B", textTransform: "uppercase" }}>
+                Declaração Expressa de Responsabilidade Civil e Criminal
+              </strong>
+            </div>
+            <p style={{ margin: 0, fontSize: "13px", color: "#7F1D1D", lineHeight: "1.5" }}>
+              O transportador declara ter plena ciência de que <strong>toda e qualquer responsabilidade pela veracidade, autenticidade e higidez das informações e documentos prestados é exclusivamente sua</strong>. Qualquer omissão, ocultação, declaração falsa ou adulteração acarretará a imediata exclusão da plataforma, sem prejuízo da responsabilização civil por perdas e danos e das sanções criminais cominadas no <strong>Artigo 299 do Código Penal Brasileiro (Falsidade Ideológica)</strong>.
+            </p>
+          </div>
+
           <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
-            2.1 Autonomia, Liberdade e Inexistência de Vínculo Trabalhista
+            2.1 Requisitos Obrigatórios do Veículo e Documentação (CRLV)
+          </h3>
+          <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
+            <li><strong>Cadastro Obrigatório do Veículo:</strong> Nenhum cadastro ou perfil de transportador pode ser ativado ou aprovado sem o registro prévio e completo do veículo automotor ou ciclo elétrico a ser utilizado nas rotas (tipo, modelo, placa e ano).</li>
+            <li><strong>Documento do Veículo Válido (CRLV):</strong> O transportador declara e garante que o Certificado de Registro e Licenciamento de Veículo (CRLV) encontra-se devidamente quitado, atualizado e válido perante os órgãos de trânsito competentes (Detran/Contran).</li>
+            <li><strong>Inexistência de Restrições no Veículo:</strong> O veículo cadastrado está livre de impedimentos judiciais de circulação, bloqueios administrativos impeditivos, histórico de busca e apreensão, roubo ou furto.</li>
+          </ul>
+
+          <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
+            2.2 Habilitação Legal (CNH) Compatível e Regularidade do Condutor
+          </h3>
+          <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
+            <li><strong>CNH Válida e Compatível:</strong> O transportador declara possuir Carteira Nacional de Habilitação (CNH) válida e estritamente compatível com o tipo de veículo utilizado para o transporte (ex.: Categoria A para motocicletas; Categoria B para automóveis de passeio, utilitários e minivans; Categoria C/D/E para caminhões e veículos de carga pesada).</li>
+            <li><strong>Ausência de Restrições do Condutor:</strong> O motorista atesta sob as penas da lei que não possui suspensão, cassação ou impedimento administrativo ou penal que proíba seu direito de dirigir em vias públicas.</li>
+          </ul>
+
+          <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
+            2.3 Condições de Segurança, Manutenção e Código de Trânsito Brasileiro (CTB)
+          </h3>
+          <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
+            <li><strong>Segurança Viária:</strong> O transportador se compromete a manter o veículo em perfeito estado de funcionamento, manutenção mecânica, pneus com sulcos adequados, freios e sinalização luminosa, atendendo rigorosamente a todos os preceitos do Código de Trânsito Brasileiro (CTB) e resoluções do CONTRAN.</li>
+            <li><strong>Guarda e Integridade da Carga:</strong> O transportador atua como fiel depositário da encomenda a partir da coleta física até a validação presencial do código de entrega (PIN), respondendo por qualquer avaria culposa ou extravio do pacote durante o trajeto.</li>
+          </ul>
+
+          <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
+            2.4 Autonomia, Liberdade e Inexistência de Vínculo Trabalhista
           </h3>
           <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
             <li>O transportador é profissional autônomo, titular de seus meios de trabalho e de seu veículo, não havendo subordinação jurídica, exclusividade, metas de faturamento ou imposição de escala de horários.</li>
@@ -150,7 +195,7 @@ export default function TermsPage(): React.JSX.Element {
           </ul>
 
           <h3 style={{ fontSize: "16px", color: "var(--color-brand-deep-navy, #0F172A)", marginTop: "16px" }}>
-            2.2 Comissão da Plataforma e Repasse Financeiro
+            2.5 Comissão da Plataforma e Repasse Financeiro
           </h3>
           <ul style={{ fontSize: "14px", lineHeight: "22px", color: "#475569", paddingLeft: "20px" }}>
             <li><strong>Taxa Configurável:</strong> Pela intermediação tecnológica, suporte e custódia de segurança da transação, a TopicLog retém uma taxa de comissão percentual definida e gerenciada dinamicamente pelo administrador da plataforma através do Console Administrativo.</li>

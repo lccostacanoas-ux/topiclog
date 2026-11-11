@@ -84,6 +84,20 @@ public sealed class UserProfileEntity
 
     public int RatingCount { get; set; }
 
+    public string? VehicleType { get; set; }
+
+    public string? VehicleModel { get; set; }
+
+    public string? VehiclePlate { get; set; }
+
+    public string? VehicleYear { get; set; }
+
+    public string? CnhCategory { get; set; }
+
+    public bool CarrierTermsAccepted { get; set; }
+
+    public DateTimeOffset? CarrierTermsAcceptedAtUtc { get; set; }
+
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -142,7 +156,13 @@ public sealed record RegisterUserRequest(
     string? StateUf,
     IReadOnlyList<string>? InitialRoles,
     bool AcceptTerms,
-    string? TermsVersion);
+    string? TermsVersion,
+    string? VehicleType = null,
+    string? VehicleModel = null,
+    string? VehiclePlate = null,
+    string? VehicleYear = null,
+    string? CnhCategory = null,
+    bool AcceptCarrierTerms = false);
 
 public sealed record LoginRequest(
     string Email,

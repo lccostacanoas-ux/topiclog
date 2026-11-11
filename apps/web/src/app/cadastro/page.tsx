@@ -24,6 +24,12 @@ export default function RegisterPage(): React.JSX.Element {
   const [city, setCity] = useState("João Monlevade");
   const [isSender, setIsSender] = useState(true);
   const [isCarrier, setIsCarrier] = useState(true);
+  const [vehicleType, setVehicleType] = useState("CAR");
+  const [vehicleModel, setVehicleModel] = useState("");
+  const [vehiclePlate, setVehiclePlate] = useState("");
+  const [vehicleYear, setVehicleYear] = useState("");
+  const [cnhCategory, setCnhCategory] = useState("B");
+  const [acceptCarrierTerms, setAcceptCarrierTerms] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [termsVersion, setTermsVersion] = useState("2026.1-D08-DRAFT");
 
@@ -109,6 +115,30 @@ export default function RegisterPage(): React.JSX.Element {
       return;
     }
 
+    if (isCarrier) {
+      if (!vehicleModel.trim() || !vehiclePlate.trim()) {
+        setProblem({
+          title: "Dados do veículo obrigatórios",
+          status: 400,
+          detail: "Para se cadastrar como Transportador parceiro, é obrigatório cadastrar o modelo e a placa do veículo."
+        });
+        const el = document.getElementById("carrier-vehicle-section");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+        return;
+      }
+
+      if (!acceptCarrierTerms) {
+        setProblem({
+          title: "Declaração de Responsabilidade Obrigatória",
+          status: 400,
+          detail: "Para ser transportador parceiro, é obrigatório aceitar a Declaração de Responsabilidade, atestando documento de veículo válido, CNH compatível e ausência de restrições de circulação."
+        });
+        const el = document.getElementById("carrier-vehicle-section");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+        return;
+      }
+    }
+
     const initialRoles: ("SENDER" | "CARRIER")[] = [];
     if (isSender) initialRoles.push("SENDER");
     if (isCarrier) initialRoles.push("CARRIER");
@@ -125,7 +155,13 @@ export default function RegisterPage(): React.JSX.Element {
         stateUf: "MG",
         initialRoles,
         acceptTerms: true,
-        termsVersion
+        termsVersion,
+        vehicleType: isCarrier ? vehicleType : undefined,
+        vehicleModel: isCarrier ? vehicleModel.trim() : undefined,
+        vehiclePlate: isCarrier ? vehiclePlate.trim().toUpperCase() : undefined,
+        vehicleYear: isCarrier && vehicleYear ? vehicleYear.trim() : undefined,
+        cnhCategory: isCarrier ? cnhCategory : undefined,
+        acceptCarrierTerms: isCarrier ? acceptCarrierTerms : false
       });
 
       if (result.ok) {
@@ -334,6 +370,21 @@ export default function RegisterPage(): React.JSX.Element {
                   onChange={handleCpfChange}
                   disabled={isSubmitting}
                 />
+                {cpf.length >= 14 && (
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: isValidCpf(cpf) ? "#15803D" : "#DC2626",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px"
+                    }}
+                  >
+                    <span>{isValidCpf(cpf) ? "✓ CPF Válido (Receita Federal)" : "⚠️ CPF Inválido: confira os números digitados"}</span>
+                  </div>
+                )}
                 <span className="form-help">Necessário para validação de segurança e repasses.</span>
               </div>
 
@@ -481,6 +532,157 @@ export default function RegisterPage(): React.JSX.Element {
                 </div>
               ) : null}
             </fieldset>
+
+            {/* Bloco Obrigatório de Veículo e Termo de Responsabilidade para Transportadores */}
+            {isCarrier && (
+              <div
+                id="carrier-vehicle-section"
+                style={{
+                  backgroundColor: "#F0FDF4",
+                  border: "1.5px solid #86EFAC",
+                  borderRadius: "14px",
+                  padding: "20px",
+                  marginTop: "16px",
+                  marginBottom: "20px"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "22px" }}>🚗</span>
+                  <strong style={{ fontSize: "16px", color: "#166534" }}>
+                    Cadastro Obrigatório do Veículo e Habilitação (Transportador)
+                  </strong>
+                </div>
+                <p style={{ fontSize: "13px", color: "#15803D", margin: "0 0 16px 0", lineHeight: "1.4" }}>
+                  Conforme a política de segurança da TopicLog, nenhum cadastro de transportador pode ser aprovado sem o registro completo do veículo e CNH compatível.
+                </p>
+
+                <div className="grid-two" style={{ gap: "14px", marginBottom: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="reg-vehicle-type" className="form-label" style={{ fontSize: "13px" }}>
+                      Tipo de Veículo *
+                    </label>
+                    <select
+                      id="reg-vehicle-type"
+                      className="form-input"
+                      value={vehicleType}
+                      onChange={(e) => setVehicleType(e.target.value)}
+                      disabled={isSubmitting}
+                    >
+                      <option value="CAR">Carro de Passeio / Utilitário</option>
+                      <option value="MOTORCYCLE">Motocicleta / Scooter</option>
+                      <option value="VAN">Van / Furgão</option>
+                      <option value="TRUCK">Caminhão Leve / VUC</option>
+                      <option value="BICYCLE">Bicicleta / E-Bike</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="reg-cnh-category" className="form-label" style={{ fontSize: "13px" }}>
+                      Categoria da CNH *
+                    </label>
+                    <select
+                      id="reg-cnh-category"
+                      className="form-input"
+                      value={cnhCategory}
+                      onChange={(e) => setCnhCategory(e.target.value)}
+                      disabled={isSubmitting}
+                    >
+                      <option value="A">Categoria A (Motos / Ciclomotores)</option>
+                      <option value="B">Categoria B (Automóveis / Utilitários)</option>
+                      <option value="AB">Categoria AB (Moto e Carro)</option>
+                      <option value="C">Categoria C (Caminhões e Cargas)</option>
+                      <option value="D">Categoria D (Passageiros e Vans)</option>
+                      <option value="E">Categoria E (Veículos Articulados)</option>
+                      <option value="ACC">ACC / Sem CNH (Exclusivo Bicicleta)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid-two" style={{ gap: "14px", marginBottom: "14px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="reg-vehicle-model" className="form-label" style={{ fontSize: "13px" }}>
+                      Modelo do Veículo *
+                    </label>
+                    <input
+                      id="reg-vehicle-model"
+                      type="text"
+                      required
+                      className="form-input"
+                      placeholder="Ex: Fiat Strada, Hyundai HB20, Honda CG 160..."
+                      value={vehicleModel}
+                      onChange={(e) => setVehicleModel(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="reg-vehicle-plate" className="form-label" style={{ fontSize: "13px" }}>
+                      Placa do Veículo (Mercosul ou Padrão) *
+                    </label>
+                    <input
+                      id="reg-vehicle-plate"
+                      type="text"
+                      required
+                      className="form-input"
+                      placeholder="Ex: ABC1D23 ou ABC-1234"
+                      maxLength={8}
+                      value={vehiclePlate}
+                      onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: "14px" }}>
+                  <label htmlFor="reg-vehicle-year" className="form-label" style={{ fontSize: "13px" }}>
+                    Ano de Fabricação (Opcional)
+                  </label>
+                  <input
+                    id="reg-vehicle-year"
+                    type="text"
+                    className="form-input"
+                    placeholder="Ex: 2022"
+                    maxLength={4}
+                    value={vehicleYear}
+                    onChange={(e) => setVehicleYear(e.target.value.replace(/\D/g, ""))}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Checkbox Obrigatório do Termo de Responsabilidade do Transportador */}
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    border: "1.5px solid #FCA5A5",
+                    borderRadius: "10px",
+                    padding: "14px",
+                    marginTop: "12px"
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", fontSize: "13px", cursor: "pointer", color: "#0F172A" }}>
+                    <input
+                      type="checkbox"
+                      required
+                      checked={acceptCarrierTerms}
+                      onChange={(e) => setAcceptCarrierTerms(e.target.checked)}
+                      disabled={isSubmitting}
+                      style={{ accentColor: "#DC2626", width: "18px", height: "18px", marginTop: "2px", flexShrink: 0 }}
+                    />
+                    <span style={{ lineHeight: "1.5" }}>
+                      <strong style={{ color: "#991B1B" }}>⚖️ Declaração de Responsabilidade do Transportador:</strong>{" "}
+                      Declaro sob as penas da lei (Art. 299 do Código Penal) que <strong>toda e qualquer responsabilidade pelas informações e documentos prestados é exclusivamente minha</strong>, ciente de que qualquer omissão, ocultação ou declaração inexata será de minha inteira responsabilidade civil e criminal.
+                      Declaro expressamente que:
+                      <ul style={{ margin: "6px 0 4px 0", paddingLeft: "18px", color: "#475569", fontSize: "12px" }}>
+                        <li>O documento do veículo (CRLV) está rigorosamente válido, quitado e em dia perante os órgãos de trânsito (Detran);</li>
+                        <li>Minha permissão para conduzir (CNH) está válida e compatível com a categoria do veículo cadastrado;</li>
+                        <li>Não há qualquer restrição administrativa, judicial, queixa de roubo/furto ou impedimento do condutor ou do veículo para livre circulação viária;</li>
+                        <li>O veículo atende a todas as condições de conservação e segurança exigidas pelo Código de Trânsito Brasileiro (CTB).</li>
+                      </ul>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div
               style={{

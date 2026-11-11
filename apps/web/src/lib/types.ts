@@ -106,6 +106,12 @@ export interface RegisterUserRequest {
   readonly initialRoles?: readonly UserRole[];
   readonly acceptTerms: boolean;
   readonly termsVersion?: string;
+  readonly vehicleType?: string;
+  readonly vehicleModel?: string;
+  readonly vehiclePlate?: string;
+  readonly vehicleYear?: string;
+  readonly cnhCategory?: string;
+  readonly acceptCarrierTerms?: boolean;
 }
 
 export interface LoginRequest {
@@ -146,6 +152,12 @@ export interface PrivateUserProfileResponse {
   readonly termsAcceptedAtUtc: string;
   readonly ratingAvg: number;
   readonly ratingCount: number;
+  readonly vehicleType?: string;
+  readonly vehicleModel?: string;
+  readonly vehiclePlate?: string;
+  readonly vehicleYear?: string;
+  readonly cnhCategory?: string;
+  readonly carrierTermsAccepted?: boolean;
   readonly createdAtUtc: string;
   readonly updatedAtUtc: string;
 }

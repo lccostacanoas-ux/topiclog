@@ -19,6 +19,7 @@ import type {
   KycDossierResponse,
   ProblemDetailsDto
 } from "../../lib/types";
+import { formatCpf, isValidCpf } from "../../lib/validation";
 
 export default function KycVerificationPage(): React.JSX.Element {
   const { user, token, isAuthenticated, isLoading: isAuthLoading, reloadProfile } = useAuth();
@@ -28,6 +29,12 @@ export default function KycVerificationPage(): React.JSX.Element {
 
   // Formulário de submissão inicial
   const [cpf, setCpf] = useState("");
+  const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
+  const [carrierVehicleModel, setCarrierVehicleModel] = useState(user?.vehicleModel || "");
+  const [carrierVehiclePlate, setCarrierVehiclePlate] = useState(user?.vehiclePlate || "");
+  const [carrierCnhCategory, setCarrierCnhCategory] = useState(user?.cnhCategory || "B");
+  const [carrierResponsibilityAccepted, setCarrierResponsibilityAccepted] = useState(false);
+
   const [identityDocRef, setIdentityDocRef] = useState("private/kyc/doc_sintetico_01");
   const [addressProofRef, setAddressProofRef] = useState("private/kyc/addr_sintetico_01");
   const [facialSessionRef, setFacialSessionRef] = useState("fac_sandbox_session_01");
@@ -99,6 +106,40 @@ export default function KycVerificationPage(): React.JSX.Element {
         ruleCode: "RAW_BIOMETRY_PAYLOAD_FORBIDDEN"
       });
       return;
+    }
+
+    if (!isValidCpf(cpf)) {
+      setProblem({
+        title: "CPF inválido",
+        status: 400,
+        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos.",
+        ruleCode: "INVALID_CPF"
+      });
+      return;
+    }
+
+    if (isCarrier) {
+      const model = carrierVehicleModel.trim() || user?.vehicleModel?.trim();
+      const plate = carrierVehiclePlate.trim() || user?.vehiclePlate?.trim();
+      if (!model || !plate) {
+        setProblem({
+          title: "Veículo obrigatório para transportadores",
+          status: 400,
+          detail: "Não é permitido submeter a verificação de transportador sem o cadastro completo do veículo (modelo e placa).",
+          ruleCode: "CARRIER_VEHICLE_REQUIRED"
+        });
+        return;
+      }
+
+      if (!carrierResponsibilityAccepted && !user?.carrierTermsAccepted) {
+        setProblem({
+          title: "Declaração de Responsabilidade obrigatória",
+          status: 400,
+          detail: "É obrigatório aceitar a Declaração de Responsabilidade do Transportador (regularidade de CRLV, CNH compatível e ausência de restrições).",
+          ruleCode: "CARRIER_TERMS_REQUIRED"
+        });
+        return;
+      }
     }
 
     if (!consentGiven) {
@@ -174,6 +215,22 @@ export default function KycVerificationPage(): React.JSX.Element {
     if (!token || !dossier?.activeCaseId) return;
     setProblem(null);
     setSuccessMessage(null);
+
+    // Não deixar aprovar cadastro de transportador sem cadastro de veículo
+    if (targetStatus === "VERIFIED" && isCarrier) {
+      const model = carrierVehicleModel.trim() || user?.vehicleModel?.trim();
+      const plate = carrierVehiclePlate.trim() || user?.vehiclePlate?.trim();
+      if (!model || !plate) {
+        setProblem({
+          title: "Aprovação Negada: Veículo Pendente",
+          status: 422,
+          detail: "A regra da plataforma proíbe aprovar a verificação do transportador sem o cadastro prévio do veículo e CNH compatível.",
+          ruleCode: "CARRIER_VEHICLE_REQUIRED"
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -387,11 +444,24 @@ export default function KycVerificationPage(): React.JSX.Element {
                 type="text"
                 required
                 className="form-input"
-                placeholder="000.000.000-00 ou 11 dígitos"
+                placeholder="000.000.000-00"
+                maxLength={14}
                 value={cpf}
-                onChange={e => setCpf(e.target.value)}
+                onChange={e => setCpf(formatCpf(e.target.value))}
                 disabled={isSubmitting}
               />
+              {cpf.length >= 14 && (
+                <div
+                  style={{
+                    marginTop: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: isValidCpf(cpf) ? "#15803D" : "#DC2626"
+                  }}
+                >
+                  {isValidCpf(cpf) ? "✓ CPF Válido (Receita Federal)" : "⚠️ CPF Inválido: confira os dígitos"}
+                </div>
+              )}
             </div>
 
             <div className="grid-two" style={{ gap: "16px" }}>
@@ -443,6 +513,89 @@ export default function KycVerificationPage(): React.JSX.Element {
                 Proibido colar payloads <code>data:image</code> ou vetores binários brutos (D05).
               </span>
             </div>
+
+            {isCarrier && (
+              <div
+                style={{
+                  backgroundColor: "#F0FDF4",
+                  border: "1.5px solid #86EFAC",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  marginBottom: "16px"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "20px" }}>🚗</span>
+                  <strong style={{ fontSize: "15px", color: "#166534" }}>
+                    Veículo e Habilitação Obrigatórios (Perfil Transportador)
+                  </strong>
+                </div>
+                <p style={{ fontSize: "12px", color: "#15803D", margin: "0 0 12px 0" }}>
+                  A aprovação do dossiê de transportador exige veículo cadastrado e compromisso formal de regularidade.
+                </p>
+
+                <div className="grid-two" style={{ gap: "12px", marginBottom: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Modelo do Veículo *</label>
+                    <input
+                      type="text"
+                      required
+                      className="form-input"
+                      placeholder="Ex: Fiat Strada, HB20, CG 160..."
+                      value={carrierVehicleModel}
+                      onChange={(e) => setCarrierVehicleModel(e.target.value)}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Placa do Veículo *</label>
+                    <input
+                      type="text"
+                      required
+                      className="form-input"
+                      placeholder="Ex: ABC1D23"
+                      value={carrierVehiclePlate}
+                      onChange={(e) => setCarrierVehiclePlate(e.target.value.toUpperCase())}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: "12px" }}>
+                  <label className="form-label" style={{ fontSize: "12px" }}>Categoria CNH *</label>
+                  <select
+                    className="form-input"
+                    value={carrierCnhCategory}
+                    onChange={(e) => setCarrierCnhCategory(e.target.value)}
+                    disabled={isSubmitting}
+                  >
+                    <option value="A">Categoria A (Motos)</option>
+                    <option value="B">Categoria B (Automóveis/Utilitários)</option>
+                    <option value="AB">Categoria AB (Moto e Carro)</option>
+                    <option value="C">Categoria C (Caminhões)</option>
+                    <option value="D">Categoria D (Passageiros/Vans)</option>
+                    <option value="E">Categoria E (Articulados)</option>
+                  </select>
+                </div>
+
+                <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #FCA5A5", borderRadius: "8px", padding: "12px" }}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", cursor: "pointer", color: "#0F172A" }}>
+                    <input
+                      type="checkbox"
+                      required
+                      checked={carrierResponsibilityAccepted}
+                      onChange={(e) => setCarrierResponsibilityAccepted(e.target.checked)}
+                      disabled={isSubmitting}
+                      style={{ accentColor: "#DC2626", width: "16px", height: "16px", marginTop: "2px", flexShrink: 0 }}
+                    />
+                    <span>
+                      <strong>⚖️ Declaração de Responsabilidade do Transportador:</strong> Declaro sob as penas da lei (Art. 299 CP) que toda informação prestada é de minha exclusiva responsabilidade, atestando documento de veículo (CRLV) regularizado, CNH compatível e ausência de restrições de circulação.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div
               style={{

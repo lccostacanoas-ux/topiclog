@@ -108,6 +108,12 @@ export interface LocalMockUser {
   kycStatus: "PENDING" | "VERIFIED" | "REJECTED";
   ratingAvg?: number;
   ratingCount?: number;
+  vehicleType?: string;
+  vehicleModel?: string;
+  vehiclePlate?: string;
+  vehicleYear?: string;
+  cnhCategory?: string;
+  carrierTermsAccepted?: boolean;
   createdAt: string;
 }
 
@@ -163,6 +169,12 @@ export function buildLocalMockProfile(u: LocalMockUser): PrivateUserProfileRespo
     termsAcceptedAtUtc: u.createdAt,
     ratingAvg: u.ratingAvg ?? 0,
     ratingCount: u.ratingCount ?? 0,
+    vehicleType: u.vehicleType,
+    vehicleModel: u.vehicleModel,
+    vehiclePlate: u.vehiclePlate,
+    vehicleYear: u.vehicleYear,
+    cnhCategory: u.cnhCategory,
+    carrierTermsAccepted: u.carrierTermsAccepted,
     createdAtUtc: u.createdAt,
     updatedAtUtc: u.createdAt
   };
@@ -435,6 +447,12 @@ export async function registerUserApi(
         stateUf: request.stateUf || "MG",
         roles: (request.initialRoles as ("SENDER" | "CARRIER")[]) || ["SENDER"],
         kycStatus: "VERIFIED",
+        vehicleType: request.vehicleType,
+        vehicleModel: request.vehicleModel,
+        vehiclePlate: request.vehiclePlate,
+        vehicleYear: request.vehicleYear,
+        cnhCategory: request.cnhCategory,
+        carrierTermsAccepted: request.acceptCarrierTerms,
         createdAt: new Date().toISOString()
       };
       saveLocalMockUser(newUser);

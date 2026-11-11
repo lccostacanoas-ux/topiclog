@@ -264,6 +264,48 @@ public sealed class SecurityCryptoService
     }
 
     /// <summary>
+    /// Validação matemática rigorosa do CPF brasileiro (11 dígitos e dois dígitos verificadores via Módulo 11 da Receita Federal).
+    /// </summary>
+    public static bool IsValidCpf(string? rawCpf)
+    {
+        if (string.IsNullOrWhiteSpace(rawCpf)) return false;
+        string digits = NormalizeDigits(rawCpf);
+        if (digits.Length != 11) return false;
+
+        // Rejeita sequências repetidas (00000000000, 11111111111, etc.)
+        bool allEqual = true;
+        for (int i = 1; i < 11; i++)
+        {
+            if (digits[i] != digits[0])
+            {
+                allEqual = false;
+                break;
+            }
+        }
+        if (allEqual) return false;
+
+        // 1º dígito verificador
+        int sum = 0;
+        for (int i = 0; i < 9; i++)
+        {
+            sum += (digits[i] - '0') * (10 - i);
+        }
+        int remainder = (sum * 10) % 11;
+        if (remainder == 10 || remainder == 11) remainder = 0;
+        if (remainder != (digits[9] - '0')) return false;
+
+        // 2º dígito verificador
+        sum = 0;
+        for (int i = 0; i < 10; i++)
+        {
+            sum += (digits[i] - '0') * (11 - i);
+        }
+        remainder = (sum * 10) % 11;
+        if (remainder == 10 || remainder == 11) remainder = 0;
+        return remainder == (digits[10] - '0');
+    }
+
+    /// <summary>
     /// Emite um Access Token JWT assinado com HMAC-SHA256 (HS256) contendo emissor, audiência, expiração e papéis (DEC-02.4).
     /// </summary>
     public (string AccessToken, int ExpiresInSeconds, string TokenId) CreateAccessToken(

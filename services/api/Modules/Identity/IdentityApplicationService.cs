@@ -98,15 +98,15 @@ public sealed class IdentityApplicationService
         string? cpfMasked = null;
         if (!string.IsNullOrWhiteSpace(request.Cpf))
         {
-            string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
-            if (cpfDigits.Length != 11)
+            if (!SecurityCryptoService.IsValidCpf(request.Cpf))
             {
                 throw new DomainRuleViolationException(
-                    "INVALID_CPF_FORMAT",
-                    "O CPF informado deve conter 11 dígitos numéricos.",
+                    "INVALID_CPF",
+                    "O CPF informado é inválido conforme os dígitos verificadores oficiais da Receita Federal.",
                     StatusCodes.Status400BadRequest);
             }
 
+            string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
             cpfHash = _crypto.ComputeCpfHash(cpfDigits);
             bool cpfExists = await _userRepository.ExistsByCpfHashAsync(cpfHash, excludeUserId: null, cancellationToken).ConfigureAwait(false);
             if (cpfExists)
@@ -121,6 +121,25 @@ public sealed class IdentityApplicationService
         }
 
         var assignedRoles = ParseAndValidateSelfAssignableRoles(request.InitialRoles);
+
+        if (assignedRoles.Contains(UserRole.CARRIER))
+        {
+            if (string.IsNullOrWhiteSpace(request.VehicleModel) || string.IsNullOrWhiteSpace(request.VehiclePlate))
+            {
+                throw new DomainRuleViolationException(
+                    "CARRIER_VEHICLE_REQUIRED",
+                    "O cadastro do veículo (modelo e placa) é obrigatório para transportadores parceiros.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            if (!request.AcceptCarrierTerms)
+            {
+                throw new DomainRuleViolationException(
+                    "CARRIER_TERMS_REQUIRED",
+                    "O aceite do Termo de Adesão e Responsabilidade do Transportador e Veículo é obrigatório.",
+                    StatusCodes.Status400BadRequest);
+            }
+        }
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
 
         var user = new UserEntity
@@ -155,6 +174,13 @@ public sealed class IdentityApplicationService
             TermsAcceptedAtUtc = nowUtc,
             RatingAvg = 5.00m,
             RatingCount = 0,
+            VehicleType = request.VehicleType,
+            VehicleModel = request.VehicleModel?.Trim(),
+            VehiclePlate = request.VehiclePlate?.Trim().ToUpperInvariant(),
+            VehicleYear = request.VehicleYear?.Trim(),
+            CnhCategory = request.CnhCategory?.Trim().ToUpperInvariant(),
+            CarrierTermsAccepted = assignedRoles.Contains(UserRole.CARRIER) && request.AcceptCarrierTerms,
+            CarrierTermsAcceptedAtUtc = assignedRoles.Contains(UserRole.CARRIER) && request.AcceptCarrierTerms ? nowUtc : null,
             UpdatedAtUtc = nowUtc
         };
 
@@ -525,14 +551,15 @@ public sealed class IdentityApplicationService
 
         if (!string.IsNullOrWhiteSpace(request.Cpf))
         {
-            string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
-            if (cpfDigits.Length != 11)
+            if (!SecurityCryptoService.IsValidCpf(request.Cpf))
             {
                 throw new DomainRuleViolationException(
-                    "INVALID_CPF_FORMAT",
-                    "O CPF deve conter 11 dígitos numéricos.",
+                    "INVALID_CPF",
+                    "O CPF informado é inválido conforme os dígitos verificadores oficiais da Receita Federal.",
                     StatusCodes.Status400BadRequest);
             }
+
+            string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
 
             string newCpfHash = _crypto.ComputeCpfHash(cpfDigits);
             bool duplicate = await _userRepository.ExistsByCpfHashAsync(newCpfHash, excludeUserId: user.Id, cancellationToken).ConfigureAwait(false);

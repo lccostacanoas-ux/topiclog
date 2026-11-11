@@ -444,9 +444,30 @@ public sealed class VerificationApplicationService : IDisposable
                 }
             }
 
+            var entry = await _userRepository.FindByIdAsync(kycCase.UserId, cancellationToken).ConfigureAwait(false)
+                ?? throw new DomainRuleViolationException(
+                    "USER_NOT_FOUND",
+                    "Titular do caso de KYC não encontrado.",
+                    StatusCodes.Status404NotFound);
+
+            var (user, profile) = entry;
+
             if (targetStatus == KycStatus.VERIFIED)
             {
                 EnsureAllFourChecksPassed(kycCase.Checks);
+
+                // Regra: Não deixar aprovar o cadastro do transportador sem cadastro do veículo
+                if (profile.Roles.Contains(UserRole.CARRIER))
+                {
+                    if (string.IsNullOrWhiteSpace(profile.VehicleModel) || string.IsNullOrWhiteSpace(profile.VehiclePlate))
+                    {
+                        throw new DomainRuleViolationException(
+                            "CARRIER_VEHICLE_REQUIRED",
+                            "Não é permitido aprovar o perfil de transportador sem o cadastro prévio do veículo e habilitação regular.",
+                            StatusCodes.Status422UnprocessableEntity);
+                    }
+                }
+
                 int validityDays = request.ValidityDays.HasValue && request.ValidityDays.Value > 0
                     ? request.ValidityDays.Value
                     : DefaultKycValidityDays;
@@ -478,13 +499,6 @@ public sealed class VerificationApplicationService : IDisposable
             KycStatus previousStatus = kycCase.Status;
             kycCase.Status = targetStatus;
 
-            var entry = await _userRepository.FindByIdAsync(kycCase.UserId, cancellationToken).ConfigureAwait(false)
-                ?? throw new DomainRuleViolationException(
-                    "USER_NOT_FOUND",
-                    "Titular do caso de KYC não encontrado.",
-                    StatusCodes.Status404NotFound);
-
-            var (user, profile) = entry;
             profile.KycStatus = targetStatus;
             profile.UpdatedAtUtc = nowUtc;
 
