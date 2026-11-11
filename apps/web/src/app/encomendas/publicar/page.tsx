@@ -356,7 +356,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
         maxVehicleType: "CAR",
         suggestedPriceCents: priceCents,
         deadlineDate: "Hoje ou a combinar",
-        senderName: user?.displayName || "Leci Rosa Soares",
+        senderName: user?.displayName || "Remetente",
         senderKycVerified: Boolean(user?.kycStatus === "VERIFIED" || user?.canContractDelivery),
         interestedInInsurance: false,
         photoIcon: "📦"
@@ -416,6 +416,76 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
     }
   };
 
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <main className="container" style={{ paddingTop: "40px", paddingBottom: "60px", maxWidth: "560px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "40px 24px", borderRadius: "16px", boxShadow: "var(--shadow-md)" }}>
+          <div style={{ fontSize: "52px", marginBottom: "16px" }}>🔒</div>
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Autenticação Necessária
+          </span>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-brand-deep-navy)", margin: "8px 0 12px 0" }}>
+            Acesse sua conta para publicar uma encomenda
+          </h1>
+          <p style={{ color: "var(--color-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "28px" }}>
+            Para solicitar o envio de uma carga, calcular rotas com precisão e receber propostas de motoristas parceiros com garantia de custódia, você precisa estar conectado à sua conta de Remetente.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Link
+              href="/entrar"
+              className="btn btn--primary"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Fazer Login na Conta
+            </Link>
+            <Link
+              href="/cadastro"
+              className="btn btn--outline"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Criar Conta Gratuita de Remetente
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!authLoading && isAuthenticated && user?.roles && !user.roles.includes("SENDER") && user.roles.includes("CARRIER")) {
+    return (
+      <main className="container" style={{ paddingTop: "40px", paddingBottom: "60px", maxWidth: "560px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "40px 24px", borderRadius: "16px", boxShadow: "var(--shadow-md)" }}>
+          <div style={{ fontSize: "52px", marginBottom: "16px" }}>🚚</div>
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "#1D4ED8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Perfil de Transportador
+          </span>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-brand-deep-navy)", margin: "8px 0 12px 0" }}>
+            Publicação restrita a Remetentes
+          </h1>
+          <p style={{ color: "var(--color-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "28px" }}>
+            Você está conectado como <strong>Transportador</strong> ({user.displayName}). A publicação de novas encomendas é exclusiva para Remetentes. Ative o papel de Remetente em Minha Conta ou acesse o mural para enviar propostas de transporte.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Link
+              href="/minha-conta"
+              className="btn btn--primary"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Ativar Remetente em Minha Conta
+            </Link>
+            <Link
+              href="/feed"
+              className="btn btn--outline"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Ver Mural de Encomendas
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div className="uber-publish-container" style={{ maxWidth: "860px", margin: "0 auto", padding: "16px 12px 100px 12px" }}>
       {/* Mensagens de Sucesso ou Erro */}
@@ -428,81 +498,6 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
       {successMsg && (
         <div style={{ backgroundColor: "#DCFCE7", border: "1.5px solid #10B981", color: "#166534", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", fontSize: "14px", fontWeight: 700 }}>
           {successMsg}
-        </div>
-      )}
-
-      {/* Indicador de Autenticação */}
-      {!isAuthenticated && !authLoading && (
-        <div
-          style={{
-            backgroundColor: "#FEF3C7",
-            border: "1.5px solid #F59E0B",
-            borderRadius: "10px",
-            padding: "16px",
-            marginBottom: "20px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px"
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "20px" }}>👤</span>
-            <span style={{ fontWeight: 800, fontSize: "15px", color: "#92400E" }}>
-              Entre na sua conta de Remetente para publicar
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: "13px", color: "#78350F", lineHeight: "1.4" }}>
-            Para que os transportadores possam enviar ofertas de frete e você acompanhe tudo na aba <strong>Propostas</strong>, faça login ou crie sua conta antes de finalizar.
-          </p>
-          <div style={{ display: "flex", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
-            <Link
-              href="/entrar"
-              className="btn btn--primary"
-              style={{
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 700,
-                textDecoration: "none"
-              }}
-            >
-              Entrar na conta
-            </Link>
-            <Link
-              href="/cadastro"
-              className="btn btn--outline"
-              style={{
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 700,
-                textDecoration: "none",
-                backgroundColor: "#FFFFFF"
-              }}
-            >
-              Criar conta gratuita
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {isAuthenticated && user?.roles && !user.roles.includes("SENDER") && user.roles.includes("CARRIER") && (
-        <div
-          style={{
-            backgroundColor: "#EFF6FF",
-            border: "1.5px solid #3B82F6",
-            borderRadius: "10px",
-            padding: "14px 16px",
-            marginBottom: "20px"
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-            <span style={{ fontSize: "18px" }}>🚚</span>
-            <span style={{ fontWeight: 800, fontSize: "14px", color: "#1E40AF" }}>
-              Você está conectado como Transportador
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: "13px", color: "#1E3A8A", lineHeight: "1.4" }}>
-            A publicação de novas cargas é restrita a <strong>Remetentes</strong>. Se deseja enviar uma encomenda, entre com uma conta de Remetente.
-          </p>
         </div>
       )}
 

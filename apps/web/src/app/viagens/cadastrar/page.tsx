@@ -391,6 +391,41 @@ export default function CadastrarViagemPage(): React.JSX.Element {
     }
   };
 
+  if (!isLoading && !isAuthenticated) {
+    return (
+      <main className="container" style={{ paddingTop: "40px", paddingBottom: "60px", maxWidth: "600px" }}>
+        <div className="card" style={{ textAlign: "center", padding: "40px 24px", borderRadius: "16px", boxShadow: "var(--shadow-md)" }}>
+          <div style={{ fontSize: "52px", marginBottom: "16px" }}>🔒</div>
+          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Autenticação Necessária
+          </span>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-brand-deep-navy)", margin: "8px 0 12px 0" }}>
+            Acesse sua conta para cadastrar viagens
+          </h1>
+          <p style={{ color: "var(--color-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "28px" }}>
+            Para disponibilizar viagens, rotas e capacidade de transporte no mural da Topic Log, você precisa estar conectado à sua conta de Transportador com veículo e CNH válidos.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Link
+              href="/entrar"
+              className="btn btn--primary"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Fazer Login como Transportador
+            </Link>
+            <Link
+              href="/cadastro"
+              className="btn btn--outline"
+              style={{ padding: "12px 20px", fontSize: "14px", fontWeight: 700, textDecoration: "none" }}
+            >
+              Criar Conta Gratuita de Transportador
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (!isLoading && isSenderOnly) {
     return (
       <main className="container" style={{ paddingTop: "40px", paddingBottom: "60px", maxWidth: "680px" }}>
