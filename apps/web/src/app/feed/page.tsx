@@ -68,7 +68,7 @@ function FeedContent(): React.JSX.Element {
   const urlDest = searchParams.get("destino")?.trim() || "";
 
   const [isSendingProposal, setIsSendingProposal] = useState(false);
-  const [commissionPercent, setCommissionPercent] = useState<number>(20);
+  const [commissionPercent, setCommissionPercent] = useState<number>(15);
   const [carrierOfferValue, setCarrierOfferValue] = useState<string>("");
 
   useEffect(() => {

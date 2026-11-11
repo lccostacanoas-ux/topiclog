@@ -509,7 +509,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                     var domainSnapshot = TopicLogRules.CalculateCommissionSnapshot(
                         transportAmountCents: prop.AmountCents,
                         commissionRate: commissionRate,
-                        policyVersionId: "POL-COM-V1",
+                        policyVersionId: "POL-COM-V6",
                         planCode: "FREE");
 
                     snapshot = new CommissionSnapshot(

@@ -171,9 +171,9 @@ const INITIAL_PROPOSALS: DemoProposal[] = [
     carrierName: "Luiz Carlos Costa",
     originalPriceCents: 500, // R$ 5,00 proposto pelo remetente
     proposedPriceCents: 600, // R$ 6,00 acordado pelo transportador Luiz
-    platformCommissionCents: 120, // 20% TopicLog = R$ 1,20
-    carrierNetCents: 480, // Líquido que o Luiz receberá = R$ 4,80
-    message: "Olá Lucas! Faço essa rota Foz ➔ Cascavel hoje às 17h na minha Fiat Strada. Consigo levar por R$ 6,00 com entrega direta no seu destino.",
+    platformCommissionCents: 90, // 15% TopicLog configurada no console = R$ 0,90
+    carrierNetCents: 510, // Líquido que o Luiz receberá (85%) = R$ 5,10
+    message: "Olá Lucas! Faço essa rota Foz ➔ Cascavel hoje às 17h na minha Fiat Strada. Consigo levar por R$ 6,00 com entrega direta no seu destino (Comissão 15% / Repasse 85%).",
     status: "PENDING",
     isCurrentUserCarrier: false,
     createdAt: new Date().toISOString()
@@ -187,7 +187,7 @@ const INITIAL_THREADS: DemoChatThread[] = [
     counterpartName: "Luiz Carlos Costa (Transportador)",
     counterpartRole: "TRANSPORTADOR",
     counterpartKycVerified: true,
-    lastMessage: "Acabei de registrar a proposta de R$ 6,00 aqui. Você receberá líquido R$ 4,80 e a taxa TopicLog é R$ 1,20.",
+    lastMessage: "Acabei de registrar a proposta de R$ 6,00 aqui. Você receberá líquido R$ 5,10 e a taxa TopicLog é R$ 0,90 (15% configurada no console).",
     lastMessageTime: "15:15",
     unreadCount: 1,
     messages: [
@@ -427,7 +427,7 @@ export function updateProposalStatus(
   const current = getDemoProposals().map((p) => {
     if (p.id !== proposalId) return p;
     if (newStatus === "COUNTER_PROPOSED" && counterValueCents) {
-      const commission = Math.round(counterValueCents * 0.13);
+      const commission = Math.round(counterValueCents * 0.15);
       return {
         ...p,
         status: newStatus,

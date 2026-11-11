@@ -295,8 +295,8 @@ export default function MuralViagensPage(): React.JSX.Element {
         photoIcon: "📦"
       });
 
-      // 2. Registra proposta formal vinculada à viagem com os types exatos de DemoProposal
-      const commissionCents = Math.round(priceCents * 0.20);
+      // 2. Registra proposta formal vinculada à viagem com os types exatos de DemoProposal (comissão 15% conforme console POL-COM-V6)
+      const commissionCents = Math.round(priceCents * 0.15);
       addDemoProposal({
         shipmentId: newShipment.id,
         shipmentTitle: newShipment.title,

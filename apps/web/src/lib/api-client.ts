@@ -384,9 +384,9 @@ export const DEFAULT_TOPICLOG_SYSTEM_STATE: SystemFeatureFlagsResponse = {
     CAR: 20000
   },
   commercialPolicies: {
-    freePlanCommissionRate: 0.20,
+    freePlanCommissionRate: 0.15,
     premiumPlanMonthlyPriceCents: 0,
-    premiumPlanCommissionRate: 0.20,
+    premiumPlanCommissionRate: 0.15,
     platformAbsorbsGatewayFees: true
   },
   insurance: {

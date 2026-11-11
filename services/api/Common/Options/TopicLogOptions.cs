@@ -68,7 +68,7 @@ public sealed class CommercialPolicyOptions
     /// <summary>
     /// Comissão inicial gratuita padrão: 13% (0.130000) — D10.
     /// </summary>
-    public decimal FreePlanCommissionRate { get; set; } = 0.130000m;
+    public decimal FreePlanCommissionRate { get; set; } = 0.150000m;
 
     /// <summary>
     /// Mensalidade inicial do pacote Premium em centavos: R$ 39,90 (3990 centavos) — D11.

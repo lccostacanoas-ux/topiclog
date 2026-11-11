@@ -22,7 +22,7 @@ function formatBrlFromCents(cents: number): string {
  */
 export function FinancialBreakdownPreview({
   transportAmountCents,
-  freeCommissionRate = 0.20
+  freeCommissionRate = 0.15
 }: FinancialBreakdownPreviewProps): React.JSX.Element {
   const commissionRatePercent = Math.round(freeCommissionRate * 100);
   const commissionCents = Math.round(transportAmountCents * freeCommissionRate);
