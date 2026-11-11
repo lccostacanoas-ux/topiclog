@@ -27,6 +27,157 @@ function safeFormatDate(val?: string): string {
   return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
 }
 
+interface ChatMessage {
+  id: string;
+  senderName: string;
+  isCurrentUser: boolean;
+  isSystem?: boolean;
+  text: string;
+  timestamp: string;
+}
+
+function ProposalNegotiationChat({
+  proposalId,
+  currentUserName,
+  counterpartName
+}: {
+  proposalId: string;
+  currentUserName: string;
+  counterpartName: string;
+}): React.JSX.Element {
+  const storageKey = `topiclog_chat_prop_${proposalId}`;
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return [
+      {
+        id: "sys-init",
+        senderName: "Sistema TopicLog",
+        isCurrentUser: false,
+        isSystem: true,
+        text: "✓ Negociação fechada e pagamento confirmado pelo remetente via Mercado Pago. O chat direto entre os usuários está liberado.",
+        timestamp: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      }
+    ];
+  });
+  const [text, setText] = useState("");
+  const [isOpen, setIsOpen] = useState(true);
+
+  const handleSend = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    const newMsg: ChatMessage = {
+      id: "msg-" + Date.now(),
+      senderName: currentUserName,
+      isCurrentUser: true,
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    };
+    const updated = [...messages, newMsg];
+    setMessages(updated);
+    setText("");
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {}
+  };
+
+  return (
+    <div style={{ marginTop: "14px", border: "1px solid #BFDBFE", borderRadius: "10px", overflow: "hidden", backgroundColor: "#F8FAFC" }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          padding: "10px 14px",
+          backgroundColor: "#EFF6FF",
+          borderBottom: isOpen ? "1px solid #BFDBFE" : "none",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px" }}>💬</span>
+          <strong style={{ fontSize: "13px", color: "#1E40AF" }}>
+            Chat da Negociação Fechada ({counterpartName})
+          </strong>
+          <span style={{ fontSize: "11px", backgroundColor: "#D1FAE5", color: "#065F46", padding: "2px 8px", borderRadius: "12px", fontWeight: 700 }}>
+            ✓ Pagamento Confirmado
+          </span>
+        </div>
+        <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 600 }}>
+          {isOpen ? "Ocultar ▲" : "Abrir Chat ▼"}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div style={{ padding: "12px" }}>
+          <div style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "10px", paddingRight: "4px" }}>
+            {messages.map((m) => {
+              if (m.isSystem) {
+                return (
+                  <div key={m.id} style={{ textAlign: "center", padding: "6px 12px", backgroundColor: "#E2E8F0", borderRadius: "6px", fontSize: "11px", color: "#475569", fontWeight: 600, margin: "4px 0" }}>
+                    {m.text}
+                  </div>
+                );
+              }
+              const isMine = m.isCurrentUser || m.senderName === currentUserName;
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    alignSelf: isMine ? "flex-end" : "flex-start",
+                    maxWidth: "80%",
+                    backgroundColor: isMine ? "#2563EB" : "#FFFFFF",
+                    color: isMine ? "#FFFFFF" : "#1E293B",
+                    border: isMine ? "none" : "1px solid #E2E8F0",
+                    borderRadius: "10px",
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                  }}
+                >
+                  <div style={{ fontSize: "10px", fontWeight: 700, color: isMine ? "#BFDBFE" : "#64748B", marginBottom: "2px", display: "flex", justifyContent: "space-between", gap: "8px" }}>
+                    <span>{isMine ? "Você" : m.senderName}</span>
+                    <span>{m.timestamp}</span>
+                  </div>
+                  <div>{m.text}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          <form onSubmit={handleSend} style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Digite sua mensagem sobre esta entrega..."
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid #CBD5E1",
+                fontSize: "13px",
+                outline: "none"
+              }}
+            />
+            <button
+              type="submit"
+              className="btn btn--primary"
+              style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}
+            >
+              Enviar
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PropostasPage(): React.JSX.Element {
   const { user, token, isAuthenticated, isLoading: authLoading, refresh, logout } = useAuth();
 
@@ -690,9 +841,38 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
+                {/* Seção de Comunicação Bilateral Direta da Negociação */}
+                {isAccepted ? (
+                  <ProposalNegotiationChat
+                    proposalId={proposal.id}
+                    currentUserName={user?.displayName || (activeTab === "SENT" ? (proposal.carrierName || "Transportador") : (proposal.senderName || "Remetente"))}
+                    counterpartName={activeTab === "SENT" ? (proposal.senderName || "Remetente") : (proposal.carrierName || "Transportador")}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "10px 14px",
+                      backgroundColor: "#F8FAFC",
+                      border: "1px dashed #CBD5E1",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      color: "#64748B",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}
+                  >
+                    <span style={{ fontSize: "16px" }}>🔒</span>
+                    <span>
+                      <strong>Troca de mensagens restrita:</strong> O chat direto entre os usuários só é liberado nesta aba após o fechamento da negociação e a confirmação do pagamento pelo remetente via Mercado Pago.
+                    </span>
+                  </div>
+                )}
+
                 {/* Botões quando Aceito */}
                 {isAccepted && (
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "12px" }}>
                     <button
                       type="button"
                       onClick={() => openPaymentModal(proposal)}

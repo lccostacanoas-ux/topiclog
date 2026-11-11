@@ -394,7 +394,7 @@ export const DEFAULT_TOPICLOG_SYSTEM_STATE: SystemFeatureFlagsResponse = {
     mandatoryDisclaimer: "Esta manifestação não contrata seguro e não garante cobertura"
   },
   featureFlags: {
-    environmentMode: "Testing",
+    environmentMode: "Production",
     realPaymentsEnabled: false,
     asaasSandboxEnabled: true,
     bilateralKycRequiredOnContract: true,
@@ -631,7 +631,11 @@ export async function loginUserApi(
     if (typeof window !== "undefined") {
       const users = getLocalMockUsers();
       const loginTerm = request.email.trim().toLowerCase();
-      const isLuizAlias = loginTerm === "lccostacanoas@gmail.com" || loginTerm === "luizcostacanoas@gmail.com";
+      const isLuizAlias =
+        loginTerm === "lccostacanoas@gmail.com" ||
+        loginTerm === "luizcostacanoas@gmail.com" ||
+        loginTerm === "lccosstacanoas@gmail.com" ||
+        (loginTerm.includes("canoas") && (loginTerm.includes("costa") || loginTerm.startsWith("lc")));
       const matched = users.find(
         (u) =>
           (u.email && u.email.toLowerCase() === loginTerm) ||

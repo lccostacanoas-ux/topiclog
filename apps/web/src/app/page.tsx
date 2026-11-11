@@ -1259,7 +1259,7 @@ export default function HomePage(): React.JSX.Element {
                 Ainda tem alguma dúvida específica?
               </strong>
               <span style={{ fontSize: "13px", color: "#64748B" }}>
-                Converse diretamente com outros usuários ou acione nossa central de mensagens.
+                Fale com a administração da plataforma ou acione nossa central de atendimento via e-mail.
               </span>
             </div>
             <Link
@@ -1267,7 +1267,7 @@ export default function HomePage(): React.JSX.Element {
               className="btn btn--outline"
               style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}
             >
-              Ir para Mensagens →
+              Falar com a Administração →
             </Link>
           </div>
         </section>
@@ -1296,10 +1296,6 @@ export default function HomePage(): React.JSX.Element {
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ fontSize: "14px" }}>📦</span>
               <span style={{ fontSize: "12px", fontWeight: 800, color: "#1E293B" }}>TOPIC LOG</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "14px" }}>🛡️</span>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>SENHA DE ENTREGA</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ fontSize: "14px" }}>🔺</span>
