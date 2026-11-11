@@ -136,6 +136,34 @@ const LOCAL_USERS_KEY = "topiclog_users";
 export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
   {
     id: "usr-luiz-carrier",
+    email: "lccostacanoas@gmail.com",
+    password: "12345678",
+    displayName: "Luiz Carlos Costa",
+    phone: "(31) 98888-7777",
+    cpf: "55042724567",
+    city: "Belo Horizonte",
+    stateUf: "MG",
+    roles: ["CARRIER"],
+    kycStatus: "VERIFIED",
+    ratingAvg: 5.0,
+    ratingCount: 34,
+    vehicleType: "CARRO",
+    vehicleModel: "Fiat Strada Endurance",
+    vehiclePlate: "BRA2E19",
+    vehicleYear: "2023",
+    cnhCategory: "B",
+    carrierTermsAccepted: true,
+    bankName: "Mercado Pago",
+    pixKeyType: "CPF",
+    pixKey: "55042724567",
+    mpAccountEmail: "lccostacanoas@gmail.com",
+    cnhDocumentName: "cnh_luiz_carlos_costa.pdf",
+    crlvDocumentName: "crlv_fiat_strada_bra2e19.pdf",
+    identityDocumentName: "rg_luiz_carlos.pdf",
+    createdAt: "2026-11-10T20:00:00.000Z"
+  },
+  {
+    id: "usr-luiz-carrier-alias",
     email: "luizcostacanoas@gmail.com",
     password: "123456",
     displayName: "Luiz Carlos Costa",
@@ -156,7 +184,7 @@ export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
     bankName: "Mercado Pago",
     pixKeyType: "CPF",
     pixKey: "55042724567",
-    mpAccountEmail: "luizcostacanoas@gmail.com",
+    mpAccountEmail: "lccostacanoas@gmail.com",
     cnhDocumentName: "cnh_luiz_carlos_costa.pdf",
     crlvDocumentName: "crlv_fiat_strada_bra2e19.pdf",
     identityDocumentName: "rg_luiz_carlos.pdf",
@@ -589,13 +617,22 @@ export async function loginUserApi(
     if (typeof window !== "undefined") {
       const users = getLocalMockUsers();
       const loginTerm = request.email.trim().toLowerCase();
+      const isLuizAlias = loginTerm === "lccostacanoas@gmail.com" || loginTerm === "luizcostacanoas@gmail.com";
       const matched = users.find(
         (u) =>
           u.email.toLowerCase() === loginTerm ||
-          u.displayName.toLowerCase() === loginTerm
+          u.displayName.toLowerCase() === loginTerm ||
+          (isLuizAlias && (u.email.toLowerCase() === "luizcostacanoas@gmail.com" || u.email.toLowerCase() === "lccostacanoas@gmail.com"))
       );
 
-      if (matched && matched.password === request.password) {
+      const isPasswordValid = Boolean(
+        matched && (
+          matched.password === request.password ||
+          (isLuizAlias && (request.password === "12345678" || request.password === "123456"))
+        )
+      );
+
+      if (matched && isPasswordValid) {
         const session = buildLocalMockSession(matched);
         return {
           ok: true,
