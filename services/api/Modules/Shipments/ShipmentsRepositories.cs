@@ -40,7 +40,12 @@ public sealed class InMemoryShipmentsRepository : IShipmentsRepository
         {
             if (!File.Exists(StorageFilePath))
             {
-                SeedDemoShipments();
+                bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+                if (isTest)
+                {
+                    SeedDemoShipments();
+                }
                 return;
             }
 

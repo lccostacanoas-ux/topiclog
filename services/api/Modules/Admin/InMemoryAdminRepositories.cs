@@ -64,7 +64,21 @@ public class InMemoryCarrierVehicleRepository : ICarrierVehicleRepository
     private readonly ConcurrentDictionary<Guid, CarrierVehicle> _vehicles = new();
     private readonly Lock _syncLock = new();
 
-    public InMemoryCarrierVehicleRepository()
+    public InMemoryCarrierVehicleRepository() : this(null)
+    {
+    }
+
+    public InMemoryCarrierVehicleRepository(bool? seedDemo)
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (seedDemo ?? isTest)
+        {
+            SeedDemoVehicles();
+        }
+    }
+
+    private void SeedDemoVehicles()
     {
         var carrierDemoId = Guid.Parse("00000000-0000-0000-0000-000000000002");
 

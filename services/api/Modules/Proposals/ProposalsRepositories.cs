@@ -23,6 +23,7 @@ public interface IProposalsRepository
     Task<Contract?> GetContractByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Contract?> GetContractByShipmentIdAsync(Guid shipmentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Contract>> ListContractsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Contract>> ListAllContractsAsync(CancellationToken cancellationToken = default);
     Task<bool> UpdateContractAsync(Contract contract, CancellationToken cancellationToken = default);
 
     Task AddEventAsync(ProposalEvent ev, CancellationToken cancellationToken = default);
@@ -193,6 +194,15 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         cancellationToken.ThrowIfCancellationRequested();
         var list = _contracts.Values
             .Where(c => c.CarrierId == carrierId)
+            .OrderByDescending(c => c.ContractedAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Contract>>(list);
+    }
+
+    public Task<IReadOnlyList<Contract>> ListAllContractsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var list = _contracts.Values
             .OrderByDescending(c => c.ContractedAtUtc)
             .ToList();
         return Task.FromResult<IReadOnlyList<Contract>>(list);

@@ -30,6 +30,9 @@ public interface IUserRepository
         UserEntity user,
         UserProfileEntity profile,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<(UserEntity User, UserProfileEntity Profile)>> ListAllAsync(
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -103,16 +106,39 @@ public sealed class InMemoryUserRepository : IUserRepository
             var items = System.Text.Json.JsonSerializer.Deserialize<List<PersistedUserEntry>>(json);
             if (items is null) return;
 
+            bool migratedAny = false;
+            var aliasId = Guid.Parse("a0000000-0000-0000-0000-000000000002");
+
             lock (_syncRoot)
             {
                 foreach (var item in items)
                 {
                     if (item.User is not null && item.Profile is not null)
                     {
+                        if (item.User.Id == aliasId)
+                        {
+                            migratedAny = true;
+                            continue;
+                        }
+
+                        if (item.User.Email.Equals("lccostacanoas@gmail.com", StringComparison.OrdinalIgnoreCase)
+                            && item.Profile.RatingCount == 34
+                            && item.Profile.RatingAvg == 5.0m)
+                        {
+                            item.Profile.RatingAvg = 0m;
+                            item.Profile.RatingCount = 0;
+                            migratedAny = true;
+                        }
+
                         _byId[item.User.Id] = (item.User, item.Profile);
                         _idByEmail[item.User.Email.Trim().ToLowerInvariant()] = item.User.Id;
                     }
                 }
+            }
+
+            if (migratedAny)
+            {
+                SaveToDisk();
             }
         }
         catch (Exception ex)
@@ -173,8 +199,8 @@ public sealed class InMemoryUserRepository : IUserRepository
                     KycStatus = KycStatus.VERIFIED,
                     TermsAcceptedVersion = "2026-v1.0",
                     TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
-                    RatingAvg = 5.0m,
-                    RatingCount = 34,
+                    RatingAvg = 0m,
+                    RatingCount = 0,
                     VehicleType = "CARRO",
                     VehicleModel = "Fiat Strada Endurance",
                     VehiclePlate = "BRA2E19",
@@ -211,56 +237,6 @@ public sealed class InMemoryUserRepository : IUserRepository
                     existingEntry.Profile.BankName = "Mercado Pago";
                     existingEntry.Profile.MpAccountEmail = "lccostacanoas@gmail.com";
                 }
-            }
-
-            string aliasEmail = "luizcostacanoas@gmail.com";
-            if (!_idByEmail.ContainsKey(aliasEmail))
-            {
-                var aliasId = Guid.Parse("a0000000-0000-0000-0000-000000000002");
-                var userAlias = new UserEntity
-                {
-                    Id = aliasId,
-                    Email = aliasEmail,
-                    PhoneEncrypted = "encrypted_31988887777",
-                    PhoneMasked = "(31) 98888-7777",
-                    PasswordHash = "123456",
-                    Status = UserAccountStatus.ACTIVE,
-                    CreatedAtUtc = DateTimeOffset.UtcNow,
-                    UpdatedAtUtc = DateTimeOffset.UtcNow
-                };
-
-                var profileAlias = new UserProfileEntity
-                {
-                    UserId = aliasId,
-                    DisplayName = "Luiz Carlos Costa",
-                    City = "Belo Horizonte",
-                    StateUf = "MG",
-                    CpfMasked = "550.***.***-67",
-                    CpfHash = "cpfhash_luiz_carlos_costa_alias",
-                    Roles = [UserRole.CARRIER],
-                    KycStatus = KycStatus.VERIFIED,
-                    TermsAcceptedVersion = "2026-v1.0",
-                    TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
-                    RatingAvg = 5.0m,
-                    RatingCount = 34,
-                    VehicleType = "CARRO",
-                    VehicleModel = "Fiat Strada Endurance",
-                    VehiclePlate = "BRA2E19",
-                    VehicleYear = "2023",
-                    Renavam = "00987654321",
-                    CnhNumber = "04982314560",
-                    CnhCategory = "B",
-                    CarrierTermsAccepted = true,
-                    CarrierTermsAcceptedAtUtc = DateTimeOffset.UtcNow,
-                    BankName = "Mercado Pago",
-                    PixKeyType = "CPF",
-                    PixKey = "55042724567",
-                    MpAccountEmail = "lccostacanoas@gmail.com",
-                    UpdatedAtUtc = DateTimeOffset.UtcNow
-                };
-
-                _byId[aliasId] = (userAlias, profileAlias);
-                _idByEmail[aliasEmail] = aliasId;
             }
 
             _idByEmail["lccostacanoas@gmail.com"] = luizId;
@@ -398,6 +374,17 @@ public sealed class InMemoryUserRepository : IUserRepository
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<(UserEntity User, UserProfileEntity Profile)>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_syncRoot)
+        {
+            IReadOnlyList<(UserEntity User, UserProfileEntity Profile)> result = _byId.Values.Select(Clone).ToList();
+            return Task.FromResult(result);
+        }
     }
 
     private sealed record PersistedUserEntry(UserEntity User, UserProfileEntity Profile);

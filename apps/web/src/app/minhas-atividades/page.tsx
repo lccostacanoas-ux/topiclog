@@ -870,46 +870,48 @@ export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
                   {/* Etapa 3: Viagem Concluída */}
                   {tr.status === "ENTREGUE" && (
                     <div style={{ fontSize: "13px", color: "#166534", fontWeight: 600 }}>
-                      ✓ Esta viagem foi concluída com sucesso. O split de 80% do valor do frete foi creditado na conta Mercado Pago do transportador.
+                      ✓ Esta viagem foi concluída com sucesso. O repasse líquido conforme política vigente foi creditado na conta Mercado Pago do transportador.
                     </div>
                   )}
                 </div>
 
-                {/* Avaliação Pública em Estrelas (Exclusivamente estrelas, sem comentários) */}
-                <div
-                  style={{
-                    backgroundColor: "#F8FAFC",
-                    border: "1px dashed #CBD5E1",
-                    borderRadius: "10px",
-                    padding: "10px 14px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "10px",
-                    marginBottom: "16px"
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>
-                      ⭐ Avaliação do Transportador Parceiro:
+                {/* Avaliação Pública em Estrelas (liberada somente após entrega concluída) */}
+                {tr.status === "ENTREGUE" && (
+                  <div
+                    style={{
+                      backgroundColor: "#F8FAFC",
+                      border: "1px dashed #CBD5E1",
+                      borderRadius: "10px",
+                      padding: "10px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                      marginBottom: "16px"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>
+                        ⭐ Avaliação do Transportador Parceiro:
+                      </span>
+                      <StarRatingDisplay
+                        size="sm"
+                        interactive={true}
+                        showBadgeWhenEmpty={true}
+                        onRate={(stars) => {
+                          addDemoRating({
+                            roleTarget: "CARRIER",
+                            stars
+                          });
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: "11px", color: "#64748B", fontStyle: "italic" }}>
+                      (Avaliação bilateral pública em estrelas • 1 a 5)
                     </span>
-                    <StarRatingDisplay
-                      size="sm"
-                      interactive={true}
-                      showBadgeWhenEmpty={true}
-                      onRate={(stars) => {
-                        addDemoRating({
-                          roleTarget: "CARRIER",
-                          stars
-                        });
-                      }}
-                    />
                   </div>
-                  <span style={{ fontSize: "11px", color: "#64748B", fontStyle: "italic" }}>
-                    (Avaliação bilateral pública em estrelas • 1 a 5)
-                  </span>
-                </div>
+                )}
 
                 {/* Ações Rápidas: Pagamento Pix, Propostas e Mensagens */}
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #F1F5F9", paddingTop: "14px", flexWrap: "wrap" }}>

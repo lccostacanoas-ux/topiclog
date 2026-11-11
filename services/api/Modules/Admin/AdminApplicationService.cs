@@ -58,24 +58,52 @@ public class AdminApplicationService
 
     public async Task<AdminDashboardMetricsResponse> GetDashboardMetricsAsync(CancellationToken cancellationToken = default)
     {
-        var policy = await _financeProvider.GetEffectivePolicyAsync(DateTimeOffset.UtcNow, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var policy = await _financeProvider.GetEffectivePolicyAsync(now, cancellationToken);
         var vehicles = await _vehicleRepository.ListVehiclesAsync(cancellationToken: cancellationToken);
         int pendingVehicles = vehicles.Count(v => v.Status == VehicleModerationStatus.PENDING_APPROVAL);
 
+        var users = _userRepository is not null
+            ? await _userRepository.ListAllAsync(cancellationToken)
+            : [];
+        int totalUsers = users.Count;
+        int totalCarriers = users.Count(u => u.Profile.Roles.Contains(UserRole.CARRIER));
+        int totalSenders = users.Count(u => u.Profile.Roles.Contains(UserRole.SENDER));
+
+        var shipments = _shipmentsRepository is not null
+            ? await _shipmentsRepository.ListActiveAsync(cancellationToken: cancellationToken)
+            : [];
+        int totalPublishedShipments = shipments.Count;
+
+        var trips = _tripsRepository is not null
+            ? await _tripsRepository.ListActiveAsync(cancellationToken: cancellationToken)
+            : [];
+        int totalActiveTrips = trips.Count(t => t.Status == TripStatus.SCHEDULED || t.Status == TripStatus.ACTIVE);
+
+        var contracts = _proposalsRepository is not null
+            ? await _proposalsRepository.ListAllContractsAsync(cancellationToken)
+            : [];
+        int totalFormalizedContracts = contracts.Count(c =>
+            c.Status == ContractStatus.ACTIVE || c.Status == ContractStatus.COMPLETED);
+
+        int totalActiveSubscriptions = _subscriptionRepository is not null
+            ? await _subscriptionRepository.CountActiveSubscriptionsAsync(now, cancellationToken)
+            : 0;
+
         return new AdminDashboardMetricsResponse(
-            TotalUsers: 142, // Métricas consolidadas em memória para o protótipo
-            TotalCarriers: 48,
-            TotalSenders: 94,
-            TotalPublishedShipments: 12,
-            TotalActiveTrips: 8,
-            TotalFormalizedContracts: 26,
+            TotalUsers: totalUsers,
+            TotalCarriers: totalCarriers,
+            TotalSenders: totalSenders,
+            TotalPublishedShipments: totalPublishedShipments,
+            TotalActiveTrips: totalActiveTrips,
+            TotalFormalizedContracts: totalFormalizedContracts,
             TotalVehiclesPendingModeration: pendingVehicles,
-            TotalActiveSubscriptions: 15,
+            TotalActiveSubscriptions: totalActiveSubscriptions,
             CurrentPolicyVersion: policy.Version,
             FreePlanCommissionPercent: policy.FreePlanCommissionPercent,
             PremiumPlanCommissionPercent: policy.PremiumPlanCommissionPercent,
             PremiumMonthlyFeeCents: policy.PremiumMonthlyFeeCents,
-            GeneratedAtUtc: DateTimeOffset.UtcNow);
+            GeneratedAtUtc: now);
     }
 
     // ------------------------------------------------------------------------

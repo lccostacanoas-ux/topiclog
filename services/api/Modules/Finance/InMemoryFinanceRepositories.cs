@@ -201,6 +201,16 @@ public class InMemorySubscriptionRepository : ISubscriptionRepository
             return Task.CompletedTask;
         }
     }
+
+    public Task<int> CountActiveSubscriptionsAsync(DateTimeOffset referenceDate, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int count = _subscriptions.Values.Count(s =>
+            (s.Status == SubscriptionStatus.ACTIVE || (s.Status == SubscriptionStatus.CANCELED && s.CurrentPeriodEndUtc >= referenceDate)) &&
+            s.CurrentPeriodStartUtc <= referenceDate &&
+            s.CurrentPeriodEndUtc >= referenceDate);
+        return Task.FromResult(count);
+    }
 }
 
 public class InMemoryFinancialSnapshotRepository : IFinancialSnapshotRepository

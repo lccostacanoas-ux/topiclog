@@ -21,6 +21,7 @@ public interface ISubscriptionRepository
     Task<IReadOnlyList<CarrierSubscription>> GetSubscriptionsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default);
     Task<CarrierSubscription> CreateSubscriptionAsync(CarrierSubscription subscription, CancellationToken cancellationToken = default);
     Task UpdateSubscriptionAsync(CarrierSubscription subscription, CancellationToken cancellationToken = default);
+    Task<int> CountActiveSubscriptionsAsync(DateTimeOffset referenceDate, CancellationToken cancellationToken = default);
 }
 
 public interface IFinancialSnapshotRepository
