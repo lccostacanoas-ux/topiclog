@@ -338,17 +338,10 @@ function FeedContent(): React.JSX.Element {
           });
         }
 
-        // 2. Mescla com locais apenas se não for duplicata
+        // 2. Mescla com locais apenas se não for duplicata por ID
         const demoLocal = getDemoShipments();
         for (const d of demoLocal) {
-          const isDuplicate = merged.some(
-            (m) =>
-              m.id === d.id ||
-              (m.originCity.toLowerCase() === d.originCity.toLowerCase() &&
-               m.destinationCity.toLowerCase() === d.destinationCity.toLowerCase() &&
-               m.suggestedPriceCents === d.suggestedPriceCents)
-          );
-          if (!isDuplicate && !seenIds.has(d.id)) {
+          if (!seenIds.has(d.id)) {
             seenIds.add(d.id);
             merged.push(d);
           }

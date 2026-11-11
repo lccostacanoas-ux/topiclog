@@ -94,20 +94,10 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       }
     }
 
-    // 2. Mescla com encomendas locais (demo / localStorage) eliminando estritamente duplicatas
+    // 2. Mescla com encomendas locais (demo / localStorage) eliminando duplicatas por ID
     const localDemos = getDemoShipments();
     for (const d of localDemos) {
-      const isDuplicate = unifiedList.some(
-        (u) =>
-          u.id === d.id ||
-          (u.originCity.toLowerCase() === d.originCity.toLowerCase() &&
-           u.destinationCity.toLowerCase() === d.destinationCity.toLowerCase() &&
-           u.suggestedPriceCents === d.suggestedPriceCents)
-      );
-      if (isDuplicate) {
-        // Limpa cópia legada redundante do armazenamento do navegador
-        removeDemoShipment(d.id);
-      } else if (!seenIds.has(d.id)) {
+      if (!seenIds.has(d.id)) {
         seenIds.add(d.id);
         unifiedList.push({
           id: d.id,
