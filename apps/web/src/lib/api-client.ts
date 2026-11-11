@@ -119,15 +119,61 @@ export interface LocalMockUser {
 
 const LOCAL_USERS_KEY = "topiclog_users";
 
-export function getLocalMockUsers(): LocalMockUser[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(LOCAL_USERS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as LocalMockUser[];
-  } catch {
-    return [];
+export const DEFAULT_SYSTEM_MOCK_USERS: LocalMockUser[] = [
+  {
+    id: "usr-lucas-sender-pr",
+    email: "lucas.remetente@topiclog.com.br",
+    password: "123456",
+    displayName: "Lucas Silveira",
+    phone: "(45) 99876-1234",
+    cpf: "12345678901",
+    city: "Foz do Iguaçu",
+    stateUf: "PR",
+    roles: ["SENDER"],
+    kycStatus: "VERIFIED",
+    ratingAvg: 5.0,
+    ratingCount: 12,
+    createdAt: "2026-11-10T20:00:00.000Z"
+  },
+  {
+    id: "usr-marcos-carrier-pr",
+    email: "marcos.transportador@topiclog.com.br",
+    password: "123456",
+    displayName: "Marcos Oliveira",
+    phone: "(45) 99123-4567",
+    cpf: "98765432109",
+    city: "Foz do Iguaçu",
+    stateUf: "PR",
+    roles: ["CARRIER"],
+    kycStatus: "VERIFIED",
+    ratingAvg: 4.9,
+    ratingCount: 28,
+    vehicleType: "CARRO",
+    vehicleModel: "Chevrolet Onix Plus",
+    vehiclePlate: "PR-FOZ1A23",
+    vehicleYear: "2022",
+    cnhCategory: "B",
+    carrierTermsAccepted: true,
+    createdAt: "2026-11-10T20:00:00.000Z"
   }
+];
+
+export function getLocalMockUsers(): LocalMockUser[] {
+  const map = new Map<string, LocalMockUser>();
+  DEFAULT_SYSTEM_MOCK_USERS.forEach((u) => map.set(u.email.toLowerCase(), u));
+
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(LOCAL_USERS_KEY);
+      if (raw) {
+        const stored = JSON.parse(raw) as LocalMockUser[];
+        stored.forEach((u) => map.set(u.email.toLowerCase(), u));
+      }
+    } catch {
+      // Retorna fallback
+    }
+  }
+  return Array.from(map.values());
 }
 
 export function saveLocalMockUser(user: LocalMockUser): void {

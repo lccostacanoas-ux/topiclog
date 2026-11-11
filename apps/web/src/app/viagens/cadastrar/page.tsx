@@ -76,6 +76,8 @@ const KNOWN_MUNICIPALITIES: Record<string, { name: string; ibgeCode: string; sta
   "CURITIBA": { name: "Curitiba", ibgeCode: "4106902", stateUf: "PR" },
   "LONDRINA": { name: "Londrina", ibgeCode: "4113700", stateUf: "PR" },
   "MARINGA": { name: "Maringá", ibgeCode: "4115200", stateUf: "PR" },
+  "FOZ DO IGUACU": { name: "Foz do Iguaçu", ibgeCode: "4108304", stateUf: "PR" },
+  "CASCAVEL": { name: "Cascavel", ibgeCode: "4104808", stateUf: "PR" },
   "PORTO ALEGRE": { name: "Porto Alegre", ibgeCode: "4314902", stateUf: "RS" },
   "CAXIAS DO SUL": { name: "Caxias do Sul", ibgeCode: "4305108", stateUf: "RS" },
   "FLORIANOPOLIS": { name: "Florianópolis", ibgeCode: "4205407", stateUf: "SC" },

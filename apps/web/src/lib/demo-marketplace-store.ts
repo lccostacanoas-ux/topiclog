@@ -108,13 +108,106 @@ export interface DemoChatThread {
   readonly messages: readonly DemoChatMessage[];
 }
 
-const INITIAL_SHIPMENTS: DemoShipment[] = [];
+const INITIAL_SHIPMENTS: DemoShipment[] = [
+  {
+    id: "enc-foz-cascavel-01",
+    title: "Documentos e Peças Leves (Foz ➔ Cascavel)",
+    description: "Envelope lacrado com documentos fiscais e 2 peças leves de reposição. Coleta no Centro de Foz do Iguaçu e entrega em Cascavel.",
+    category: "DOCUMENTOS",
+    dimensions: { lengthCm: 30, widthCm: 22, heightCm: 8 },
+    specialCare: ["Manuseio com cuidado", "Manter seco"],
+    originCity: "Foz do Iguaçu",
+    originNeighborhood: "Centro",
+    destinationCity: "Cascavel",
+    destinationNeighborhood: "Centro",
+    weightGrams: 1500,
+    maxVehicleType: "CAR",
+    suggestedPriceCents: 500, // R$ 5,00 proposto pelo remetente
+    deadlineDate: "Hoje até 21h",
+    senderName: "Lucas Silveira",
+    senderKycVerified: true,
+    status: "IN_NEGOTIATION",
+    interestedInInsurance: false,
+    photoIcon: "📄",
+    createdAt: "Hoje às 14:30"
+  }
+];
 
-const INITIAL_TRIPS: DemoTrip[] = [];
+const INITIAL_TRIPS: DemoTrip[] = [
+  {
+    id: "via-foz-cascavel-01",
+    carrierId: "usr-marcos-carrier-pr",
+    carrierName: "Marcos Oliveira",
+    carrierKycVerified: true,
+    vehicleType: "CAR",
+    vehicleModel: "Chevrolet Onix Plus (Placa PR-FOZ1A23)",
+    originCity: "Foz do Iguaçu",
+    destinationCity: "Cascavel",
+    intermediateStops: ["Santa Terezinha de Itaipu", "Medianeira"],
+    departureDate: "Hoje",
+    departureTime: "17:00",
+    availableCapacityGrams: 18000,
+    flexiblePickup: true,
+    suggestedPricePerKgCents: 600, // R$ 6,00 tarifa da viagem
+    status: "SCHEDULED",
+    createdAt: "Hoje às 15:00"
+  }
+];
 
-const INITIAL_PROPOSALS: DemoProposal[] = [];
+const INITIAL_PROPOSALS: DemoProposal[] = [
+  {
+    id: "prop-foz-cascavel-01",
+    shipmentId: "enc-foz-cascavel-01",
+    shipmentTitle: "Documentos e Peças Leves (Foz ➔ Cascavel)",
+    route: "Foz do Iguaçu ➔ Cascavel",
+    senderName: "Lucas Silveira",
+    carrierName: "Marcos Oliveira",
+    originalPriceCents: 500, // R$ 5,00 proposto pelo remetente
+    proposedPriceCents: 600, // R$ 6,00 proposto pelo transportador
+    platformCommissionCents: 120, // 20%
+    carrierNetCents: 480,
+    message: "Olá Lucas! Faço essa rota Foz ➔ Cascavel hoje às 17h no meu Onix. Consigo levar por R$ 6,00 com entrega direta no seu destino.",
+    status: "PENDING",
+    isCurrentUserCarrier: false,
+    createdAt: new Date().toISOString()
+  }
+];
 
-const INITIAL_THREADS: DemoChatThread[] = [];
+const INITIAL_THREADS: DemoChatThread[] = [
+  {
+    id: "chat-foz-cascavel-01",
+    contextTitle: "Documentos e Peças Leves (Foz ➔ Cascavel)",
+    counterpartName: "Marcos Oliveira (Transportador)",
+    counterpartRole: "TRANSPORTADOR",
+    counterpartKycVerified: true,
+    lastMessage: "Acabei de registrar a proposta de R$ 6,00 aqui. Basta clicar em Aceitar & Pagar com Pix!",
+    lastMessageTime: "15:15",
+    unreadCount: 1,
+    messages: [
+      {
+        id: "msg-1",
+        senderName: "Lucas Silveira",
+        isCurrentUser: true,
+        text: "Olá Marcos! Preciso enviar um envelope com peças leves de Foz para Cascavel hoje. Sugeri R$ 5,00 no mural.",
+        timestamp: "15:05"
+      },
+      {
+        id: "msg-2",
+        senderName: "Marcos Oliveira",
+        isCurrentUser: false,
+        text: "Boa tarde Lucas! Estou saindo de Foz do Iguaçu às 17h no meu Onix. Por R$ 6,00 eu entrego em mãos no Centro de Cascavel com código de segurança PIN.",
+        timestamp: "15:12"
+      },
+      {
+        id: "msg-3",
+        senderName: "Marcos Oliveira",
+        isCurrentUser: false,
+        text: "Acabei de registrar a proposta de R$ 6,00 aqui. Basta clicar em Aceitar & Pagar com Pix para formalizarmos a custódia!",
+        timestamp: "15:15"
+      }
+    ]
+  }
+];
 
 const SHIPMENTS_STORAGE_KEY = "topiclog_user_shipments_v4";
 const TRIPS_STORAGE_KEY = "topiclog_user_trips_v4";
@@ -147,7 +240,11 @@ function safeSetStorage<T>(key: string, data: T): void {
 }
 
 export function getDemoShipments(): readonly DemoShipment[] {
-  return safeGetStorage<DemoShipment[]>(SHIPMENTS_STORAGE_KEY, INITIAL_SHIPMENTS);
+  const stored = safeGetStorage<DemoShipment[]>(SHIPMENTS_STORAGE_KEY, []);
+  const map = new Map<string, DemoShipment>();
+  INITIAL_SHIPMENTS.forEach((s) => map.set(s.id, s));
+  stored.forEach((s) => map.set(s.id, s));
+  return Array.from(map.values());
 }
 
 export function addDemoShipment(shipment: Omit<DemoShipment, "id" | "createdAt" | "status">): DemoShipment {
@@ -175,12 +272,13 @@ export function updateDemoShipment(id: string, updates: Partial<DemoShipment>): 
 }
 
 export function getDemoTrips(): readonly DemoTrip[] {
-  const trips = safeGetStorage<DemoTrip[]>(TRIPS_STORAGE_KEY, INITIAL_TRIPS);
+  const stored = safeGetStorage<DemoTrip[]>(TRIPS_STORAGE_KEY, []);
+  const map = new Map<string, DemoTrip>();
+  INITIAL_TRIPS.forEach((t) => map.set(t.id, t));
+  stored.forEach((t) => map.set(t.id, t));
+  const trips = Array.from(map.values());
   // Sanitização automática: remove viagens de teste criadas indevidamente por perfil de remetente (Leci)
   const sanitized = trips.filter((t) => !t.carrierName?.toLowerCase().includes("leci"));
-  if (sanitized.length !== trips.length) {
-    safeSetStorage(TRIPS_STORAGE_KEY, sanitized);
-  }
   return sanitized;
 }
 
@@ -209,12 +307,13 @@ export function updateDemoTrip(id: string, updates: Partial<DemoTrip>): readonly
 }
 
 export function getDemoProposals(): readonly DemoProposal[] {
-  const proposals = safeGetStorage<DemoProposal[]>(PROPOSALS_STORAGE_KEY, INITIAL_PROPOSALS);
+  const stored = safeGetStorage<DemoProposal[]>(PROPOSALS_STORAGE_KEY, []);
+  const map = new Map<string, DemoProposal>();
+  INITIAL_PROPOSALS.forEach((p) => map.set(p.id, p));
+  stored.forEach((p) => map.set(p.id, p));
+  const proposals = Array.from(map.values());
   // Sanitização automática: remove propostas de teste onde remetente puro (Leci) figurava como transportador
   const sanitized = proposals.filter((p) => !p.carrierName?.toLowerCase().includes("leci"));
-  if (sanitized.length !== proposals.length) {
-    safeSetStorage(PROPOSALS_STORAGE_KEY, sanitized);
-  }
   return sanitized;
 }
 
@@ -266,7 +365,11 @@ export function removeDemoProposal(proposalId: string): readonly DemoProposal[] 
 }
 
 export function getDemoChatThreads(): readonly DemoChatThread[] {
-  return safeGetStorage<DemoChatThread[]>(CHATS_STORAGE_KEY, INITIAL_THREADS);
+  const stored = safeGetStorage<DemoChatThread[]>(CHATS_STORAGE_KEY, []);
+  const map = new Map<string, DemoChatThread>();
+  INITIAL_THREADS.forEach((th) => map.set(th.id, th));
+  stored.forEach((th) => map.set(th.id, th));
+  return Array.from(map.values());
 }
 
 export function sendDemoMessage(threadId: string, text: string, senderName = "Você"): readonly DemoChatThread[] {
