@@ -21,6 +21,7 @@ export default function RegisterPage(): React.JSX.Element {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [phone, setPhone] = useState("");
   const [cpf, setCpf] = useState("");
+  const [cpfTouched, setCpfTouched] = useState(false);
   const [city, setCity] = useState("João Monlevade");
   const [isSender, setIsSender] = useState(true);
   const [isCarrier, setIsCarrier] = useState(true);
@@ -89,11 +90,17 @@ export default function RegisterPage(): React.JSX.Element {
     }
 
     if (!isValidCpf(cpf)) {
+      setCpfTouched(true);
       setProblem({
         title: "CPF inválido",
         status: 400,
-        detail: "Informe um CPF válido com 11 dígitos para continuar."
+        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos para continuar."
       });
+      const cpfInput = document.getElementById("reg-cpf") as HTMLInputElement | null;
+      if (cpfInput) {
+        cpfInput.focus();
+        cpfInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
 
@@ -359,32 +366,75 @@ export default function RegisterPage(): React.JSX.Element {
                 <label htmlFor="reg-cpf" className="form-label">
                   CPF *
                 </label>
-                <input
-                  id="reg-cpf"
-                  type="text"
-                  required
-                  className="form-input"
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  value={cpf}
-                  onChange={handleCpfChange}
-                  disabled={isSubmitting}
-                />
-                {cpf.length >= 14 && (
-                  <div
-                    style={{
-                      marginTop: "6px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: isValidCpf(cpf) ? "#15803D" : "#DC2626",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px"
-                    }}
-                  >
-                    <span>{isValidCpf(cpf) ? "✓ CPF Válido (Receita Federal)" : "⚠️ CPF Inválido: confira os números digitados"}</span>
-                  </div>
-                )}
+                {(() => {
+                  const cpfDigits = cpf.replace(/\D/g, "");
+                  const cpfValid = isValidCpf(cpf);
+                  const showCpfStatus = cpfDigits.length === 11 || (cpfTouched && cpfDigits.length > 0);
+                  const showCpfMissing = cpfTouched && cpfDigits.length === 0;
+                  const hasCpfError = showCpfMissing || (showCpfStatus && !cpfValid);
+                  return (
+                    <>
+                      <input
+                        id="reg-cpf"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        required
+                        aria-invalid={hasCpfError}
+                        className="form-input"
+                        style={
+                          hasCpfError
+                            ? { borderColor: "#DC2626" }
+                            : showCpfStatus && cpfValid
+                              ? { borderColor: "#15803D" }
+                              : undefined
+                        }
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        value={cpf}
+                        onChange={handleCpfChange}
+                        onBlur={() => setCpfTouched(true)}
+                        disabled={isSubmitting}
+                      />
+                      {showCpfMissing && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: "#DC2626",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          <span>⚠️ Informe seu CPF com 11 dígitos.</span>
+                        </div>
+                      )}
+                      {showCpfStatus && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: cpfValid ? "#15803D" : "#DC2626",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          <span>
+                            {cpfValid
+                              ? "✓ CPF Válido (Receita Federal)"
+                              : cpfDigits.length < 11
+                                ? "⚠️ CPF incompleto: informe os 11 dígitos."
+                                : "⚠️ CPF Inválido: confira os números digitados"}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 <span className="form-help">Necessário para validação de segurança e repasses.</span>
               </div>
 

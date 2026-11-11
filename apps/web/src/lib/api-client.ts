@@ -78,6 +78,7 @@ import type {
   CompareLegalVersionsResponseDto,
   LegalAcceptanceDto
 } from "./types";
+import { isValidCpf } from "./validation";
 import {
   addDemoTrip,
   getDemoTrips,
@@ -491,6 +492,20 @@ export async function registerUserApi(
       }
 
       const cleanCpf = request.cpf ? request.cpf.replace(/\D/g, "") : "";
+      if (!request.cpf || !isValidCpf(request.cpf)) {
+        return {
+          ok: false,
+          status: 400,
+          problem: {
+            title: "CPF inválido",
+            status: 400,
+            detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos.",
+            ruleCode: "INVALID_CPF"
+          },
+          correlationId: customCorrelationId || `local-${Date.now()}`,
+          isFallback: true
+        };
+      }
       if (cleanCpf && existing.some((u) => u.cpf && u.cpf.replace(/\D/g, "") === cleanCpf)) {
         return {
           ok: false,

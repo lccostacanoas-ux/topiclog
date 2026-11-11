@@ -206,11 +206,11 @@ public sealed class VerificationApplicationService : IDisposable
         }
 
         string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
-        if (cpfDigits.Length != 11)
+        if (cpfDigits.Length != 11 || !SecurityCryptoService.IsValidCpf(request.Cpf))
         {
             throw new DomainRuleViolationException(
                 "INVALID_CPF_FORMAT",
-                "O CPF deve conter 11 dígitos numéricos para verificação de KYC (D05).",
+                "O CPF deve conter 11 dígitos numéricos e dígitos verificadores válidos para verificação de KYC (D05).",
                 StatusCodes.Status400BadRequest);
         }
 

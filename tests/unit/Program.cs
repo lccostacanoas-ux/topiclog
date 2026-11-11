@@ -503,7 +503,7 @@ var tests = new List<(string Name, Action Execute)>
         var submitted = service.SubmitKycCaseAsync(
             ownerActor,
             new SubmitKycCaseRequest(
-                Cpf: "55566677708",
+                Cpf: "55566677720",
                 IdentityDocumentRef: "private/kyc/doc_c1",
                 AddressProofRef: "private/kyc/addr_c1",
                 PartnerFacialSessionRef: "fac_sbx_c1",

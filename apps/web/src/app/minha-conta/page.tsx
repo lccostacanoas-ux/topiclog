@@ -7,6 +7,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { StarRatingDisplay } from "../../components/StarRatingDisplay";
 import { getPublicUserCardApi, updatePrivateProfileApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
+import { formatCpf, isValidCpf } from "../../lib/validation";
 import type { ProblemDetailsDto, PublicUserCardResponse, UserRole } from "../../lib/types";
 
 export default function MyAccountPage(): React.JSX.Element {
@@ -16,6 +17,7 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editCpf, setEditCpf] = useState("");
+  const [editCpfTouched, setEditCpfTouched] = useState(false);
   const [editCity, setEditCity] = useState("");
   const [editRoles, setEditRoles] = useState<UserRole[]>(["SENDER"]);
   const [editVehicleType, setEditVehicleType] = useState<string>("CARRO");
@@ -120,6 +122,18 @@ export default function MyAccountPage(): React.JSX.Element {
     setProblem(null);
     setSuccessMessage(null);
     setCarrierValidationMsg(null);
+
+    if (editCpf.trim() && !isValidCpf(editCpf)) {
+      setEditCpfTouched(true);
+      setProblem({
+        title: "CPF inválido",
+        status: 400,
+        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos ou deixe o campo em branco."
+      });
+      const cpfEl = document.getElementById("edit-cpf") as HTMLInputElement | null;
+      cpfEl?.focus();
+      return;
+    }
 
     if (editRoles.includes("CARRIER")) {
       if (!editVehiclePlate.trim()) {
@@ -438,15 +452,52 @@ export default function MyAccountPage(): React.JSX.Element {
 
               <div className="form-group">
                 <label htmlFor="edit-cpf" className="form-label">Novo CPF (opcional)</label>
-                <input
-                  id="edit-cpf"
-                  type="text"
-                  className="form-input"
-                  placeholder="Deixe em branco para manter o atual"
-                  value={editCpf}
-                  onChange={e => setEditCpf(e.target.value)}
-                  disabled={isSaving}
-                />
+                {(() => {
+                  const editCpfDigits = editCpf.replace(/\D/g, "");
+                  const editCpfValid = isValidCpf(editCpf);
+                  const showEditCpfStatus =
+                    editCpfDigits.length > 0 && (editCpfDigits.length === 11 || editCpfTouched);
+                  return (
+                    <>
+                      <input
+                        id="edit-cpf"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={14}
+                        className="form-input"
+                        style={
+                          showEditCpfStatus && !editCpfValid
+                            ? { borderColor: "#DC2626" }
+                            : showEditCpfStatus && editCpfValid
+                              ? { borderColor: "#15803D" }
+                              : undefined
+                        }
+                        placeholder="Deixe em branco para manter o atual"
+                        value={editCpf}
+                        onChange={e => setEditCpf(formatCpf(e.target.value))}
+                        onBlur={() => setEditCpfTouched(true)}
+                        disabled={isSaving}
+                      />
+                      {showEditCpfStatus && (
+                        <div
+                          style={{
+                            marginTop: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: editCpfValid ? "#15803D" : "#DC2626"
+                          }}
+                        >
+                          {editCpfValid
+                            ? "✓ CPF Válido (Receita Federal)"
+                            : editCpfDigits.length < 11
+                              ? "⚠️ CPF incompleto: informe os 11 dígitos ou deixe em branco."
+                              : "⚠️ CPF Inválido: confira os números digitados."}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="form-group">

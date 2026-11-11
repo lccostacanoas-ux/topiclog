@@ -94,33 +94,38 @@ public sealed class IdentityApplicationService
                 StatusCodes.Status409Conflict);
         }
 
+        var assignedRoles = ParseAndValidateSelfAssignableRoles(request.InitialRoles);
+
         string? cpfHash = null;
         string? cpfMasked = null;
-        if (!string.IsNullOrWhiteSpace(request.Cpf))
+        if (string.IsNullOrWhiteSpace(request.Cpf))
         {
-            if (!SecurityCryptoService.IsValidCpf(request.Cpf))
-            {
-                throw new DomainRuleViolationException(
-                    "INVALID_CPF",
-                    "O CPF informado é inválido conforme os dígitos verificadores oficiais da Receita Federal.",
-                    StatusCodes.Status400BadRequest);
-            }
-
-            string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
-            cpfHash = _crypto.ComputeCpfHash(cpfDigits);
-            bool cpfExists = await _userRepository.ExistsByCpfHashAsync(cpfHash, excludeUserId: null, cancellationToken).ConfigureAwait(false);
-            if (cpfExists)
-            {
-                throw new DomainRuleViolationException(
-                    "CPF_ALREADY_REGISTERED",
-                    "O CPF informado já está vinculado a outra conta.",
-                    StatusCodes.Status409Conflict);
-            }
-
-            cpfMasked = SecurityCryptoService.MaskCpf(cpfDigits);
+            throw new DomainRuleViolationException(
+                "CPF_REQUIRED",
+                "O CPF é obrigatório para criar uma conta na TopicLog.",
+                StatusCodes.Status400BadRequest);
         }
 
-        var assignedRoles = ParseAndValidateSelfAssignableRoles(request.InitialRoles);
+        if (!SecurityCryptoService.IsValidCpf(request.Cpf))
+        {
+            throw new DomainRuleViolationException(
+                "INVALID_CPF",
+                "O CPF informado é inválido conforme os dígitos verificadores oficiais da Receita Federal.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        string cpfDigits = SecurityCryptoService.NormalizeDigits(request.Cpf);
+        cpfHash = _crypto.ComputeCpfHash(cpfDigits);
+        bool cpfExists = await _userRepository.ExistsByCpfHashAsync(cpfHash, excludeUserId: null, cancellationToken).ConfigureAwait(false);
+        if (cpfExists)
+        {
+            throw new DomainRuleViolationException(
+                "CPF_ALREADY_REGISTERED",
+                "O CPF informado já está vinculado a outra conta.",
+                StatusCodes.Status409Conflict);
+        }
+
+        cpfMasked = SecurityCryptoService.MaskCpf(cpfDigits);
 
         if (assignedRoles.Contains(UserRole.CARRIER))
         {
