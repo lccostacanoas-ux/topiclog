@@ -3870,6 +3870,11 @@ var tests = new List<(string Name, Action Execute)>
 
         Assert(activeInFuture.Version == "POL-COM-V1", "A política revogada NUNCA pode ser ativada; POL-COM-V1 deve permanecer em vigor.");
         Assert(activeInFuture.FreePlanCommissionPercent == 13.00m, "Alíquota ativa no futuro simulado deve continuar sendo 13.00% da POL-COM-V1.");
+    }),
+
+    ("PR-01.1 (Recuperação de Senha por E-mail): Emite código HMAC de 6 dígitos, rejeita código incorreto, redefine senha e impede reutilização", () =>
+    {
+        RunEmailPasswordResetUnitTest();
     })
 };
 
@@ -3919,10 +3924,107 @@ finally
     catch { /* silencia limpeza temporária de teste */ }
 }
 
+static void RunEmailPasswordResetUnitTest()
+{
+    var secOpts = Options.Create(new SecurityOptions());
+    var keyMat = new RuntimeKeyMaterialProvider(secOpts);
+    var crypto = new SecurityCryptoService(secOpts, keyMat);
+    var userRepo = new InMemoryUserRepository();
+    var refreshRepo = new InMemoryRefreshTokenRepository();
+    var resetRepo = new InMemoryPasswordResetRepository();
+    var auditRepo = new InMemoryAuditRepository();
+    var emailStub = new StubEmailDeliveryService();
+    var auth = new ResourceAuthorizationService(crypto, auditRepo);
+    var identityService = new IdentityApplicationService(
+        userRepo, refreshRepo, resetRepo, auditRepo, emailStub, crypto, auth, secOpts);
+
+    var userId = Guid.NewGuid();
+    var user = new UserEntity
+    {
+        Id = userId,
+        Email = "recuperacao.teste@example.test",
+        PhoneEncrypted = crypto.EncryptPhone("31999990001"),
+        PhoneMasked = "(**) *****-0001",
+        PasswordHash = crypto.HashPassword("SenhaAntiga123"),
+        Status = UserAccountStatus.LOCKED,
+        FailedLoginAttempts = 5,
+        LockoutUntilUtc = DateTimeOffset.UtcNow.AddMinutes(10)
+    };
+    var profile = new UserProfileEntity
+    {
+        UserId = userId,
+        DisplayName = "Usuário Teste Recuperação",
+        Roles = [UserRole.SENDER],
+        TermsAcceptedVersion = "1.0.0",
+        TermsAcceptedAtUtc = DateTimeOffset.UtcNow
+    };
+    userRepo.CreateAsync(user, profile, CancellationToken.None).GetAwaiter().GetResult();
+
+    var reqResp = identityService.RequestPasswordResetAsync(
+        new ForgotPasswordRequest("recuperacao.teste@example.test"), "corr-reset-1", CancellationToken.None)
+        .GetAwaiter().GetResult();
+    Assert(reqResp.Accepted && emailStub.SentCodes.Count == 1, "Código de 6 dígitos deve ser enviado via serviço de e-mail.");
+    string sentCode = emailStub.SentCodes[0].Code;
+    Assert(sentCode.Length == 6 && sentCode.All(char.IsAsciiDigit), "Código enviado deve conter 6 dígitos.");
+
+    string wrongCode = sentCode == "000000" ? "999999" : "000000";
+    bool rejectedWrong = false;
+    try
+    {
+        identityService.ConfirmPasswordResetAsync(
+            new ResetPasswordRequest("recuperacao.teste@example.test", wrongCode, "NovaSenhaForte99"),
+            "corr-reset-2", CancellationToken.None).GetAwaiter().GetResult();
+    }
+    catch (DomainRuleViolationException)
+    {
+        rejectedWrong = true;
+    }
+    Assert(rejectedWrong, "Código incorreto deve ser rejeitado.");
+
+    identityService.ConfirmPasswordResetAsync(
+        new ResetPasswordRequest("recuperacao.teste@example.test", sentCode, "NovaSenhaForte99"),
+        "corr-reset-3", CancellationToken.None).GetAwaiter().GetResult();
+
+    bool rejectedReuse = false;
+    try
+    {
+        identityService.ConfirmPasswordResetAsync(
+            new ResetPasswordRequest("recuperacao.teste@example.test", sentCode, "OutraSenha99"),
+            "corr-reset-4", CancellationToken.None).GetAwaiter().GetResult();
+    }
+    catch (DomainRuleViolationException)
+    {
+        rejectedReuse = true;
+    }
+    Assert(rejectedReuse, "Código já utilizado não pode ser reutilizado.");
+
+    var session = identityService.LoginAsync(
+        new LoginRequest("recuperacao.teste@example.test", "NovaSenhaForte99"),
+        "corr-reset-5", CancellationToken.None).GetAwaiter().GetResult();
+    Assert(!string.IsNullOrWhiteSpace(session.AccessToken), "Login com a nova senha redefinida deve emitir AccessToken.");
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
     {
         throw new InvalidOperationException(message);
+    }
+}
+
+sealed class StubEmailDeliveryService : IEmailDeliveryService
+{
+    public bool IsConfigured => true;
+    public List<(string ToEmail, string Code)> SentCodes { get; } = [];
+
+    public Task SendPasswordResetCodeAsync(
+        string toEmail,
+        string recipientName,
+        string resetCode,
+        int expiresInMinutes,
+        CancellationToken cancellationToken)
+    {
+        SentCodes.Add((toEmail, resetCode));
+        return Task.CompletedTask;
     }
 }

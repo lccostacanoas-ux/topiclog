@@ -28,7 +28,9 @@ public static class IdentityEndpoints
         // registrados temporariamente para desenvolvimento local e testes iniciais.
         services.AddSingleton<IUserRepository, InMemoryUserRepository>();
         services.AddSingleton<IRefreshTokenRepository, InMemoryRefreshTokenRepository>();
+        services.AddSingleton<IPasswordResetRepository, InMemoryPasswordResetRepository>();
         services.AddSingleton<IAuditRepository, InMemoryAuditRepository>();
+        services.AddSingleton<IEmailDeliveryService, SmtpEmailDeliveryService>();
 
         services.AddSingleton<ResourceAuthorizationService>();
         services.AddSingleton<IdentityApplicationService>();
@@ -115,6 +117,34 @@ public static class IdentityEndpoints
 
             return Results.NoContent();
         });
+
+        app.MapPost("/api/v1/auth/forgot-password", async (
+            ForgotPasswordRequest request,
+            HttpContext httpContext,
+            IdentityApplicationService identityService,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await identityService.RequestPasswordResetAsync(
+                request,
+                httpContext.TraceIdentifier,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(response);
+        }).AllowAnonymous();
+
+        app.MapPost("/api/v1/auth/reset-password", async (
+            ResetPasswordRequest request,
+            HttpContext httpContext,
+            IdentityApplicationService identityService,
+            CancellationToken cancellationToken) =>
+        {
+            await identityService.ConfirmPasswordResetAsync(
+                request,
+                httpContext.TraceIdentifier,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.NoContent();
+        }).AllowAnonymous();
 
         // Endpoint restrito exclusivamente ao harness de testes automatizados (P0 - Auditoria 29/10/2026)
         // Requer flag explícita EnableSandboxAuthEndpoints=true, ambiente Testing, ausência de proxy reverso e chave interna.

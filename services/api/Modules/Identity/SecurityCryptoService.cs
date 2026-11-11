@@ -528,6 +528,31 @@ public sealed class SecurityCryptoService
         return Convert.ToHexStringLower(hash);
     }
 
+    public string ComputePasswordResetCodeHash(string normalizedEmail, string code)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(normalizedEmail);
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+
+        string payload = $"reset:{normalizedEmail.Trim().ToLowerInvariant()}:{code.Trim()}";
+        byte[] hash = HMACSHA256.HashData(_keyMaterial.CpfLookupHmacKey, Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexStringLower(hash);
+    }
+
+    public bool VerifyPasswordResetCodeHash(string normalizedEmail, string code, string storedHash)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedEmail)
+            || string.IsNullOrWhiteSpace(code)
+            || string.IsNullOrWhiteSpace(storedHash))
+        {
+            return false;
+        }
+
+        string computed = ComputePasswordResetCodeHash(normalizedEmail, code);
+        byte[] left = Encoding.ASCII.GetBytes(computed);
+        byte[] right = Encoding.ASCII.GetBytes(storedHash.Trim());
+        return left.Length == right.Length && CryptographicOperations.FixedTimeEquals(left, right);
+    }
+
     public static string NormalizeDigits(string value)
     {
         if (string.IsNullOrWhiteSpace(value))

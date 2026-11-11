@@ -134,6 +134,12 @@ export interface LogoutRequest {
   readonly refreshToken: string;
 }
 
+export interface ForgotPasswordResponse {
+  readonly accepted: boolean;
+  readonly message: string;
+  readonly expiresInMinutes: number;
+}
+
 export interface UpdateProfileRequest {
   readonly displayName?: string;
   readonly phone?: string;

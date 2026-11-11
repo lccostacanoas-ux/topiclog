@@ -321,3 +321,40 @@ public sealed record PublicUserCardResponse(
 /// </summary>
 public sealed record SandboxTokenRequest(string? Role);
 
+/// <summary>
+/// Solicitação de envio de código de recuperação de senha por e-mail.
+/// </summary>
+public sealed record ForgotPasswordRequest(string Email);
+
+/// <summary>
+/// Resposta neutra anti-enumeração ao solicitar recuperação de senha.
+/// </summary>
+public sealed record ForgotPasswordResponse(
+    bool Accepted,
+    string Message,
+    int ExpiresInMinutes);
+
+/// <summary>
+/// Confirmação de redefinição de senha usando o código de 6 dígitos enviado por e-mail.
+/// </summary>
+public sealed record ResetPasswordRequest(
+    string Email,
+    string Code,
+    string NewPassword);
+
+/// <summary>
+/// Token persistido em hash para recuperação de senha com expiração e limite de tentativas.
+/// </summary>
+public sealed class PasswordResetTokenEntity
+{
+    public required Guid Id { get; init; }
+    public required Guid UserId { get; init; }
+    public required string NormalizedEmail { get; init; }
+    public required string CodeHash { get; init; }
+    public required DateTimeOffset ExpiresAtUtc { get; init; }
+    public int Attempts { get; set; }
+    public int MaxAttempts { get; init; } = 5;
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+    public DateTimeOffset? ConsumedAtUtc { get; set; }
+}
+

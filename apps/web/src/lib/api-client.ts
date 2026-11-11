@@ -659,6 +659,31 @@ export async function changePasswordApi(
   });
 }
 
+export async function requestPasswordResetApi(
+  email: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<{ accepted: boolean; message: string; expiresInMinutes: number }>> {
+  return apiRequest<{ accepted: boolean; message: string; expiresInMinutes: number }>(
+    "/api/v1/auth/forgot-password",
+    {
+      method: "POST",
+      body: { email },
+      customCorrelationId
+    }
+  );
+}
+
+export async function confirmPasswordResetApi(
+  payload: { email: string; code: string; newPassword: string },
+  customCorrelationId?: string
+): Promise<ApiFetchResult<void>> {
+  return apiRequest<void>("/api/v1/auth/reset-password", {
+    method: "POST",
+    body: payload,
+    customCorrelationId
+  });
+}
+
 export async function logoutUserApi(
   token: string,
   request: LogoutRequest,

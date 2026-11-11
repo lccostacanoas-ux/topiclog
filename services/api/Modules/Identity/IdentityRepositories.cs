@@ -74,6 +74,24 @@ public interface IAuditRepository
 }
 
 /// <summary>
+/// Contrato de persistência de códigos temporários de recuperação de senha (hash HMAC, uso único).
+/// </summary>
+public interface IPasswordResetRepository
+{
+    Task SaveAndInvalidatePreviousAsync(
+        PasswordResetTokenEntity token,
+        CancellationToken cancellationToken);
+
+    Task<PasswordResetTokenEntity?> FindLatestActiveByEmailAsync(
+        string normalizedEmail,
+        CancellationToken cancellationToken);
+
+    Task UpdateAsync(
+        PasswordResetTokenEntity token,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Implementação de <see cref="IUserRepository"/> com armazenamento local persistente em disco (JSON)
 /// e cache indexado em memória para suportar testes locais e reiniciar o servidor sem perda de contas (DEC-01.1).
 /// </summary>
@@ -465,4 +483,149 @@ public sealed class InMemoryAuditRepository : IAuditRepository
 
         return Task.FromResult(result);
     }
+}
+
+/// <summary>
+/// Implementação persistente em disco (JSON atômico) de <see cref="IPasswordResetRepository"/>.
+/// Armazena apenas hashes dos códigos de recuperação com expiração e controle de tentativas.
+/// </summary>
+public sealed class InMemoryPasswordResetRepository : IPasswordResetRepository
+{
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    private static string StorageFilePath =>
+        TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("password_reset_tokens.json");
+
+    private readonly Lock _syncRoot = new();
+    private readonly List<PasswordResetTokenEntity> _tokens = [];
+
+    public InMemoryPasswordResetRepository()
+    {
+        LoadFromDisk();
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath))
+            {
+                return;
+            }
+
+            string json = File.ReadAllText(StorageFilePath).TrimStart('\uFEFF');
+            var items = System.Text.Json.JsonSerializer.Deserialize<List<PasswordResetTokenEntity>>(json);
+            if (items is null) return;
+
+            DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+            lock (_syncRoot)
+            {
+                _tokens.Clear();
+                foreach (var item in items)
+                {
+                    if (item.ExpiresAtUtc >= cutoff)
+                    {
+                        _tokens.Add(Clone(item));
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar tokens de recuperação: {ex.Message}");
+        }
+    }
+
+    private void SaveToDiskLocked()
+    {
+        try
+        {
+            DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+            var snapshot = _tokens.Where(t => t.ExpiresAtUtc >= cutoff).Select(Clone).ToList();
+            string json = System.Text.Json.JsonSerializer.Serialize(snapshot, JsonOptions);
+            TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Erro ao salvar tokens de recuperação: {ex.Message}");
+        }
+    }
+
+    public Task SaveAndInvalidatePreviousAsync(
+        PasswordResetTokenEntity token,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_syncRoot)
+        {
+            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+            foreach (var existing in _tokens)
+            {
+                if (existing.UserId == token.UserId && existing.ConsumedAtUtc is null)
+                {
+                    existing.ConsumedAtUtc = nowUtc;
+                }
+            }
+
+            _tokens.Add(Clone(token));
+            SaveToDiskLocked();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<PasswordResetTokenEntity?> FindLatestActiveByEmailAsync(
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(normalizedEmail);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string cleanEmail = normalizedEmail.Trim().ToLowerInvariant();
+        lock (_syncRoot)
+        {
+            var match = _tokens
+                .Where(t => string.Equals(t.NormalizedEmail, cleanEmail, StringComparison.OrdinalIgnoreCase)
+                         && t.ConsumedAtUtc is null)
+                .OrderByDescending(t => t.CreatedAtUtc)
+                .FirstOrDefault();
+
+            return Task.FromResult(match is null ? null : Clone(match));
+        }
+    }
+
+    public Task UpdateAsync(
+        PasswordResetTokenEntity token,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_syncRoot)
+        {
+            int idx = _tokens.FindIndex(t => t.Id == token.Id);
+            if (idx >= 0)
+            {
+                _tokens[idx] = Clone(token);
+                SaveToDiskLocked();
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static PasswordResetTokenEntity Clone(PasswordResetTokenEntity src) => new()
+    {
+        Id = src.Id,
+        UserId = src.UserId,
+        NormalizedEmail = src.NormalizedEmail,
+        CodeHash = src.CodeHash,
+        ExpiresAtUtc = src.ExpiresAtUtc,
+        Attempts = src.Attempts,
+        MaxAttempts = src.MaxAttempts,
+        CreatedAtUtc = src.CreatedAtUtc,
+        ConsumedAtUtc = src.ConsumedAtUtc
+    };
 }

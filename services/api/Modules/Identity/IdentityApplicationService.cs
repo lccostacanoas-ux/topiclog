@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Contracts;
@@ -13,6 +15,9 @@ namespace TopicLog.Api.Modules.Identity;
 /// </summary>
 public sealed class IdentityApplicationService
 {
+    private const int PasswordResetCodeExpirationMinutes = 15;
+    private const int PasswordResetResendCooldownSeconds = 60;
+
     private static readonly HashSet<UserRole> SelfAssignableRoles =
     [
         UserRole.SENDER,
@@ -22,7 +27,9 @@ public sealed class IdentityApplicationService
 
     private readonly IUserRepository _userRepository;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
+    private readonly IPasswordResetRepository _passwordResetRepository;
     private readonly IAuditRepository _auditRepository;
+    private readonly IEmailDeliveryService _emailService;
     private readonly SecurityCryptoService _crypto;
     private readonly ResourceAuthorizationService _authorization;
     private readonly SecurityOptions _securityOptions;
@@ -30,21 +37,27 @@ public sealed class IdentityApplicationService
     public IdentityApplicationService(
         IUserRepository userRepository,
         IRefreshTokenRepository refreshTokenRepository,
+        IPasswordResetRepository passwordResetRepository,
         IAuditRepository auditRepository,
+        IEmailDeliveryService emailService,
         SecurityCryptoService crypto,
         ResourceAuthorizationService authorization,
         IOptions<SecurityOptions> securityOptions)
     {
         ArgumentNullException.ThrowIfNull(userRepository);
         ArgumentNullException.ThrowIfNull(refreshTokenRepository);
+        ArgumentNullException.ThrowIfNull(passwordResetRepository);
         ArgumentNullException.ThrowIfNull(auditRepository);
+        ArgumentNullException.ThrowIfNull(emailService);
         ArgumentNullException.ThrowIfNull(crypto);
         ArgumentNullException.ThrowIfNull(authorization);
         ArgumentNullException.ThrowIfNull(securityOptions);
 
         _userRepository = userRepository;
         _refreshTokenRepository = refreshTokenRepository;
+        _passwordResetRepository = passwordResetRepository;
         _auditRepository = auditRepository;
+        _emailService = emailService;
         _crypto = crypto;
         _authorization = authorization;
         _securityOptions = securityOptions.Value;
@@ -806,6 +819,215 @@ public sealed class IdentityApplicationService
                 EntityType: "AUTH_SECURITY",
                 EntityId: actor.UserId.ToString("D"),
                 Action: "PASSWORD_CHANGED",
+                CorrelationId: correlationId,
+                MetadataJson: "{}",
+                CreatedAtUtc: nowUtc),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ForgotPasswordResponse> RequestPasswordResetAsync(
+        ForgotPasswordRequest request,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!_emailService.IsConfigured)
+        {
+            throw new DomainRuleViolationException(
+                "EMAIL_SERVICE_NOT_CONFIGURED",
+                "O serviço de envio de e-mail ainda não está configurado no servidor (email_settings.json). Configure a Senha de App do Gmail no arquivo local.",
+                StatusCodes.Status503ServiceUnavailable);
+        }
+
+        string normalizedEmail = NormalizeAndValidateEmail(request.Email);
+        const string neutralMessage = "Se o e-mail informado estiver cadastrado, enviaremos em instantes um código de 6 dígitos válido por 15 minutos.";
+
+        var entry = await _userRepository.FindByEmailAsync(normalizedEmail, cancellationToken).ConfigureAwait(false);
+        if (entry is null)
+        {
+            return new ForgotPasswordResponse(true, neutralMessage, PasswordResetCodeExpirationMinutes);
+        }
+
+        var (user, profile) = entry.Value;
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+        var existingActive = await _passwordResetRepository.FindLatestActiveByEmailAsync(normalizedEmail, cancellationToken).ConfigureAwait(false);
+        if (existingActive is not null
+            && existingActive.ExpiresAtUtc > nowUtc
+            && (nowUtc - existingActive.CreatedAtUtc).TotalSeconds < PasswordResetResendCooldownSeconds)
+        {
+            return new ForgotPasswordResponse(true, neutralMessage, PasswordResetCodeExpirationMinutes);
+        }
+
+        string code = RandomNumberGenerator.GetInt32(100_000, 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
+        var tokenEntity = new PasswordResetTokenEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            NormalizedEmail = normalizedEmail,
+            CodeHash = _crypto.ComputePasswordResetCodeHash(normalizedEmail, code),
+            ExpiresAtUtc = nowUtc.AddMinutes(PasswordResetCodeExpirationMinutes),
+            Attempts = 0,
+            MaxAttempts = 5,
+            CreatedAtUtc = nowUtc,
+            ConsumedAtUtc = null
+        };
+
+        await _passwordResetRepository.SaveAndInvalidatePreviousAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await _emailService.SendPasswordResetCodeAsync(
+                user.Email,
+                profile.DisplayName,
+                code,
+                PasswordResetCodeExpirationMinutes,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            tokenEntity.ConsumedAtUtc = DateTimeOffset.UtcNow;
+            await _passwordResetRepository.UpdateAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+            await _auditRepository.AppendAsync(
+                new AuditEventEntity(
+                    Id: Guid.NewGuid(),
+                    ActorUserId: user.Id,
+                    EntityType: "AUTH_SECURITY",
+                    EntityId: user.Id.ToString("D"),
+                    Action: "PASSWORD_RESET_EMAIL_FAILED",
+                    CorrelationId: correlationId,
+                    MetadataJson: "{}",
+                    CreatedAtUtc: DateTimeOffset.UtcNow),
+                cancellationToken).ConfigureAwait(false);
+
+            Console.WriteLine($"[TopicLog.Email] Falha ao enviar código de recuperação: {ex.Message}");
+            throw new DomainRuleViolationException(
+                "EMAIL_DELIVERY_FAILED",
+                "Não foi possível enviar o e-mail de recuperação agora. Verifique as credenciais SMTP no servidor e tente novamente.",
+                StatusCodes.Status502BadGateway);
+        }
+
+        await _auditRepository.AppendAsync(
+            new AuditEventEntity(
+                Id: Guid.NewGuid(),
+                ActorUserId: user.Id,
+                EntityType: "AUTH_SECURITY",
+                EntityId: user.Id.ToString("D"),
+                Action: "PASSWORD_RESET_REQUESTED",
+                CorrelationId: correlationId,
+                MetadataJson: "{}",
+                CreatedAtUtc: nowUtc),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ForgotPasswordResponse(true, neutralMessage, PasswordResetCodeExpirationMinutes);
+    }
+
+    public async Task ConfirmPasswordResetAsync(
+        ResetPasswordRequest request,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        string normalizedEmail = NormalizeAndValidateEmail(request.Email);
+        string cleanCode = SecurityCryptoService.NormalizeDigits(request.Code ?? string.Empty);
+        if (cleanCode.Length != 6)
+        {
+            throw new DomainRuleViolationException(
+                "INVALID_RESET_CODE",
+                "Informe o código numérico de 6 dígitos enviado para o seu e-mail.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        ValidatePasswordStrength(request.NewPassword);
+
+        var entry = await _userRepository.FindByEmailAsync(normalizedEmail, cancellationToken).ConfigureAwait(false);
+        var tokenEntity = await _passwordResetRepository.FindLatestActiveByEmailAsync(normalizedEmail, cancellationToken).ConfigureAwait(false);
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+        if (entry is null || tokenEntity is null || tokenEntity.ConsumedAtUtc is not null)
+        {
+            throw new DomainRuleViolationException(
+                "INVALID_RESET_CODE",
+                "Código de recuperação inválido, já utilizado ou inexistente. Solicite um novo código.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (nowUtc > tokenEntity.ExpiresAtUtc)
+        {
+            tokenEntity.ConsumedAtUtc = nowUtc;
+            await _passwordResetRepository.UpdateAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+            throw new DomainRuleViolationException(
+                "RESET_CODE_EXPIRED",
+                "Este código expirou (limite de 15 minutos). Solicite um novo código por e-mail.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (tokenEntity.Attempts >= tokenEntity.MaxAttempts)
+        {
+            tokenEntity.ConsumedAtUtc = nowUtc;
+            await _passwordResetRepository.UpdateAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+            throw new DomainRuleViolationException(
+                "RESET_CODE_MAX_ATTEMPTS",
+                "Limite de tentativas excedido para este código. Solicite um novo código por e-mail.",
+                StatusCodes.Status429TooManyRequests);
+        }
+
+        var (user, profile) = entry.Value;
+        if (!_crypto.VerifyPasswordResetCodeHash(normalizedEmail, cleanCode, tokenEntity.CodeHash))
+        {
+            tokenEntity.Attempts += 1;
+            if (tokenEntity.Attempts >= tokenEntity.MaxAttempts)
+            {
+                tokenEntity.ConsumedAtUtc = nowUtc;
+            }
+            await _passwordResetRepository.UpdateAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+            await _auditRepository.AppendAsync(
+                new AuditEventEntity(
+                    Id: Guid.NewGuid(),
+                    ActorUserId: user.Id,
+                    EntityType: "AUTH_SECURITY",
+                    EntityId: user.Id.ToString("D"),
+                    Action: "PASSWORD_RESET_INVALID_CODE",
+                    CorrelationId: correlationId,
+                    MetadataJson: $"{{\"attempts\":{tokenEntity.Attempts}}}",
+                    CreatedAtUtc: nowUtc),
+                cancellationToken).ConfigureAwait(false);
+
+            int remaining = Math.Max(0, tokenEntity.MaxAttempts - tokenEntity.Attempts);
+            throw new DomainRuleViolationException(
+                "INVALID_RESET_CODE",
+                remaining > 0
+                    ? $"Código incorreto. Você ainda tem {remaining} tentativa(s) antes de precisar solicitar outro código."
+                    : "Limite de tentativas atingido. Solicite um novo código por e-mail.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        user.PasswordHash = _crypto.HashPassword(request.NewPassword);
+        user.FailedLoginAttempts = 0;
+        user.LockoutUntilUtc = null;
+        if (user.Status == UserAccountStatus.LOCKED)
+        {
+            user.Status = UserAccountStatus.ACTIVE;
+        }
+        user.UpdatedAtUtc = nowUtc;
+        await _userRepository.UpdateAsync(user, profile, cancellationToken).ConfigureAwait(false);
+
+        tokenEntity.ConsumedAtUtc = nowUtc;
+        await _passwordResetRepository.UpdateAsync(tokenEntity, cancellationToken).ConfigureAwait(false);
+
+        await _auditRepository.AppendAsync(
+            new AuditEventEntity(
+                Id: Guid.NewGuid(),
+                ActorUserId: user.Id,
+                EntityType: "AUTH_SECURITY",
+                EntityId: user.Id.ToString("D"),
+                Action: "PASSWORD_RESET_COMPLETED",
                 CorrelationId: correlationId,
                 MetadataJson: "{}",
                 CreatedAtUtc: nowUtc),
