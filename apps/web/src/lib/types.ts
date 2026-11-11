@@ -134,6 +134,12 @@ export interface UpdateProfileRequest {
   readonly city?: string;
   readonly stateUf?: string;
   readonly roles?: readonly UserRole[];
+  readonly vehicleType?: string;
+  readonly vehicleModel?: string;
+  readonly vehiclePlate?: string;
+  readonly vehicleYear?: string;
+  readonly cnhCategory?: string;
+  readonly acceptCarrierTerms?: boolean;
 }
 
 export interface PrivateUserProfileResponse {

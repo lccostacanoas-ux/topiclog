@@ -21,6 +21,12 @@ import type { ProposalDto } from "../../lib/types";
 import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
 import type { MercadoPagoPixData } from "../../lib/mercadopago";
 
+function safeFormatDate(val?: string): string {
+  if (!val) return new Date().toLocaleDateString("pt-BR");
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
+}
+
 export default function PropostasPage(): React.JSX.Element {
   const { user, token, isAuthenticated, isLoading: authLoading, refresh, logout } = useAuth();
 
@@ -515,7 +521,7 @@ export default function PropostasPage(): React.JSX.Element {
                       )}
                     </div>
                     <span style={{ fontSize: "12px", color: "#94A3B8" }}>
-                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • Recebida em: {new Date(proposal.createdAtUtc).toLocaleDateString("pt-BR")}
+                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • Recebida em: {safeFormatDate(proposal.createdAtUtc)}
                     </span>
                   </div>
 

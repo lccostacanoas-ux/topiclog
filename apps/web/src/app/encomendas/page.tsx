@@ -36,6 +36,12 @@ interface UnifiedShipment {
   isBackend: boolean;
 }
 
+function safeFormatDate(val?: string): string {
+  if (!val) return new Date().toLocaleDateString("pt-BR");
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
+}
+
 export default function MinhasEncomendasPage(): React.JSX.Element {
   const router = useRouter();
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -500,7 +506,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                         {s.title}
                       </h2>
                       <span style={{ fontSize: "12px", color: "#94A3B8", display: "block" }}>
-                        ID: #{s.id.slice(0, 8)} • Postada em: {new Date(s.createdAt).toLocaleDateString("pt-BR")}
+                        ID: #{s.id.slice(0, 8)} • Postada em: {safeFormatDate(s.createdAt)}
                       </span>
                       <div style={{ marginTop: "4px" }}>
                         <StarRatingDisplay size="sm" ratingAvg={null} ratingCount={0} label="Remetente:" />

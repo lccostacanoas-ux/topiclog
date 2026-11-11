@@ -18,6 +18,13 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editCpf, setEditCpf] = useState("");
   const [editCity, setEditCity] = useState("");
   const [editRoles, setEditRoles] = useState<UserRole[]>(["SENDER"]);
+  const [editVehicleType, setEditVehicleType] = useState<string>("CARRO");
+  const [editVehicleModel, setEditVehicleModel] = useState<string>("");
+  const [editVehiclePlate, setEditVehiclePlate] = useState<string>("");
+  const [editVehicleYear, setEditVehicleYear] = useState<string>("");
+  const [editCnhCategory, setEditCnhCategory] = useState<string>("B");
+  const [editAcceptTerms, setEditAcceptTerms] = useState<boolean>(true);
+  const [carrierValidationMsg, setCarrierValidationMsg] = useState<string | null>(null);
 
   const [publicCard, setPublicCard] = useState<PublicUserCardResponse | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -32,6 +39,12 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditCpf("");
       setEditCity(user.city);
       setEditRoles([...user.roles]);
+      setEditVehicleType(user.vehicleType || "CARRO");
+      setEditVehicleModel(user.vehicleModel || "");
+      setEditVehiclePlate(user.vehiclePlate || "");
+      setEditVehicleYear(user.vehicleYear || "");
+      setEditCnhCategory(user.cnhCategory || "B");
+      setEditAcceptTerms(user.carrierTermsAccepted ?? true);
     }
   }, [user]);
 
@@ -65,6 +78,19 @@ export default function MyAccountPage(): React.JSX.Element {
     if (!token) return;
     setProblem(null);
     setSuccessMessage(null);
+    setCarrierValidationMsg(null);
+
+    if (editRoles.includes("CARRIER")) {
+      if (!editVehicleModel.trim() || !editVehiclePlate.trim()) {
+        setCarrierValidationMsg("Para atuar como Transportador, o Modelo e a Placa do veículo são obrigatórios.");
+        return;
+      }
+      if (!editAcceptTerms) {
+        setCarrierValidationMsg("É necessário aceitar os termos de responsabilidade sobre o veículo e condução.");
+        return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
@@ -74,7 +100,13 @@ export default function MyAccountPage(): React.JSX.Element {
         cpf: editCpf.trim() || undefined,
         city: editCity.trim() || undefined,
         stateUf: "MG",
-        roles: editRoles
+        roles: editRoles,
+        vehicleType: editRoles.includes("CARRIER") ? editVehicleType : undefined,
+        vehicleModel: editRoles.includes("CARRIER") ? editVehicleModel.trim() : undefined,
+        vehiclePlate: editRoles.includes("CARRIER") ? editVehiclePlate.trim().toUpperCase() : undefined,
+        vehicleYear: editRoles.includes("CARRIER") ? editVehicleYear.trim() || undefined : undefined,
+        cnhCategory: editRoles.includes("CARRIER") ? editCnhCategory : undefined,
+        acceptCarrierTerms: editRoles.includes("CARRIER") ? editAcceptTerms : undefined
       });
 
       if (result.ok && result.data) {
@@ -244,6 +276,32 @@ export default function MyAccountPage(): React.JSX.Element {
                   </span>
                 ))}
               </p>
+
+              {/* Seção do Veículo (para Transportadores) */}
+              {(user.roles.includes("CARRIER") || user.vehiclePlate || user.vehicleModel) && (
+                <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "16px" }}>🚗</span>
+                    <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados do Veículo e Habilitação</strong>
+                  </div>
+                  {user.vehicleModel || user.vehiclePlate ? (
+                    <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "10px 12px", fontSize: "13px" }}>
+                      <p style={{ margin: "2px 0" }}><strong>Tipo:</strong> {user.vehicleType === "MOTO" ? "Moto" : user.vehicleType === "VAN" ? "Van / Utilitário" : user.vehicleType === "CAMINHAO" ? "Caminhão" : user.vehicleType === "BICICLETA" ? "Bicicleta" : "Carro de Passeio"}</p>
+                      <p style={{ margin: "2px 0" }}><strong>Modelo:</strong> {user.vehicleModel || "Não especificado"}</p>
+                      <p style={{ margin: "2px 0" }}><strong>Placa:</strong> <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>{user.vehiclePlate || "Não informada"}</span></p>
+                      {user.vehicleYear && <p style={{ margin: "2px 0" }}><strong>Ano:</strong> {user.vehicleYear}</p>}
+                      <p style={{ margin: "2px 0" }}><strong>Categoria CNH:</strong> {user.cnhCategory || "B"}</p>
+                      <p style={{ margin: "6px 0 0 0", fontSize: "11px", color: "#166534" }}>
+                        ✓ Declaração de responsabilidade legal (Art. 299 CP, CRLV regularizado e CNH compatível).
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#92400E" }}>
+                      ⚠️ <strong>Nenhum veículo cadastrado.</strong> Você possui perfil de transportador ativo. Clique em <em>&ldquo;Editar Dados&rdquo;</em> para informar o modelo e a placa do seu veículo.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <form onSubmit={handleSaveProfile}>
@@ -326,6 +384,119 @@ export default function MyAccountPage(): React.JSX.Element {
                   </label>
                 </div>
               </fieldset>
+
+              {/* Seção Condicional de Veículo ao Ativar Transportador */}
+              {editRoles.includes("CARRIER") && (
+                <div
+                  style={{
+                    backgroundColor: "#F0FDF4",
+                    border: "1px solid #86EFAC",
+                    borderRadius: "10px",
+                    padding: "16px",
+                    margin: "16px 0"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                    <span style={{ fontSize: "18px" }}>🚗</span>
+                    <strong style={{ fontSize: "14px", color: "#14532D" }}>
+                      Cadastro do Veículo & Habilitação (Obrigatório para Transportador)
+                    </strong>
+                  </div>
+
+                  {carrierValidationMsg && (
+                    <div style={{ fontSize: "12px", color: "#DC2626", backgroundColor: "#FEF2F2", padding: "8px 10px", borderRadius: "6px", border: "1px solid #FECACA", marginBottom: "12px" }}>
+                      ⚠️ {carrierValidationMsg}
+                    </div>
+                  )}
+
+                  <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Tipo de Veículo *</label>
+                      <select
+                        className="form-input"
+                        value={editVehicleType}
+                        onChange={e => setEditVehicleType(e.target.value)}
+                        disabled={isSaving}
+                      >
+                        <option value="CARRO">Carro de Passeio</option>
+                        <option value="MOTO">Moto</option>
+                        <option value="VAN">Van / Utilitário</option>
+                        <option value="CAMINHAO">Caminhão</option>
+                        <option value="BICICLETA">Bicicleta</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Categoria CNH *</label>
+                      <select
+                        className="form-input"
+                        value={editCnhCategory}
+                        onChange={e => setEditCnhCategory(e.target.value)}
+                        disabled={isSaving}
+                      >
+                        <option value="A">Categoria A (Moto)</option>
+                        <option value="B">Categoria B (Carro)</option>
+                        <option value="AB">Categoria AB (Carro e Moto)</option>
+                        <option value="C">Categoria C (Carga)</option>
+                        <option value="D">Categoria D (Passageiros/Van)</option>
+                        <option value="E">Categoria E (Pesado/Articulado)</option>
+                        <option value="ACC">ACC (Ciclomotor)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Modelo do Veículo *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Ex: Fiat Strada, Hyundai HB20"
+                        value={editVehicleModel}
+                        onChange={e => setEditVehicleModel(e.target.value)}
+                        disabled={isSaving}
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: "12px" }}>Placa do Veículo *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Ex: ABC1D23"
+                        maxLength={8}
+                        value={editVehiclePlate}
+                        onChange={e => setEditVehiclePlate(e.target.value.toUpperCase())}
+                        disabled={isSaving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: "12px" }}>
+                    <label className="form-label" style={{ fontSize: "12px" }}>Ano de Fabricação (Opcional)</label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      placeholder="Ex: 2022"
+                      value={editVehicleYear}
+                      onChange={e => setEditVehicleYear(e.target.value)}
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", color: "#166534" }}>
+                    <input
+                      type="checkbox"
+                      checked={editAcceptTerms}
+                      onChange={e => setEditAcceptTerms(e.target.checked)}
+                      style={{ marginTop: "2px" }}
+                    />
+                    <span>
+                      Declaro sob as penas da lei (Art. 299 CP) que sou o condutor habilitado do veículo acima, possuo CNH válida compatível com a categoria, CRLV regularizado e que o veículo não possui restrição judicial ou administrativa para circular.
+                    </span>
+                  </label>
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
                 <button type="submit" className="btn btn--primary" disabled={isSaving}>
