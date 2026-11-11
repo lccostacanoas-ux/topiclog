@@ -340,7 +340,7 @@ export default function TermsPage(): React.JSX.Element {
         </div>
         <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
           <Link href="/encomendas/publicar" className="btn btn--primary">
-            Disponibilizar Transporte ➔
+            Publicar Encomenda ➔
           </Link>
           <Link href="/feed" className="btn btn--outline">
             Ver Oportunidades

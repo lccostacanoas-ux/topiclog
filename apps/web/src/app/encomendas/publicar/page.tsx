@@ -1042,7 +1042,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
         )}
 
         {/* =========================================================================
-            DOCK INFERIOR FIXO COM O BOTÃO “Disponibilizar transporte”
+            DOCK INFERIOR FIXO COM O BOTÃO “Publicar Encomenda”
             ========================================================================= */}
         <div className="uber-action-dock">
           <div className="uber-action-dock-inner">
@@ -1067,7 +1067,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
                   opacity: (!acceptedTerms || !origin.isConfirmed || !destination.isConfirmed) ? 0.65 : 1
                 }}
               >
-                {isSubmitting ? "Disponibilizando..." : "Disponibilizar transporte ➔"}
+                {isSubmitting ? "Publicando Encomenda..." : "Publicar Encomenda ➔"}
               </button>
             </div>
           </div>
