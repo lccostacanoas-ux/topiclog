@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
-import { getDemoShipments, getRatingsSummary, addDemoRating, type RatingsSummary } from "../lib/demo-marketplace-store";
+import { getDemoShipments, getRatingsSummary, type RatingsSummary } from "../lib/demo-marketplace-store";
 
 function renderStars(rating: number) {
   return (
@@ -933,38 +933,6 @@ export default function HomePage(): React.JSX.Element {
                 )}
               </div>
 
-              {/* Avaliação Interativa Rápida (Apenas Estrelas, Sem Comentários) */}
-              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px dashed #E2E8F0" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "6px" }}>
-                  Avaliar motorista parceiro (toque nas estrelas):
-                </span>
-                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => {
-                        addDemoRating({ roleTarget: "CARRIER", stars: star });
-                        setRatingsSummary(getRatingsSummary());
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        fontSize: "20px",
-                        color: "#F59E0B",
-                        cursor: "pointer",
-                        padding: "2px"
-                      }}
-                      title={`Avaliar com ${star} estrela${star > 1 ? "s" : ""}`}
-                    >
-                      ★
-                    </button>
-                  ))}
-                  <span style={{ fontSize: "11px", color: "#94A3B8", marginLeft: "4px" }}>
-                    (1 a 5 estrelas)
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* Card Remetente */}
@@ -1044,38 +1012,6 @@ export default function HomePage(): React.JSX.Element {
                 )}
               </div>
 
-              {/* Avaliação Interativa Rápida (Apenas Estrelas, Sem Comentários) */}
-              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px dashed #E2E8F0" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "6px" }}>
-                  Avaliar remetente (toque nas estrelas):
-                </span>
-                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => {
-                        addDemoRating({ roleTarget: "SENDER", stars: star });
-                        setRatingsSummary(getRatingsSummary());
-                      }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        fontSize: "20px",
-                        color: "#F59E0B",
-                        cursor: "pointer",
-                        padding: "2px"
-                      }}
-                      title={`Avaliar com ${star} estrela${star > 1 ? "s" : ""}`}
-                    >
-                      ★
-                    </button>
-                  ))}
-                  <span style={{ fontSize: "11px", color: "#94A3B8", marginLeft: "4px" }}>
-                    (1 a 5 estrelas)
-                  </span>
-                </div>
-              </div>
             </div>
           </div>
         </section>
