@@ -13,7 +13,9 @@ import {
   rejectProposalApi,
   counterProposalApi,
   listContractMessagesApi,
-  sendContractMessageApi
+  sendContractMessageApi,
+  getCancellationPolicyApi,
+  cancelContractBySenderApi
 } from "../../lib/api-client";
 import {
   getDemoProposals,
@@ -220,7 +222,32 @@ export default function PropostasPage(): React.JSX.Element {
   const [pixModalOpen, setPixModalOpen] = useState(false);
   const [selectedProposalForPix, setSelectedProposalForPix] = useState<ProposalDto | null>(null);
   const [selectedContractForPix, setSelectedContractForPix] = useState<ContractDto | null>(null);
+  const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+  const [cancelTarget, setCancelTarget] = useState<{
+    contract: ContractDto;
+    proposal: ProposalDto;
+    isPaid: boolean;
+  } | null>(null);
+  const [cancelJustification, setCancelJustification] = useState<string>("");
+  const [cancelReopen, setCancelReopen] = useState<boolean>(true);
+  const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
   const [, setClockTick] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    getCancellationPolicyApi()
+      .then((res) => {
+        if (!active || !res.ok || !res.data) return;
+        const pct = Math.min(10, Math.max(0, Number(res.data.cancellationPenaltyPercent ?? 10)));
+        setCancellationPenaltyPercent(pct);
+      })
+      .catch(() => {
+        // fallback 10%
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const t = window.setInterval(() => setClockTick((v) => v + 1), 1000);
@@ -741,6 +768,9 @@ export default function PropostasPage(): React.JSX.Element {
             const isAwaitingPayment =
               isAccepted && contract?.status === "AWAITING_PAYMENT";
             const isPaymentExpired = contract?.status === "PAYMENT_EXPIRED";
+            const isCancelled =
+              contract?.status === "CANCELLED_PRE_PICKUP" ||
+              contract?.status === "CANCELLED_POST_PICKUP";
             const countdown = isAwaitingPayment
               ? formatRemainingCountdown(contract?.paymentExpiresAtUtc)
               : null;
@@ -791,6 +821,11 @@ export default function PropostasPage(): React.JSX.Element {
                       {isPaymentExpired && (
                         <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
                           ⌛ Prazo Pix Expirado
+                        </span>
+                      )}
+                      {isCancelled && (
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
+                          🚫 Viagem Cancelada
                         </span>
                       )}
                       {isCountered && (
@@ -1076,6 +1111,46 @@ export default function PropostasPage(): React.JSX.Element {
                         🔐 Códigos & Acompanhamento no Mapa
                       </Link>
                     )}
+
+                    {isUserSender && contract && (isAwaitingPayment || isPaid) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCancelJustification("");
+                          setCancelReopen(true);
+                          setCancelTarget({ contract, proposal, isPaid });
+                        }}
+                        style={{
+                          padding: "8px 14px",
+                          backgroundColor: "#FEF2F2",
+                          color: "#B91C1C",
+                          border: "1px solid #FECACA",
+                          borderRadius: "8px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        🚫 Cancelar Viagem
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {isCancelled && contract?.cancellation?.policyDisclaimer && (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      backgroundColor: "#FEF2F2",
+                      border: "1px solid #FECACA",
+                      color: "#991B1B",
+                      fontSize: "12px",
+                      fontWeight: 600
+                    }}
+                  >
+                    🚫 {contract.cancellation.policyDisclaimer}
                   </div>
                 )}
               </div>
@@ -1103,6 +1178,188 @@ export default function PropostasPage(): React.JSX.Element {
           onPaymentSuccess={handlePixSuccess}
         />
       )}
+
+      {cancelTarget && (() => {
+        const agreedCents = cancelTarget.contract.amountCents ?? cancelTarget.proposal.amountCents ?? 0;
+        const pct = Math.min(10, Math.max(0, cancellationPenaltyPercent));
+        const penaltyCents = cancelTarget.isPaid
+          ? Math.min(agreedCents, Math.round(agreedCents * (pct / 100)))
+          : 0;
+        const refundCents = Math.max(0, agreedCents - penaltyCents);
+        const fmt = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+
+        const handleConfirmCancel = async () => {
+          if (!token || submittingCancel) return;
+          setSubmittingCancel(true);
+          setErrorMessage(null);
+          const res = await cancelContractBySenderApi(
+            cancelTarget.contract.id,
+            {
+              justification: cancelJustification.trim() || undefined,
+              reopenForBidding: cancelReopen
+            },
+            token
+          );
+          if (res.ok && res.data) {
+            const applied = res.data.cancellation?.simulatedPenaltyCents ?? penaltyCents;
+            setActionNotice(
+              applied > 0
+                ? `🚫 Viagem cancelada. Multa aplicada (${pct.toFixed(0)}%): R$ ${fmt(applied)}.`
+                : "🚫 Viagem cancelada antes do pagamento: isento de multa."
+            );
+            setCancelTarget(null);
+            setCancelJustification("");
+            await loadData(true);
+          } else {
+            setErrorMessage(res.problem?.detail || "Não foi possível cancelar a viagem no momento.");
+          }
+          setSubmittingCancel(false);
+        };
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="propostas-cancel-modal-title"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2100,
+              backgroundColor: "rgba(15, 23, 42, 0.65)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px"
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "16px",
+                padding: "24px",
+                maxWidth: "480px",
+                width: "100%",
+                boxShadow: "0 20px 40px rgba(0,0,0,0.25)"
+              }}
+            >
+              <h2
+                id="propostas-cancel-modal-title"
+                style={{ fontSize: "19px", fontWeight: 800, color: "#991B1B", margin: "0 0 8px 0" }}
+              >
+                🚫 Cancelar Viagem
+              </h2>
+              <p style={{ fontSize: "13px", color: "#475569", margin: "0 0 14px 0", lineHeight: 1.5 }}>
+                {cancelTarget.isPaid
+                  ? "Como o pagamento Pix já foi confirmado, o cancelamento está sujeito à multa configurada no Console Administrativo (até 10% do valor acordado)."
+                  : "O pagamento Pix ainda não foi confirmado. Você pode cancelar agora sem cobrança de multa."}
+              </p>
+
+              <div
+                style={{
+                  backgroundColor: cancelTarget.isPaid ? "#FFFBEB" : "#F0FDF4",
+                  border: cancelTarget.isPaid ? "1px solid #FDE68A" : "1px solid #BBF7D0",
+                  borderRadius: "10px",
+                  padding: "12px 14px",
+                  fontSize: "13px",
+                  color: cancelTarget.isPaid ? "#78350F" : "#166534",
+                  marginBottom: "14px",
+                  display: "grid",
+                  gap: "6px"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Valor acordado do transporte:</span>
+                  <strong>R$ {fmt(agreedCents)}</strong>
+                </div>
+                {cancelTarget.isPaid ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Multa de {pct.toFixed(0)}%:</span>
+                      <strong style={{ color: "#B91C1C" }}>- R$ {fmt(penaltyCents)}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #FCD34D", paddingTop: "6px" }}>
+                      <span>Saldo líquido estimado:</span>
+                      <strong style={{ color: "#065F46" }}>R$ {fmt(refundCents)}</strong>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                    <span>Multa aplicável:</span>
+                    <span>Isento de multa (R$ 0,00)</span>
+                  </div>
+                )}
+              </div>
+
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Motivo do cancelamento (opcional)
+              </label>
+              <input
+                type="text"
+                value={cancelJustification}
+                onChange={(e) => setCancelJustification(e.target.value)}
+                placeholder="Ex.: Alteração de planos"
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                  marginBottom: "12px",
+                  boxSizing: "border-box"
+                }}
+              />
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "13px",
+                  color: "#334155",
+                  marginBottom: "18px",
+                  cursor: "pointer"
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={cancelReopen}
+                  onChange={(e) => setCancelReopen(e.target.checked)}
+                />
+                <span>Republicar encomenda no Mural para novas propostas</span>
+              </label>
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  disabled={submittingCancel}
+                  onClick={() => setCancelTarget(null)}
+                  className="btn btn--outline"
+                  style={{ padding: "9px 16px", fontSize: "13px", fontWeight: 700 }}
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={submittingCancel}
+                  onClick={() => void handleConfirmCancel()}
+                  style={{
+                    padding: "9px 18px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: "#DC2626",
+                    color: "#FFFFFF",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  {submittingCancel ? "Cancelando..." : "Confirmar Cancelamento"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

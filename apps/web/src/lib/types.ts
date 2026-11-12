@@ -820,7 +820,8 @@ export type DeliveryOrderStatus =
   | "RETURN_TO_SENDER_INITIATED"
   | "RETURNED_TO_SENDER"
   | "DELIVERED_VERIFIED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "CLOSED";
 
 export type DeliveryProofType =
   | "CODE_CONFIRMATION"
@@ -1362,6 +1363,12 @@ export interface ContractMessageDto {
   readonly senderRole: string;
   readonly body: string;
   readonly sentAtUtc: string;
+}
+
+export interface CancellationPolicyDto {
+  readonly cancellationPenaltyPercent: number;
+  readonly cancellationMinFeeCents: number;
+  readonly cancellationInjuredPartySharePercent: number;
 }
 
 

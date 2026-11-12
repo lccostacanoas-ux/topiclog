@@ -342,6 +342,21 @@ public static class AdminEndpoints
             });
         });
 
+        // Endpoint público somente leitura com os parâmetros atuais de multa por cancelamento configurados no Console Administrativo
+        app.MapGet("/api/v1/public/cancellation-policy", async (
+            IOperationalSettingsRepository settingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var settings = await settingsRepository.GetActiveSettingsAsync(cancellationToken).ConfigureAwait(false);
+            var clampedPercent = Math.Clamp(settings?.CancellationPenaltyPercent ?? 10.00m, 0m, 10.00m);
+            return Results.Ok(new
+            {
+                cancellationPenaltyPercent = clampedPercent,
+                cancellationMinFeeCents = settings?.CancellationMinFeeCents ?? 700,
+                cancellationInjuredPartySharePercent = settings?.CancellationInjuredPartySharePercent ?? 80.00m
+            });
+        });
+
         return app;
     }
 }

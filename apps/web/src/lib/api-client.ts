@@ -34,6 +34,7 @@ import type {
   SearchMunicipalitiesResponse,
   MunicipalitySearchItemDto,
   CancelContractRequest,
+  CancellationPolicyDto,
   ContractDto,
   CounterProposalRequest,
   CreateProposalRequest,
@@ -2780,6 +2781,26 @@ export async function rateCarrierApi(
     method: "POST",
     token,
     body: { stars },
+    customCorrelationId
+  });
+}
+
+export async function getCancellationPolicyApi(): Promise<ApiFetchResult<CancellationPolicyDto>> {
+  return apiRequest<CancellationPolicyDto>("/api/v1/public/cancellation-policy", {
+    method: "GET"
+  });
+}
+
+export async function cancelContractBySenderApi(
+  contractId: string,
+  payload?: { justification?: string; reopenForBidding?: boolean },
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ContractDto>> {
+  return apiRequest<ContractDto>(`/api/v1/contracts/${contractId}/cancel-by-sender`, {
+    method: "POST",
+    token,
+    body: payload ?? {},
     customCorrelationId
   });
 }

@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import BrazilianAddressInput, { type ConfirmedAddress, buildFormattedAddress } from "../../../components/BrazilianAddressInput";
 import { useAuth } from "../../../lib/auth-context";
 import type { CreateShipmentPayload } from "../../../lib/types";
-import { createShipmentApi } from "../../../lib/api-client";
+import { createShipmentApi, getCancellationPolicyApi } from "../../../lib/api-client";
 
 // Carregamento dinâmico do mapa Leaflet sem SSR
 const TopicLogRouteMap = dynamic(
@@ -129,6 +129,25 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
 
   // 6. Aceite dos Termos (DESMARCADO POR PADRÃO conforme diretriz estrita)
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  // Política de multa de cancelamento configurada no Console Administrativo (até 10%)
+  const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+
+  useEffect(() => {
+    let active = true;
+    getCancellationPolicyApi()
+      .then((res) => {
+        if (!active || !res.ok || !res.data) return;
+        const pct = Math.min(10, Math.max(0, Number(res.data.cancellationPenaltyPercent ?? 10)));
+        setCancellationPenaltyPercent(pct);
+      })
+      .catch(() => {
+        // fallback 10%
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Modal com a lista completa de itens proibidos
   const [showProhibitedModal, setShowProhibitedModal] = useState(false);
@@ -875,6 +894,28 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
             padding: "16px"
           }}
         >
+          {/* Aviso obrigatório sobre política de cancelamento após pagamento */}
+          <div
+            style={{
+              marginBottom: "14px",
+              padding: "12px 14px",
+              borderRadius: "8px",
+              backgroundColor: "#FFFBEB",
+              border: "1px solid #FCD34D",
+              color: "#92400E",
+              fontSize: "13px",
+              lineHeight: 1.5
+            }}
+          >
+            <strong style={{ display: "block", marginBottom: "4px" }}>
+              ⚠️ Regra de Cancelamento de Viagem pelo Remetente
+            </strong>
+            Você poderá cancelar a viagem a qualquer momento. Contudo,{" "}
+            <strong>
+              cancelamentos realizados após a confirmação do pagamento acarretarão multa conforme configurado na administração da plataforma (até 10% do valor acordado para o transporte — atualmente {cancellationPenaltyPercent.toFixed(0)}%)
+            </strong>.
+          </div>
+
           <label style={{ display: "flex", alignItems: "flex-start", gap: "12px", cursor: "pointer", fontSize: "13px", lineHeight: 1.5 }}>
             <input
               id="check-terms"
@@ -885,7 +926,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
             />
             <div>
               <strong style={{ color: "#0F172A", display: "block" }}>
-                Declaro que a encomenda pesa até 20 kg, tem valor de até R$ 500,00, está devidamente embalada e NÃO contém itens proibidos (como explosivos, combustíveis, armas, entorpecentes, animais ou dinheiro em espécie). Li e concordo com os{" "}
+                Declaro que a encomenda pesa até 20 kg, tem valor de até R$ 500,00, está devidamente embalada, NÃO contém itens proibidos (como explosivos, combustíveis, armas, entorpecentes, animais ou dinheiro em espécie) e estou ciente de que cancelamentos após o pagamento acarretam multa de até 10% do valor acordado ({cancellationPenaltyPercent.toFixed(0)}% vigente). Li e concordo com os{" "}
                 <Link href="/termos" target="_blank" style={{ color: "#2563EB", textDecoration: "underline" }}>
                   Termos de Uso
                 </Link>.

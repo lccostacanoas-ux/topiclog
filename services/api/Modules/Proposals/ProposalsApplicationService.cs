@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Admin;
 using TopicLog.Api.Modules.Finance;
 using TopicLog.Api.Modules.Fulfillment;
 using TopicLog.Api.Modules.Identity;
@@ -75,6 +76,13 @@ public interface IProposalsApplicationService
         CancelContractRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<ContractResponse> CancelBySenderAsync(
+        Guid senderUserId,
+        Guid contractId,
+        string? justification,
+        bool reopenForBidding = true,
+        CancellationToken cancellationToken = default);
+
     Task<PriorityOfferResponse> RespondPriorityOfferAsync(
         Guid carrierId,
         Guid shipmentId,
@@ -106,6 +114,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
     private readonly IFulfillmentApplicationService? _fulfillmentService;
     private readonly INotificationsService? _notificationsService;
     private readonly IUserRepository? _userRepository;
+    private readonly IOperationalSettingsRepository? _operationalSettingsRepository;
+    private readonly IFulfillmentRepository? _fulfillmentRepository;
 
     public ProposalsApplicationService(
         IProposalsRepository proposalsRepository,
@@ -115,7 +125,9 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         IFinancialPolicyProvider? financialPolicyProvider = null,
         IFulfillmentApplicationService? fulfillmentService = null,
         INotificationsService? notificationsService = null,
-        IUserRepository? userRepository = null)
+        IUserRepository? userRepository = null,
+        IOperationalSettingsRepository? operationalSettingsRepository = null,
+        IFulfillmentRepository? fulfillmentRepository = null)
     {
         _proposalsRepository = proposalsRepository ?? throw new ArgumentNullException(nameof(proposalsRepository));
         _shipmentsRepository = shipmentsRepository ?? throw new ArgumentNullException(nameof(shipmentsRepository));
@@ -125,6 +137,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         _fulfillmentService = fulfillmentService;
         _notificationsService = notificationsService;
         _userRepository = userRepository;
+        _operationalSettingsRepository = operationalSettingsRepository;
+        _fulfillmentRepository = fulfillmentRepository;
     }
 
     public async Task<ProposalResponse> CreateProposalAsync(
@@ -880,6 +894,167 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             AmountCents: contract.AmountCents,
             Justification: $"Cancelamento pré-coleta: {request.ReasonCode}. {request.Justification}",
             OccurredAtUtc: DateTimeOffset.UtcNow), cancellationToken);
+
+        return MapToContractResponse(contract);
+    }
+
+    public async Task<ContractResponse> CancelBySenderAsync(
+        Guid senderUserId,
+        Guid contractId,
+        string? justification,
+        bool reopenForBidding = true,
+        CancellationToken cancellationToken = default)
+    {
+        var contract = await _proposalsRepository.GetContractByIdAsync(contractId, cancellationToken)
+            ?? throw new DomainRuleViolationException("CONTRACT_NOT_FOUND", "O contrato informado não foi encontrado.", 404);
+
+        if (contract.SenderId != senderUserId)
+        {
+            throw new DomainRuleViolationException(
+                "UNAUTHORIZED_CONTRACT_ACTION",
+                "Apenas o remetente da encomenda pode realizar este cancelamento.",
+                403);
+        }
+
+        if (contract.Status is ContractStatus.CANCELLED_PRE_PICKUP
+            or ContractStatus.CANCELLED_POST_PICKUP
+            or ContractStatus.PAYMENT_EXPIRED
+            or ContractStatus.COMPLETED)
+        {
+            throw new DomainRuleViolationException(
+                "CONTRACT_NOT_CANCELLABLE",
+                $"Este contrato não pode mais ser cancelado (status atual: {contract.Status}).",
+                409);
+        }
+
+        var order = _fulfillmentRepository is not null
+            ? await _fulfillmentRepository.GetOrderByShipmentIdAsync(contract.ShipmentId, cancellationToken)
+            : null;
+
+        if (order is not null && order.Status == DeliveryOrderStatus.DELIVERED_VERIFIED)
+        {
+            throw new DomainRuleViolationException(
+                "DELIVERY_ALREADY_COMPLETED",
+                "A entrega já foi concluída e verificada no destino; não é possível cancelar a viagem.",
+                409);
+        }
+
+        bool wasInTransit = order is not null
+            && (order.Status == DeliveryOrderStatus.IN_TRANSIT || order.Status == DeliveryOrderStatus.OUT_FOR_DELIVERY);
+        bool wasPaid = contract.PaidAtUtc.HasValue
+            || (contract.Status == ContractStatus.ACTIVE && !contract.PaymentExpiresAtUtc.HasValue);
+
+        var shipment = await _shipmentsRepository.GetByIdAsync(contract.ShipmentId, cancellationToken)
+            ?? throw new DomainRuleViolationException("SHIPMENT_NOT_FOUND", "A encomenda do contrato não foi encontrada.", 404);
+
+        // Liberação de capacidade reservada na viagem (quando aplicável)
+        if (contract.TripId != Guid.Empty)
+        {
+            var trip = await _tripsRepository.GetByIdAsync(contract.TripId, cancellationToken);
+            if (trip is not null)
+            {
+                foreach (var res in contract.LegReservations)
+                {
+                    string legKey = $"leg_{res.LegIndex}_{res.FromCity}_{res.ToCity}".ToLowerInvariant();
+                    if (trip.LegCapacities.TryGetValue(legKey, out int currentLegCap))
+                    {
+                        trip.LegCapacities[legKey] = currentLegCap + res.ReservedGrams;
+                    }
+                }
+                trip.AvailableCapacityGrams += shipment.WeightGrams;
+                await _tripsRepository.UpdateAsync(trip, cancellationToken);
+            }
+        }
+
+        if (order is not null)
+        {
+            order.Status = DeliveryOrderStatus.CLOSED;
+            order.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await _fulfillmentRepository!.UpdateOrderAsync(order, cancellationToken);
+        }
+
+        shipment.Status = reopenForBidding ? ShipmentStatus.PUBLISHED : ShipmentStatus.CANCELLED;
+        await _shipmentsRepository.UpdateAsync(shipment, cancellationToken);
+
+        long penaltyCents = 0;
+        string disclaimer;
+
+        if (wasPaid)
+        {
+            var settings = _operationalSettingsRepository is not null
+                ? await _operationalSettingsRepository.GetActiveSettingsAsync(cancellationToken)
+                : null;
+            decimal effectivePercent = Math.Clamp(settings?.CancellationPenaltyPercent ?? 10.00m, 0m, 10.00m);
+            decimal injuredShare = settings?.CancellationInjuredPartySharePercent ?? 80.00m;
+
+            penaltyCents = Math.Min(
+                contract.AmountCents,
+                (long)decimal.Round(contract.AmountCents * (effectivePercent / 100m), 0, MidpointRounding.AwayFromZero));
+
+            disclaimer =
+                $"Cancelamento após pagamento efetuado pelo remetente: aplicada multa de {effectivePercent:0.##}% (máx. 10%) conforme Console Administrativo = R$ {(penaltyCents / 100m):N2} (rateio {injuredShare:0.##}% transportador / {100m - injuredShare:0.##}% plataforma).";
+        }
+        else
+        {
+            disclaimer = "Cancelamento realizado pelo remetente antes da confirmação do pagamento Pix: isento de multa.";
+        }
+
+        var prevStatus = contract.Status;
+        var nextStatus = wasInTransit ? ContractStatus.CANCELLED_POST_PICKUP : ContractStatus.CANCELLED_PRE_PICKUP;
+        string reasonText = string.IsNullOrWhiteSpace(justification)
+            ? "Cancelamento solicitado pelo remetente."
+            : justification.Trim();
+
+        contract.Status = nextStatus;
+        contract.Cancellation = new CancellationRecord(
+            CancelledAtUtc: DateTimeOffset.UtcNow,
+            CancelledByUserId: senderUserId,
+            ReasonCode: CancellationReasonCode.SENDER_CHANGE_OF_PLANS,
+            Justification: reasonText,
+            ReopenedForBidding: reopenForBidding,
+            SimulatedPenaltyCents: penaltyCents,
+            PolicyDisclaimer: disclaimer);
+        contract.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _proposalsRepository.UpdateContractAsync(contract, cancellationToken);
+
+        await _proposalsRepository.AddEventAsync(new ProposalEvent(
+            Id: Guid.NewGuid(),
+            ProposalId: contract.ProposalId,
+            ShipmentId: contract.ShipmentId,
+            ActorId: senderUserId,
+            ActorRole: ActorRole.SENDER,
+            EventType: ProposalEventType.CONTRACT_CANCELLED_PRE_PICKUP,
+            PreviousStatus: prevStatus.ToString(),
+            NewStatus: nextStatus.ToString(),
+            AmountCents: contract.AmountCents,
+            Justification: reasonText,
+            OccurredAtUtc: DateTimeOffset.UtcNow), cancellationToken);
+
+        if (_notificationsService is not null)
+        {
+            string penaltyMsg = penaltyCents > 0
+                ? $" Multa aplicada: R$ {(penaltyCents / 100m):N2} sobre o valor contratado."
+                : " Sem cobrança de multa.";
+            await _notificationsService.NotifyAsync(
+                contract.CarrierId,
+                "CONTRACT_CANCELLED_BY_SENDER",
+                "Viagem Cancelada pelo Remetente",
+                $"O remetente {contract.SenderName} cancelou a viagem da encomenda #{contract.ShipmentId.ToString()[..8]}.{penaltyMsg}",
+                "/propostas",
+                contract.ShipmentId,
+                contract.Id,
+                cancellationToken);
+
+            await _notificationsService.NotifyAsync(
+                contract.SenderId,
+                "CONTRACT_CANCELLED_BY_SENDER",
+                "Cancelamento Confirmado",
+                $"Sua viagem foi cancelada.{penaltyMsg}",
+                "/propostas",
+                contract.ShipmentId,
+                contract.Id,
+                cancellationToken);
+        }
 
         return MapToContractResponse(contract);
     }

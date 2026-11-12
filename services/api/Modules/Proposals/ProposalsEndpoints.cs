@@ -294,6 +294,25 @@ public static class ProposalsEndpoints
             return Results.Ok(updated);
         });
 
+        // POST /api/v1/contracts/{id}/cancel-by-sender — Cancelamento de viagem/contrato pelo remetente a qualquer momento
+        app.MapPost("/api/v1/contracts/{id:guid}/cancel-by-sender", async (
+            Guid id,
+            [FromBody] CancelContractBySenderRequest? request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IProposalsApplicationService proposalsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var updated = await proposalsService.CancelBySenderAsync(
+                actor.UserId,
+                id,
+                request?.Justification,
+                request?.ReopenForBidding ?? true,
+                cancellationToken).ConfigureAwait(false);
+            return Results.Ok(updated);
+        });
+
         // GET /api/v1/contracts/{id}/messages — Chat privado bilateral (somente após pagamento confirmado)
         app.MapGet("/api/v1/contracts/{id:guid}/messages", async (
             Guid id,

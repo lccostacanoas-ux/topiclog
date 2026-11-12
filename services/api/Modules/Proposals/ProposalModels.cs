@@ -243,6 +243,10 @@ public sealed record CancelContractRequest(
     string Justification,
     bool ReopenForBidding);
 
+public sealed record CancelContractBySenderRequest(
+    string? Justification = null,
+    bool ReopenForBidding = true);
+
 public sealed record ProposalResponse(
     Guid Id,
     Guid ShipmentId,
