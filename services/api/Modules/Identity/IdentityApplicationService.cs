@@ -622,9 +622,45 @@ public sealed class IdentityApplicationService
             }
         }
 
+        var hadVehicle =
+            !string.IsNullOrWhiteSpace(profile.VehiclePlate) ||
+            !string.IsNullOrWhiteSpace(profile.VehicleModel) ||
+            !string.IsNullOrWhiteSpace(profile.Renavam);
+
+        if (hadVehicle)
+        {
+            static bool Changed(string? current, string? incoming, bool ignoreCase = false) =>
+                incoming is not null &&
+                !string.Equals(
+                    (current ?? string.Empty).Trim(),
+                    incoming.Trim(),
+                    ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+            var vehicleChanged =
+                Changed(profile.VehicleType, request.VehicleType, ignoreCase: true) ||
+                Changed(profile.VehicleModel, request.VehicleModel, ignoreCase: true) ||
+                Changed(profile.VehiclePlate, request.VehiclePlate, ignoreCase: true) ||
+                Changed(profile.VehicleYear, request.VehicleYear) ||
+                Changed(profile.Renavam, request.Renavam) ||
+                Changed(profile.CrlvDocumentName, request.CrlvDocumentName);
+
+            if (vehicleChanged)
+            {
+                profile.VehicleHistory ??= [];
+                profile.VehicleHistory.Add(new VehicleHistoryRecord(
+                    VehicleType: profile.VehicleType,
+                    VehicleModel: profile.VehicleModel,
+                    VehiclePlate: profile.VehiclePlate,
+                    VehicleYear: profile.VehicleYear,
+                    Renavam: profile.Renavam,
+                    CrlvDocumentName: profile.CrlvDocumentName,
+                    ReplacedAtUtc: nowUtc));
+            }
+        }
+
         if (request.VehicleType is not null) profile.VehicleType = request.VehicleType;
         if (request.VehicleModel is not null) profile.VehicleModel = request.VehicleModel;
-        if (request.VehiclePlate is not null) profile.VehiclePlate = request.VehiclePlate;
+        if (request.VehiclePlate is not null) profile.VehiclePlate = request.VehiclePlate.Trim().ToUpperInvariant();
         if (request.VehicleYear is not null) profile.VehicleYear = request.VehicleYear;
         if (request.Renavam is not null) profile.Renavam = request.Renavam;
         if (request.CnhCategory is not null) profile.CnhCategory = request.CnhCategory;

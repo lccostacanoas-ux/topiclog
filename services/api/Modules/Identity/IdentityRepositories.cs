@@ -364,6 +364,7 @@ public sealed class InMemoryUserRepository : IUserRepository
             CrlvDocumentData = source.Profile.CrlvDocumentData,
             IdentityDocumentName = source.Profile.IdentityDocumentName,
             IdentityDocumentData = source.Profile.IdentityDocumentData,
+            VehicleHistory = source.Profile.VehicleHistory is not null ? [.. source.Profile.VehicleHistory] : [],
             UpdatedAtUtc = source.Profile.UpdatedAtUtc
         };
 

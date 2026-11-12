@@ -350,8 +350,16 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
         Guid senderId,
         CancellationToken cancellationToken = default)
     {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var list = await _repository.ListBySenderAsync(senderId, cancellationToken).ConfigureAwait(false);
-        return list.Select(MapToSummaryResponse).ToList();
+        return list
+            .Where(s =>
+                (s.Status != ShipmentStatus.DELIVERED &&
+                 s.Status != ShipmentStatus.CLOSED &&
+                 s.Status != ShipmentStatus.CANCELLED) ||
+                s.UpdatedAtUtc > cutoff)
+            .Select(MapToSummaryResponse)
+            .ToList();
     }
 
     private static ShipmentSummaryResponse MapToSummaryResponse(Shipment s) => new(

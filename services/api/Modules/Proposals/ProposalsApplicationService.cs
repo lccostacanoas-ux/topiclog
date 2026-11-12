@@ -1134,16 +1134,70 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         return await MapProposalsWithRatingsAsync(list, cancellationToken);
     }
 
+    private static bool IsContractArchivedAfter24h(Contract contract, DateTimeOffset cutoff)
+    {
+        var isTerminal = contract.Status is
+            ContractStatus.COMPLETED or
+            ContractStatus.CANCELLED_PRE_PICKUP or
+            ContractStatus.CANCELLED_POST_PICKUP or
+            ContractStatus.PAYMENT_EXPIRED;
+        if (!isTerminal) return false;
+        var terminalAt = contract.Cancellation?.CancelledAtUtc ?? contract.UpdatedAtUtc;
+        return terminalAt <= cutoff;
+    }
+
+    private async Task<IReadOnlyList<Proposal>> FilterActiveProposalsAsync(
+        IReadOnlyList<Proposal> list,
+        CancellationToken cancellationToken)
+    {
+        if (list.Count == 0) return list;
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+        var visible = new List<Proposal>(list.Count);
+        var contractCache = new Dictionary<Guid, Contract?>();
+
+        foreach (var p in list)
+        {
+            var isTerminalProposal = p.Status is
+                ProposalStatus.REJECTED or
+                ProposalStatus.EXPIRED or
+                ProposalStatus.SUPERSEDED or
+                ProposalStatus.CANCELLED;
+            if (isTerminalProposal && p.UpdatedAtUtc <= cutoff)
+            {
+                continue;
+            }
+
+            if (p.Status == ProposalStatus.ACCEPTED)
+            {
+                if (!contractCache.TryGetValue(p.ShipmentId, out var contract))
+                {
+                    contract = await _proposalsRepository.GetContractByShipmentIdAsync(p.ShipmentId, cancellationToken).ConfigureAwait(false);
+                    contractCache[p.ShipmentId] = contract;
+                }
+                if (contract is not null && IsContractArchivedAfter24h(contract, cutoff))
+                {
+                    continue;
+                }
+            }
+
+            visible.Add(p);
+        }
+
+        return visible;
+    }
+
     public async Task<IReadOnlyList<ProposalResponse>> ListProposalsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default)
     {
         var list = await _proposalsRepository.ListProposalsByCarrierIdAsync(carrierId, cancellationToken);
-        return await MapProposalsWithRatingsAsync(list, cancellationToken);
+        var visible = await FilterActiveProposalsAsync(list, cancellationToken);
+        return await MapProposalsWithRatingsAsync(visible, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ProposalResponse>> ListProposalsForSenderAsync(Guid senderId, CancellationToken cancellationToken = default)
     {
         var list = await _proposalsRepository.ListProposalsForSenderAsync(senderId, cancellationToken);
-        return await MapProposalsWithRatingsAsync(list, cancellationToken);
+        var visible = await FilterActiveProposalsAsync(list, cancellationToken);
+        return await MapProposalsWithRatingsAsync(visible, cancellationToken);
     }
 
     private async Task<IReadOnlyList<ProposalResponse>> MapProposalsWithRatingsAsync(
@@ -1206,14 +1260,16 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
 
     public async Task<IReadOnlyList<ContractResponse>> ListContractsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default)
     {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var list = await _proposalsRepository.ListContractsByCarrierIdAsync(carrierId, cancellationToken);
-        return list.Select(MapToContractResponse).ToList();
+        return list.Where(c => !IsContractArchivedAfter24h(c, cutoff)).Select(MapToContractResponse).ToList();
     }
 
     public async Task<IReadOnlyList<ContractResponse>> ListContractsByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
     {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var list = await _proposalsRepository.ListContractsByUserIdAsync(userId, cancellationToken);
-        return list.Select(MapToContractResponse).ToList();
+        return list.Where(c => !IsContractArchivedAfter24h(c, cutoff)).Select(MapToContractResponse).ToList();
     }
 
     public async Task<ContractResponse> ConfirmContractPaymentAsync(

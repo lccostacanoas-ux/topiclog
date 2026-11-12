@@ -3929,6 +3929,16 @@ var tests = new List<(string Name, Action Execute)>
     ("PR-01.1 (Recuperação de Senha por E-mail): Emite código HMAC de 6 dígitos, rejeita código incorreto, redefine senha e impede reutilização", () =>
     {
         RunEmailPasswordResetUnitTest();
+    }),
+
+    ("HIST-VEIC-01: Alteração de veículo/placa do transportador preserva veículo anterior em VehicleHistory", () =>
+    {
+        RunVehicleHistoryUnitTest();
+    }),
+
+    ("ARQ-24H-01: Viagens/encomendas encerradas ou canceladas há >24h somem das listagens da plataforma mas permanecem no banco", () =>
+    {
+        RunArchival24hUnitTest();
     })
 };
 
@@ -4064,6 +4074,158 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void RunVehicleHistoryUnitTest()
+{
+    var secOpts = Options.Create(new SecurityOptions());
+    var keyMat = new RuntimeKeyMaterialProvider(secOpts);
+    var crypto = new SecurityCryptoService(secOpts, keyMat);
+    var userRepo = new InMemoryUserRepository();
+    var refreshRepo = new InMemoryRefreshTokenRepository();
+    var resetRepo = new InMemoryPasswordResetRepository();
+    var auditRepo = new InMemoryAuditRepository();
+    var emailStub = new StubEmailDeliveryService();
+    var auth = new ResourceAuthorizationService(crypto, auditRepo);
+    var identityService = new IdentityApplicationService(
+        userRepo, refreshRepo, resetRepo, auditRepo, emailStub, crypto, auth, secOpts);
+
+    var userId = Guid.NewGuid();
+    var user = new UserEntity
+    {
+        Id = userId,
+        Email = "carrier.veiculo@example.test",
+        PhoneEncrypted = crypto.EncryptPhone("31999990000"),
+        PhoneMasked = "(**) *****-0000",
+        PasswordHash = crypto.HashPassword("Password123!")
+    };
+    var profile = new UserProfileEntity
+    {
+        UserId = userId,
+        DisplayName = "Transportador Teste",
+        City = "João Monlevade",
+        StateUf = "MG",
+        Roles = [UserRole.CARRIER],
+        TermsAcceptedVersion = "1.0.0",
+        TermsAcceptedAtUtc = DateTimeOffset.UtcNow,
+        VehicleType = "VAN",
+        VehicleModel = "Fiat Ducato",
+        VehiclePlate = "ABC1D23",
+        VehicleYear = "2022",
+        Renavam = "12345678901"
+    };
+    userRepo.CreateAsync(user, profile, CancellationToken.None).GetAwaiter().GetResult();
+
+    identityService.UpdatePrivateProfileAsync(
+        new AuthenticatedActor(userId, "carrier.veiculo@example.test", [UserRole.CARRIER], KycStatus.VERIFIED, "tok-1"),
+        userId,
+        new UpdateProfileRequest(
+            DisplayName: null,
+            Phone: null,
+            Cpf: null,
+            City: null,
+            StateUf: null,
+            Roles: null,
+            VehicleModel: "Renault Master",
+            VehiclePlate: "XYZ9K88",
+            VehicleYear: "2024",
+            Renavam: "99887766554"),
+        "corr-veic-2",
+        CancellationToken.None).GetAwaiter().GetResult();
+
+    var found = userRepo.FindByIdAsync(userId, CancellationToken.None).GetAwaiter().GetResult();
+    Assert(found.HasValue, "Usuário transportador deve existir no repositório.");
+    Assert(found!.Value.Profile.VehiclePlate == "XYZ9K88", "Placa atual deve ser XYZ9K88.");
+    Assert(found.Value.Profile.VehicleHistory.Count == 1, "Deve existir 1 veículo anterior no histórico.");
+    Assert(found.Value.Profile.VehicleHistory[0].VehiclePlate == "ABC1D23", "Placa anterior ABC1D23 deve estar preservada.");
+    Assert(found.Value.Profile.VehicleHistory[0].VehicleModel == "Fiat Ducato", "Modelo anterior deve estar preservado.");
+}
+
+static void RunArchival24hUnitTest()
+{
+    var senderId = Guid.NewGuid();
+    var carrierId = Guid.NewGuid();
+    var fulfillmentRepo = new InMemoryFulfillmentRepository();
+    var shipRepo = new InMemoryShipmentsRepository();
+
+    var oldDeliveredOrder = new DeliveryOrder
+    {
+        ContractId = Guid.NewGuid(),
+        ShipmentId = Guid.NewGuid(),
+        TripId = Guid.NewGuid(),
+        SenderId = senderId,
+        CarrierId = carrierId,
+        SenderName = "Remetente",
+        CarrierName = "Transportador",
+        Status = DeliveryOrderStatus.DELIVERED_VERIFIED,
+        DeliveredAtUtc = DateTimeOffset.UtcNow.AddHours(-25),
+        UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-25)
+    };
+    var recentDeliveredOrder = new DeliveryOrder
+    {
+        ContractId = Guid.NewGuid(),
+        ShipmentId = Guid.NewGuid(),
+        TripId = Guid.NewGuid(),
+        SenderId = senderId,
+        CarrierId = carrierId,
+        SenderName = "Remetente",
+        CarrierName = "Transportador",
+        Status = DeliveryOrderStatus.DELIVERED_VERIFIED,
+        DeliveredAtUtc = DateTimeOffset.UtcNow.AddHours(-2),
+        UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-2)
+    };
+    fulfillmentRepo.CreateOrderAsync(oldDeliveredOrder).GetAwaiter().GetResult();
+    fulfillmentRepo.CreateOrderAsync(recentDeliveredOrder).GetAwaiter().GetResult();
+
+    var fulfillmentService = new FulfillmentApplicationService(fulfillmentRepo, shipRepo);
+    var visibleOrders = fulfillmentService.ListOrdersForUserAsync(senderId, ActorRole.SENDER).GetAwaiter().GetResult();
+    Assert(visibleOrders.Count == 1 && visibleOrders[0].Id == recentDeliveredOrder.Id,
+        "ListOrdersForUserAsync deve ocultar pedidos encerrados há >24h e manter os recentes (<24h).");
+    var storedOldOrder = fulfillmentRepo.GetOrderByIdAsync(oldDeliveredOrder.Id).GetAwaiter().GetResult();
+    Assert(storedOldOrder is not null, "O pedido antigo deve permanecer salvo no repositório para consulta administrativa.");
+
+    var originAddr = new ShipmentAddress(
+        AddressKind.ORIGIN, "João Monlevade", "MG", "Centro", "Rua A, 10", "35930-000",
+        null, null, null, null, null, default, default);
+    var destAddr = new ShipmentAddress(
+        AddressKind.DESTINATION, "Belo Horizonte", "MG", "Centro", "Av. Afonso Pena, 100", "30130-000",
+        null, null, null, null, null, default, default);
+
+    var oldShipment = new Shipment
+    {
+        SenderId = senderId,
+        SenderName = "Remetente",
+        Title = "Caixa Antiga",
+        Category = ShipmentCategory.DOCUMENTOS,
+        VehicleType = VehicleType.CAR,
+        WeightGrams = 1000,
+        OriginAddress = originAddr,
+        DestinationAddress = destAddr,
+        Status = ShipmentStatus.CANCELLED,
+        UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-26)
+    };
+    var recentShipment = new Shipment
+    {
+        SenderId = senderId,
+        SenderName = "Remetente",
+        Title = "Caixa Recente",
+        Category = ShipmentCategory.DOCUMENTOS,
+        VehicleType = VehicleType.CAR,
+        WeightGrams = 1000,
+        OriginAddress = originAddr,
+        DestinationAddress = destAddr,
+        Status = ShipmentStatus.CANCELLED,
+        UpdatedAtUtc = DateTimeOffset.UtcNow.AddHours(-3)
+    };
+    shipRepo.CreateAsync(oldShipment).GetAwaiter().GetResult();
+    shipRepo.CreateAsync(recentShipment).GetAwaiter().GetResult();
+
+    var shipmentsService = new ShipmentsApplicationService(shipRepo, new LocalDiskObjectStorageProvider());
+    var myShipments = shipmentsService.ListMyShipmentsAsync(senderId).GetAwaiter().GetResult();
+    Assert(myShipments.Count == 1 && myShipments[0].Id == recentShipment.Id,
+        "ListMyShipmentsAsync deve ocultar encomendas canceladas há >24h e manter as recentes (<24h).");
+    var storedOldShipment = shipRepo.GetByIdAsync(oldShipment.Id).GetAwaiter().GetResult();
+    Assert(storedOldShipment is not null, "A encomenda antiga deve permanecer salva no repositório para consulta administrativa.");
 }
 
 sealed class StubEmailDeliveryService : IEmailDeliveryService

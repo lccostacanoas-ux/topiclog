@@ -132,8 +132,22 @@ public sealed class UserProfileEntity
 
     public string? IdentityDocumentData { get; set; }
 
+    public List<VehicleHistoryRecord> VehicleHistory { get; set; } = [];
+
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
+
+/// <summary>
+/// Registro histórico imutável de veículo anterior do transportador para consulta administrativa.
+/// </summary>
+public sealed record VehicleHistoryRecord(
+    string? VehicleType,
+    string? VehicleModel,
+    string? VehiclePlate,
+    string? VehicleYear,
+    string? Renavam,
+    string? CrlvDocumentName,
+    DateTimeOffset ReplacedAtUtc);
 
 /// <summary>
 /// Entidade de sessão de Refresh Token rotativo (tabela refresh_tokens).

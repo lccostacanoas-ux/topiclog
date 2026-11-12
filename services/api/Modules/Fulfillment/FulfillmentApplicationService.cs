@@ -896,12 +896,16 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         ActorRole actorRole,
         CancellationToken cancellationToken = default)
     {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
         var carrierOrders = await _fulfillmentRepo.ListOrdersByCarrierIdAsync(actorId, cancellationToken);
         var senderOrders = await _fulfillmentRepo.ListOrdersBySenderIdAsync(actorId, cancellationToken);
         var merged = carrierOrders
             .Concat(senderOrders)
             .GroupBy(o => o.Id)
             .Select(g => g.First())
+            .Where(o =>
+                (o.Status != DeliveryOrderStatus.DELIVERED_VERIFIED && o.Status != DeliveryOrderStatus.CLOSED) ||
+                (o.DeliveredAtUtc ?? o.UpdatedAtUtc) > cutoff)
             .OrderByDescending(o => o.CreatedAtUtc)
             .ToList();
 
