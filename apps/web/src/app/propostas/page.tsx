@@ -244,6 +244,46 @@ export default function PropostasPage(): React.JSX.Element {
   const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
   const [, setClockTick] = useState(0);
 
+  // Modo de visualização: CARDS (expandido/recolhível) ou LIST (tabela compacta)
+  const [viewMode, setViewMode] = useState<"CARDS" | "LIST">("CARDS");
+  // Controle individual de recolhimento de cada card (proposal.id -> boolean)
+  const [expandedCardIds, setExpandedCardIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem("topiclog_proposals_view_mode");
+      if (savedMode === "LIST" || savedMode === "CARDS") {
+        setViewMode(savedMode);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleViewModeChange = (mode: "CARDS" | "LIST") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("topiclog_proposals_view_mode", mode);
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleCardExpansion = (proposalId: string, defaultExpanded: boolean) => {
+    setExpandedCardIds((prev) => ({
+      ...prev,
+      [proposalId]: prev[proposalId] !== undefined ? !prev[proposalId] : !defaultExpanded
+    }));
+  };
+
+  const setAllCardsExpanded = (expanded: boolean) => {
+    const next: Record<string, boolean> = {};
+    for (const p of proposals) {
+      next[p.id] = expanded;
+    }
+    setExpandedCardIds(next);
+  };
+
   useEffect(() => {
     let active = true;
     getCancellationPolicyApi()
@@ -881,90 +921,198 @@ export default function PropostasPage(): React.JSX.Element {
         </div>
       )}
 
-      {/* Filtros de Status */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => setFilterType("ALL")}
-          style={{
-            padding: "6px 14px",
-            borderRadius: "8px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "none",
-            backgroundColor: filterType === "ALL" ? "#2563EB" : "#F1F5F9",
-            color: filterType === "ALL" ? "#FFFFFF" : "#475569"
-          }}
-        >
-          Todas ({visibleProposals.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("PENDING")}
-          style={{
-            padding: "6px 14px",
-            borderRadius: "8px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "none",
-            backgroundColor: filterType === "PENDING" ? "#2563EB" : "#F1F5F9",
-            color: filterType === "PENDING" ? "#FFFFFF" : "#475569"
-          }}
-        >
-          Pendentes ({pendingCount})
-        </button>
-        {awaitingPaymentCount > 0 && (
+      {/* Barra de Filtros de Status e Seletor de Modo de Visualização (Cards vs Lista Compacta) */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "12px",
+          marginBottom: "20px",
+          borderBottom: "1px solid #E2E8F0",
+          paddingBottom: "12px",
+          flexWrap: "wrap"
+        }}
+      >
+        {/* Filtros de Status */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => setFilterType("AWAITING_PAYMENT")}
+            onClick={() => setFilterType("ALL")}
             style={{
               padding: "6px 14px",
               borderRadius: "8px",
               fontSize: "13px",
-              fontWeight: 700,
+              fontWeight: 600,
               cursor: "pointer",
               border: "none",
-              backgroundColor: filterType === "AWAITING_PAYMENT" ? "#D97706" : "#FEF3C7",
-              color: filterType === "AWAITING_PAYMENT" ? "#FFFFFF" : "#92400E"
+              backgroundColor: filterType === "ALL" ? "#2563EB" : "#F1F5F9",
+              color: filterType === "ALL" ? "#FFFFFF" : "#475569"
             }}
           >
-            ⚡ Aguardando Pagamento ({awaitingPaymentCount})
+            Todas ({visibleProposals.length})
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setFilterType("COMPLETED")}
-          style={{
-            padding: "6px 14px",
-            borderRadius: "8px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "none",
-            backgroundColor: filterType === "COMPLETED" ? "#059669" : "#F1F5F9",
-            color: filterType === "COMPLETED" ? "#FFFFFF" : "#475569"
-          }}
-        >
-          Concluídas ({completedCount})
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterType("CANCELLED")}
-          style={{
-            padding: "6px 14px",
-            borderRadius: "8px",
-            fontSize: "13px",
-            fontWeight: 600,
-            cursor: "pointer",
-            border: "none",
-            backgroundColor: filterType === "CANCELLED" ? "#DC2626" : "#F1F5F9",
-            color: filterType === "CANCELLED" ? "#FFFFFF" : "#475569"
-          }}
-        >
-          Canceladas ({cancelledCount})
-        </button>
+          <button
+            type="button"
+            onClick={() => setFilterType("PENDING")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              backgroundColor: filterType === "PENDING" ? "#2563EB" : "#F1F5F9",
+              color: filterType === "PENDING" ? "#FFFFFF" : "#475569"
+            }}
+          >
+            Pendentes ({pendingCount})
+          </button>
+          {awaitingPaymentCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterType("AWAITING_PAYMENT")}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                backgroundColor: filterType === "AWAITING_PAYMENT" ? "#D97706" : "#FEF3C7",
+                color: filterType === "AWAITING_PAYMENT" ? "#FFFFFF" : "#92400E"
+              }}
+            >
+              ⚡ Aguardando Pagamento ({awaitingPaymentCount})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setFilterType("COMPLETED")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              backgroundColor: filterType === "COMPLETED" ? "#059669" : "#F1F5F9",
+              color: filterType === "COMPLETED" ? "#FFFFFF" : "#475569"
+            }}
+          >
+            Concluídas ({completedCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterType("CANCELLED")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              border: "none",
+              backgroundColor: filterType === "CANCELLED" ? "#DC2626" : "#F1F5F9",
+              color: filterType === "CANCELLED" ? "#FFFFFF" : "#475569"
+            }}
+          >
+            Canceladas ({cancelledCount})
+          </button>
+        </div>
+
+        {/* Controles de Visualização: Cards vs Lista e Recolher/Expandir */}
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {viewMode === "CARDS" && filteredProposals.length > 0 && (
+            <div style={{ display: "flex", gap: "6px", marginRight: "6px" }}>
+              <button
+                type="button"
+                onClick={() => setAllCardsExpanded(false)}
+                title="Recolher todos os cards para visualização compacta"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "1px solid #CBD5E1",
+                  backgroundColor: "#FFFFFF",
+                  color: "#475569"
+                }}
+              >
+                ▲ Recolher Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllCardsExpanded(true)}
+                title="Expandir todos os cards com histórico completo"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "1px solid #CBD5E1",
+                  backgroundColor: "#FFFFFF",
+                  color: "#475569"
+                }}
+              >
+                ▼ Expandir Todos
+              </button>
+            </div>
+          )}
+
+          {/* Toggle Card vs Lista */}
+          <div
+            style={{
+              display: "inline-flex",
+              borderRadius: "8px",
+              backgroundColor: "#F1F5F9",
+              padding: "3px",
+              border: "1px solid #E2E8F0"
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => handleViewModeChange("CARDS")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                backgroundColor: viewMode === "CARDS" ? "#FFFFFF" : "transparent",
+                color: viewMode === "CARDS" ? "#1D4ED8" : "#64748B",
+                boxShadow: viewMode === "CARDS" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+              }}
+            >
+              <span>🗂️</span> Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewModeChange("LIST")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                backgroundColor: viewMode === "LIST" ? "#FFFFFF" : "transparent",
+                color: viewMode === "LIST" ? "#1D4ED8" : "#64748B",
+                boxShadow: viewMode === "LIST" ? "0 1px 3px rgba(0,0,0,0.1)" : "none"
+              }}
+            >
+              <span>📋</span> Lista Compacta
+            </button>
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -983,7 +1131,158 @@ export default function PropostasPage(): React.JSX.Element {
           actionLabel={activeTab === "SENT" ? "Ver Encomendas no Mural" : "Publicar Nova Encomenda"}
           actionHref={activeTab === "SENT" ? "/feed" : "/encomendas/publicar"}
         />
+      ) : viewMode === "LIST" ? (
+        /* =========================================================================
+           MODO LISTA COMPACTA (ALTA DENSIDADE, TABULAR E RÁPIDA NAVEGAÇÃO)
+           ========================================================================= */
+        <div
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "12px",
+            border: "1px solid #E2E8F0",
+            overflow: "hidden",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
+          }}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", textAlign: "left" }}>
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: "#F8FAFC",
+                    borderBottom: "1px solid #E2E8F0",
+                    color: "#64748B",
+                    fontSize: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px"
+                  }}
+                >
+                  <th style={{ padding: "12px 16px" }}>{activeTab === "SENT" ? "Destinatário (Remetente)" : "Transportador"}</th>
+                  <th style={{ padding: "12px 16px" }}>Carga / ID</th>
+                  <th style={{ padding: "12px 16px" }}>Data</th>
+                  <th style={{ padding: "12px 16px" }}>Status</th>
+                  <th style={{ padding: "12px 16px" }}>Avaliação</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right" }}>Valor da Oferta</th>
+                  <th style={{ padding: "12px 16px", textAlign: "center" }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProposals.map((proposal) => {
+                  const contract =
+                    contractsByProposalId[proposal.id] ||
+                    contractsByShipmentId[proposal.shipmentId];
+                  const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
+                  const isCompleted =
+                    contract?.status === "COMPLETED" ||
+                    order?.status === "DELIVERED_VERIFIED" ||
+                    order?.status === "CLOSED";
+                  const isCancelled =
+                    contract?.status === "CANCELLED_PRE_PICKUP" ||
+                    contract?.status === "CANCELLED_POST_PICKUP" ||
+                    contract?.status === "PAYMENT_EXPIRED" ||
+                    proposal.status === "REJECTED";
+                  const isPaid =
+                    !isCancelled &&
+                    (contract?.status === "ACTIVE" ||
+                      contract?.status === "COMPLETED" ||
+                      order?.status === "IN_TRANSIT" ||
+                      order?.status === "DELIVERED_VERIFIED");
+                  const isAwaitingPayment =
+                    !isCancelled &&
+                    !isCompleted &&
+                    !isPaid &&
+                    (proposal.status === "ACCEPTED" || contract?.status === "AWAITING_PAYMENT");
+                  const tripRatingStars = order?.carrierRatingStars ?? (isCompleted ? 5 : null);
+
+                  return (
+                    <tr
+                      key={proposal.id}
+                      style={{
+                        borderBottom: "1px solid #F1F5F9",
+                        backgroundColor: isCompleted ? "#F0FDF4" : isCancelled ? "#FFFDFD" : "#FFFFFF"
+                      }}
+                    >
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: "#1E293B" }}>
+                        {activeTab === "SENT" ? (proposal.senderName || "Remetente") : (proposal.carrierName || "Motorista Parceiro")}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#475569" }}>
+                        <span style={{ fontWeight: 600 }}>{proposal.shipmentTitle || "Carga Geral"}</span>
+                        <span style={{ display: "block", fontSize: "11px", color: "#94A3B8" }}>#{proposal.shipmentId.slice(0, 8)}</span>
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#64748B", whiteSpace: "nowrap" }}>
+                        {safeFormatDate(proposal.createdAtUtc)}
+                      </td>
+                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                        {isCompleted && (
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#166534", backgroundColor: "#DCFCE7", padding: "3px 8px", borderRadius: "10px", border: "1px solid #86EFAC" }}>
+                            ✅ Concluída
+                          </span>
+                        )}
+                        {isCancelled && (
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "3px 8px", borderRadius: "10px", border: "1px solid #FECACA" }}>
+                            🚫 Cancelada
+                          </span>
+                        )}
+                        {isAwaitingPayment && (
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#92400E", backgroundColor: "#FEF3C7", padding: "3px 8px", borderRadius: "10px", border: "1px solid #FDE68A" }}>
+                            ⏳ Aguardando Pix
+                          </span>
+                        )}
+                        {isPaid && !isCompleted && (
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#1D4ED8", backgroundColor: "#DBEAFE", padding: "3px 8px", borderRadius: "10px", border: "1px solid #93C5FD" }}>
+                            🚚 Em Andamento
+                          </span>
+                        )}
+                        {!isCompleted && !isCancelled && !isAwaitingPayment && !isPaid && (
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#475569", backgroundColor: "#F1F5F9", padding: "3px 8px", borderRadius: "10px", border: "1px solid #CBD5E1" }}>
+                            ⏳ Pendente
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
+                        {tripRatingStars ? (
+                          <span style={{ color: "#EAB308", fontWeight: 700, fontSize: "12px" }}>
+                            {"★".repeat(tripRatingStars)} ({tripRatingStars}.0)
+                          </span>
+                        ) : (
+                          <span style={{ color: "#94A3B8", fontSize: "12px" }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 800, color: "#1D4ED8", whiteSpace: "nowrap" }}>
+                        R$ {(proposal.amountCents / 100).toFixed(2).replace(".", ",")}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "center", whiteSpace: "nowrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExpandedCardIds((prev) => ({ ...prev, [proposal.id]: true }));
+                            setViewMode("CARDS");
+                          }}
+                          style={{
+                            padding: "5px 12px",
+                            backgroundColor: "#EFF6FF",
+                            color: "#1D4ED8",
+                            border: "1px solid #BFDBFE",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          👁️ Ver Detalhes
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* =========================================================================
+           MODO CARDS (COM RECOLHIMENTO/EXPANSÃO INDIVIDUAL E VISUALIZAÇÃO OTIMIZADA)
+           ========================================================================= */
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {filteredProposals.map((proposal) => {
             const contract =
@@ -1031,12 +1330,17 @@ export default function PropostasPage(): React.JSX.Element {
             // Nota da avaliação da viagem (1 a 5 estrelas)
             const tripRatingStars = order?.carrierRatingStars ?? (isCompleted ? 5 : null);
 
+            // Estado de expansão individual: viagens concluídas ou canceladas iniciam recolhidas por padrão
+            const isCardExpanded = expandedCardIds[proposal.id] !== undefined
+              ? expandedCardIds[proposal.id]
+              : !isCompleted && !isCancelled;
+
             return (
               <div
                 key={proposal.id}
                 className="card"
                 style={{
-                  padding: "20px",
+                  padding: isCardExpanded ? "20px" : "14px 20px",
                   borderRadius: "14px",
                   border: isCompleted
                     ? "2px solid #86EFAC"
@@ -1048,12 +1352,22 @@ export default function PropostasPage(): React.JSX.Element {
                           ? "1px solid #FECACA"
                           : "1px solid #E2E8F0",
                   backgroundColor: isCancelled ? "#FFFDFD" : "#FFFFFF",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+                  transition: "all 0.15s ease"
                 }}
               >
-                {/* Linha Superior: Quem propôs e Valor */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
-                  <div>
+                {/* Linha Superior: Quem propôs, Status, Valor e Botão de Recolher/Expandir */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "12px",
+                    marginBottom: isCardExpanded ? "12px" : "0"
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: "260px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
                       <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
                         {activeTab === "SENT"
@@ -1102,8 +1416,8 @@ export default function PropostasPage(): React.JSX.Element {
                     {isCompleted && (
                       <div
                         style={{
-                          marginTop: "8px",
-                          padding: "8px 12px",
+                          marginTop: "6px",
+                          padding: "6px 10px",
                           backgroundColor: "#FEFCE8",
                           border: "1px solid #FEF08A",
                           borderRadius: "8px",
@@ -1145,13 +1459,42 @@ export default function PropostasPage(): React.JSX.Element {
                     )}
                   </div>
 
-                  <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Valor da Oferta</span>
-                    <span style={{ fontSize: "22px", fontWeight: 800, color: "#1D4ED8" }}>
-                      R$ {(proposal.amountCents / 100).toFixed(2).replace(".", ",")}
-                    </span>
+                  {/* Valor da Oferta e Botão de Expandir / Recolher */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px", flexShrink: 0 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Valor da Oferta</span>
+                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#1D4ED8" }}>
+                        R$ {(proposal.amountCents / 100).toFixed(2).replace(".", ",")}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleCardExpansion(proposal.id, !isCompleted && !isCancelled)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "7px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #CBD5E1",
+                        backgroundColor: isCardExpanded ? "#F8FAFC" : "#EFF6FF",
+                        color: isCardExpanded ? "#475569" : "#1D4ED8",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                      }}
+                      title={isCardExpanded ? "Recolher detalhes da proposta" : "Expandir para ver histórico, chat e ações"}
+                    >
+                      <span>{isCardExpanded ? "▲ Recolher" : "▼ Expandir Detalhes"}</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* CORPO EXPANSÍVEL DO CARD (HISTÓRICO, CHAT, AÇÕES, CÓDIGOS DE ENTREGA) */}
+                {isCardExpanded && (
+                  <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
 
                 {/* Mensagem / Observações */}
                 {proposal.notes && (
@@ -1783,6 +2126,8 @@ export default function PropostasPage(): React.JSX.Element {
                     }}
                   >
                     🚫 {contract.cancellation.policyDisclaimer}
+                  </div>
+                )}
                   </div>
                 )}
               </div>
