@@ -38,6 +38,8 @@ export default function TopicLogRouteMap({
   const originMarkerRef = useRef<any>(null);
   const destMarkerRef = useRef<any>(null);
   const carrierMarkerRef = useRef<any>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const routeRequestIdRef = useRef<number>(0);
 
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [routeInfo, setRouteInfo] = useState<{ km: number; mins: number } | null>(null);
@@ -209,7 +211,13 @@ export default function TopicLogRouteMap({
       carrierMarkerRef.current = null;
     }
 
-    // 3. Limpar traçado viário anterior
+    // 3. Limpar traçado viário anterior e abortar requisições pendentes
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    const currentRequestId = ++routeRequestIdRef.current;
+
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
       routeLayerRef.current = null;
@@ -222,9 +230,30 @@ export default function TopicLogRouteMap({
     ) {
       setIsLoadingRoute(true);
 
+      // Distância geodésica direta (Haversine) em km
+      const R = 6371;
+      const dLatRad = ((destination.lat - origin.lat) * Math.PI) / 180;
+      const dLonRad = ((destination.lon - origin.lon) * Math.PI) / 180;
+      const aCalc =
+        Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
+        Math.cos((origin.lat * Math.PI) / 180) *
+          Math.cos((destination.lat * Math.PI) / 180) *
+          Math.sin(dLonRad / 2) *
+          Math.sin(dLonRad / 2);
+      const cCalc = 2 * Math.atan2(Math.sqrt(aCalc), Math.sqrt(1 - aCalc));
+      const straightKm = Math.round(R * cCalc);
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=full&geometries=geojson`;
-        const res = await fetch(url, { headers: { Accept: "application/json" } });
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal
+        });
+
+        if (currentRequestId !== routeRequestIdRef.current) return;
 
         if (res.ok) {
           const data = await res.json();
@@ -233,54 +262,89 @@ export default function TopicLogRouteMap({
             const distKm = Math.round(route.distance / 100) / 10;
             const durMins = Math.round(route.duration / 60);
 
-            setRouteInfo({ km: distKm, mins: durMins });
-            if (onRouteCalculated) {
-              onRouteCalculated(distKm, durMins);
+            // Validação de Sanidade da Rota:
+            // 1) A distância viária não pode ser absurdamente desproporcional à linha reta.
+            // 2) Nenhuma coordenada da rota pode se afastar mais de 3.5 graus (~380 km) do bounding box dos pontos.
+            const minAllowedLat = Math.min(origin.lat, destination.lat) - 3.5;
+            const maxAllowedLat = Math.max(origin.lat, destination.lat) + 3.5;
+            const minAllowedLon = Math.min(origin.lon, destination.lon) - 3.5;
+            const maxAllowedLon = Math.max(origin.lon, destination.lon) + 3.5;
+
+            const coordsList = route.geometry?.coordinates || [];
+            let isGeographicallySane = true;
+            if (straightKm < 150 && distKm > 350) {
+              isGeographicallySane = false;
+            } else if (distKm > Math.max(straightKm * 3.5, 600)) {
+              isGeographicallySane = false;
+            } else {
+              for (const [lon, lat] of coordsList) {
+                if (lat < minAllowedLat || lat > maxAllowedLat || lon < minAllowedLon || lon > maxAllowedLon) {
+                  isGeographicallySane = false;
+                  break;
+                }
+              }
             }
 
-            // Traçado viário real em azul marinho / primário
-            routeLayerRef.current = L.geoJSON(route.geometry, {
-              style: {
-                color: "#2563EB",
-                weight: 5,
-                opacity: 0.85,
-                lineCap: "round",
-                lineJoin: "round"
+            if (isGeographicallySane) {
+              setRouteInfo({ km: distKm, mins: durMins });
+              if (onRouteCalculated) {
+                onRouteCalculated(distKm, durMins);
               }
-            }).addTo(map);
 
-            const bounds = routeLayerRef.current.getBounds();
-            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-            return;
+              // Traçado viário real em azul
+              routeLayerRef.current = L.geoJSON(route.geometry, {
+                style: {
+                  color: "#2563EB",
+                  weight: 5,
+                  opacity: 0.85,
+                  lineCap: "round",
+                  lineJoin: "round"
+                }
+              }).addTo(map);
+
+              const bounds = routeLayerRef.current.getBounds();
+              map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+              return;
+            }
           }
         }
-        throw new Error("OSRM indisponível");
-      } catch {
-        // Fallback: cálculo geodésico Haversine com fator viário 1.25x
-        const R = 6371;
-        const dLat = ((destination.lat - origin.lat) * Math.PI) / 180;
-        const dLon = ((destination.lon - origin.lon) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((origin.lat * Math.PI) / 180) *
-            Math.cos((destination.lat * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const straightKm = Math.round(R * c * 1.25);
-        const approxMins = Math.round((straightKm / 45) * 60) || 10;
+        throw new Error("OSRM indisponível ou rota fora do limite geográfico");
+      } catch (err: any) {
+        if (err?.name === "AbortError") return;
+        if (currentRequestId !== routeRequestIdRef.current) return;
 
-        setRouteInfo({ km: straightKm, mins: approxMins });
+        // Fallback: traçado direto coerente e cálculo geodésico Haversine com fator viário 1.25x
+        const estimatedKm = Math.round(straightKm * 1.25);
+        const approxMins = Math.round((estimatedKm / 45) * 60) || 10;
+
+        setRouteInfo({ km: estimatedKm, mins: approxMins });
         if (onRouteCalculated) {
-          onRouteCalculated(straightKm, approxMins);
+          onRouteCalculated(estimatedKm, approxMins);
         }
 
-        if (originMarkerRef.current && destMarkerRef.current) {
-          const group = L.featureGroup([originMarkerRef.current, destMarkerRef.current]);
-          map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 15 });
-        }
+        // Desenhar traçado direto limpo e coerente entre A e B
+        routeLayerRef.current = L.polyline(
+          [
+            [origin.lat, origin.lon],
+            [destination.lat, destination.lon]
+          ],
+          {
+            color: "#2563EB",
+            weight: 4,
+            opacity: 0.8,
+            dashArray: "6, 8"
+          }
+        ).addTo(map);
+
+        const group = L.latLngBounds([
+          [origin.lat, origin.lon],
+          [destination.lat, destination.lon]
+        ]);
+        map.fitBounds(group, { padding: [50, 50], maxZoom: 14 });
       } finally {
-        setIsLoadingRoute(false);
+        if (currentRequestId === routeRequestIdRef.current) {
+          setIsLoadingRoute(false);
+        }
       }
     } else {
       setRouteInfo(null);

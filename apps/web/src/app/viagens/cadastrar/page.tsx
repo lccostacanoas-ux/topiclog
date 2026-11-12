@@ -131,35 +131,53 @@ function findIbgeCode(cityName: string): string | undefined {
   return KNOWN_MUNICIPALITIES[key]?.ibgeCode;
 }
 
-// Resolução de coordenadas geográficas de qualquer cidade brasileira
+// Resolução de coordenadas geográficas com proteção contra race conditions e suporte a UF
 async function resolveCityCoordinates(cityName: string): Promise<{ lat: number; lon: number } | null> {
   if (!cityName || !cityName.trim()) return null;
-  const cleanName = (cityName.split("-")[0] || "").trim();
+  const parts = cityName.split("-");
+  const cleanName = (parts[0] || "").trim();
+  const ufCandidate = (parts[1] || "").trim().toUpperCase();
   const norm = cleanName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  // 1. Tentar catálogo estático de centróides
+  // 1. Tentar catálogo estático de centróides de alta precisão
   if (CITY_CENTROIDS[norm]) {
-    return { lat: CITY_CENTROIDS[norm].lat, lon: CITY_CENTROIDS[norm].lon };
+    if (!ufCandidate || CITY_CENTROIDS[norm].uf === ufCandidate) {
+      return { lat: CITY_CENTROIDS[norm].lat, lon: CITY_CENTROIDS[norm].lon };
+    }
   }
 
   // 2. Tentar catálogo de municípios conhecidos
   const knownKey = normalizeCityKey(cleanName);
   if (KNOWN_MUNICIPALITIES[knownKey]) {
-    const knownNorm = KNOWN_MUNICIPALITIES[knownKey].name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (CITY_CENTROIDS[knownNorm]) {
-      return { lat: CITY_CENTROIDS[knownNorm].lat, lon: CITY_CENTROIDS[knownNorm].lon };
+    const knownItem = KNOWN_MUNICIPALITIES[knownKey];
+    if (!ufCandidate || knownItem.stateUf === ufCandidate) {
+      const knownNorm = knownItem.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (CITY_CENTROIDS[knownNorm]) {
+        return { lat: CITY_CENTROIDS[knownNorm].lat, lon: CITY_CENTROIDS[knownNorm].lon };
+      }
     }
   }
 
-  // 3. Busca online dinâmica via Photon OpenStreetMap (cobertura total nacional de 5.570 municípios)
+  // Se o usuário digitou menos de 3 caracteres, não consulta API remota para não gerar coordenadas espúrias
+  if (cleanName.length < 3) return null;
+
+  // 3. Busca online dinâmica via Photon OpenStreetMap com UF explicitamente qualificada
   try {
-    const query = encodeURIComponent(`${cleanName}, Brasil`);
+    const queryParts = [cleanName];
+    if (ufCandidate && ufCandidate.length === 2) {
+      queryParts.push(ufCandidate);
+    }
+    queryParts.push("Brasil");
+    const query = encodeURIComponent(queryParts.join(", "));
     const res = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=1`);
     if (res.ok) {
       const data = await res.json();
       if (data?.features?.[0]?.geometry?.coordinates) {
         const [lon, lat] = data.features[0].geometry.coordinates;
-        return { lat, lon };
+        // Validação de enquadramento dentro do território brasileiro
+        if (lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34) {
+          return { lat, lon };
+        }
       }
     }
   } catch {
@@ -215,8 +233,8 @@ export default function CadastrarViagemPage(): React.JSX.Element {
 
   const [vehicleType, setVehicleType] = useState<VehicleTypeCode>("CAR");
   const [vehicleModel, setVehicleModel] = useState("");
-  const [originCity, setOriginCity] = useState("");
-  const [destinationCity, setDestinationCity] = useState("");
+  const [originCity, setOriginCity] = useState("João Monlevade - MG");
+  const [destinationCity, setDestinationCity] = useState("Belo Horizonte - MG");
   const [stopsList, setStopsList] = useState<IntermediateStopItem[]>([]);
   const [newStopInput, setNewStopInput] = useState("");
 
@@ -239,36 +257,70 @@ export default function CadastrarViagemPage(): React.JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Coordenadas geográficas para os 2 pontos exclusivos do mapa (Ponto A e Ponto B)
+  // Coordenadas geográficas oficiais dos 2 pontos exclusivos do mapa (Ponto A e Ponto B)
   const [originCoords, setOriginCoords] = useState<{ lat: number; lon: number } | null>({
-    lat: -19.9167,
-    lon: -43.9345
-  });
-  const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>({
     lat: -19.8094,
     lon: -43.1733
+  });
+  const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>({
+    lat: -19.9167,
+    lon: -43.9345
   });
   const [calculatedDistanceKm, setCalculatedDistanceKm] = useState<number | null>(null);
   const [calculatedDurationMins, setCalculatedDurationMins] = useState<number | null>(null);
 
-  // Atualização reativa de coordenadas ao alterar cidades de Origem e Destino
-  const updateOriginCoords = useCallback(async (city: string) => {
-    const coords = await resolveCityCoordinates(city);
-    if (coords) setOriginCoords(coords);
-  }, []);
+  // Atualização reativa de coordenadas com proteção estrita contra race conditions e debounce
+  useEffect(() => {
+    let active = true;
+    if (!originCity || !originCity.trim()) return;
 
-  const updateDestCoords = useCallback(async (city: string) => {
-    const coords = await resolveCityCoordinates(city);
-    if (coords) setDestCoords(coords);
-  }, []);
+    const cleanName = (originCity.split("-")[0] || "").trim();
+    const norm = cleanName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Resolução imediata síncrona sem overhead de rede para municípios catalogados
+    if (CITY_CENTROIDS[norm]) {
+      setOriginCoords({ lat: CITY_CENTROIDS[norm].lat, lon: CITY_CENTROIDS[norm].lon });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const coords = await resolveCityCoordinates(originCity);
+      if (active && coords) {
+        setOriginCoords(coords);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [originCity]);
 
   useEffect(() => {
-    updateOriginCoords(originCity);
-  }, [originCity, updateOriginCoords]);
+    let active = true;
+    if (!destinationCity || !destinationCity.trim()) return;
 
-  useEffect(() => {
-    updateDestCoords(destinationCity);
-  }, [destinationCity, updateDestCoords]);
+    const cleanName = (destinationCity.split("-")[0] || "").trim();
+    const norm = cleanName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Resolução imediata síncrona sem overhead de rede para municípios catalogados
+    if (CITY_CENTROIDS[norm]) {
+      setDestCoords({ lat: CITY_CENTROIDS[norm].lat, lon: CITY_CENTROIDS[norm].lon });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const coords = await resolveCityCoordinates(destinationCity);
+      if (active && coords) {
+        setDestCoords(coords);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [destinationCity]);
 
   const parsedCapacityKg = parseFloat(availableKg.replace(",", "."));
 
