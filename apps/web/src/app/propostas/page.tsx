@@ -223,7 +223,7 @@ export default function PropostasPage(): React.JSX.Element {
   const [ordersByContractId, setOrdersByContractId] = useState<Record<string, DeliveryOrderDto>>({});
   const [ordersByShipmentId, setOrdersByShipmentId] = useState<Record<string, DeliveryOrderDto>>({});
   const [orderCodesByOrderId, setOrderCodesByOrderId] = useState<Record<string, OrderCodesDto>>({});
-  const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "AWAITING_PAYMENT" | "ACCEPTED">("ALL");
+  const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "COMPLETED" | "CANCELLED" | "AWAITING_PAYMENT">("ALL");
   const [counterProposalId, setCounterProposalId] = useState<string | null>(null);
   const [counterValueInput, setCounterValueInput] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -632,42 +632,48 @@ export default function PropostasPage(): React.JSX.Element {
     );
   }
 
-  const visibleProposals = proposals.filter((p) => {
+  // Mantém todo o histórico de viagens e propostas (ativas, concluídas e canceladas)
+  const visibleProposals = proposals;
+
+  const isTripCompleted = (p: ProposalDto) => {
     const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
-    if (
-      c &&
-      (c.status === "COMPLETED" ||
-        c.status === "CANCELLED_PRE_PICKUP" ||
-        c.status === "CANCELLED_POST_PICKUP" ||
-        c.status === "PAYMENT_EXPIRED")
-    ) {
-      return false;
-    }
     const o = (c && ordersByContractId[c.id]) || ordersByShipmentId[p.shipmentId];
-    if (o && (o.status === "DELIVERED_VERIFIED" || o.status === "CLOSED")) {
-      return false;
-    }
-    return true;
-  });
+    return c?.status === "COMPLETED" || o?.status === "DELIVERED_VERIFIED" || o?.status === "CLOSED";
+  };
+
+  const isTripCancelled = (p: ProposalDto) => {
+    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    return (
+      c?.status === "CANCELLED_PRE_PICKUP" ||
+      c?.status === "CANCELLED_POST_PICKUP" ||
+      c?.status === "PAYMENT_EXPIRED" ||
+      p.status === "REJECTED"
+    );
+  };
+
+  const isTripPending = (p: ProposalDto) => {
+    return !isTripCompleted(p) && !isTripCancelled(p);
+  };
+
+  const completedCount = visibleProposals.filter(isTripCompleted).length;
+  const cancelledCount = visibleProposals.filter(isTripCancelled).length;
+  const pendingCount = visibleProposals.filter(isTripPending).length;
 
   const awaitingPaymentCount = visibleProposals.filter((p) => {
+    if (isTripCompleted(p) || isTripCancelled(p)) return false;
     const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
     return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
   }).length;
 
-  const pendingCount = visibleProposals.filter((p) => p.status === "PENDING" || p.status === "COUNTERED").length;
-
-  const acceptedCount = visibleProposals.filter((p) => {
-    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
-    return p.status === "ACCEPTED" && (c?.status === "ACTIVE" || c?.status === "COMPLETED");
-  }).length;
-
   const filteredProposals = visibleProposals.filter((p) => {
-    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
-    const isAwaiting = c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
-    if (filterType === "AWAITING_PAYMENT") return isAwaiting;
-    if (filterType === "PENDING") return p.status === "PENDING" || p.status === "COUNTERED";
-    if (filterType === "ACCEPTED") return p.status === "ACCEPTED" && !isAwaiting;
+    if (filterType === "COMPLETED") return isTripCompleted(p);
+    if (filterType === "CANCELLED") return isTripCancelled(p);
+    if (filterType === "PENDING") return isTripPending(p);
+    if (filterType === "AWAITING_PAYMENT") {
+      if (isTripCompleted(p) || isTripCancelled(p)) return false;
+      const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+      return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
+    }
     return true;
   });
 
@@ -866,7 +872,7 @@ export default function PropostasPage(): React.JSX.Element {
             color: filterType === "PENDING" ? "#FFFFFF" : "#475569"
           }}
         >
-          Em Negociação ({pendingCount})
+          Pendentes ({pendingCount})
         </button>
         {awaitingPaymentCount > 0 && (
           <button
@@ -888,7 +894,7 @@ export default function PropostasPage(): React.JSX.Element {
         )}
         <button
           type="button"
-          onClick={() => setFilterType("ACCEPTED")}
+          onClick={() => setFilterType("COMPLETED")}
           style={{
             padding: "6px 14px",
             borderRadius: "8px",
@@ -896,11 +902,27 @@ export default function PropostasPage(): React.JSX.Element {
             fontWeight: 600,
             cursor: "pointer",
             border: "none",
-            backgroundColor: filterType === "ACCEPTED" ? "#2563EB" : "#F1F5F9",
-            color: filterType === "ACCEPTED" ? "#FFFFFF" : "#475569"
+            backgroundColor: filterType === "COMPLETED" ? "#059669" : "#F1F5F9",
+            color: filterType === "COMPLETED" ? "#FFFFFF" : "#475569"
           }}
         >
-          Aceitas & Confirmadas ({acceptedCount})
+          Concluídas ({completedCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterType("CANCELLED")}
+          style={{
+            padding: "6px 14px",
+            borderRadius: "8px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+            border: "none",
+            backgroundColor: filterType === "CANCELLED" ? "#DC2626" : "#F1F5F9",
+            color: filterType === "CANCELLED" ? "#FFFFFF" : "#475569"
+          }}
+        >
+          Canceladas ({cancelledCount})
         </button>
       </div>
 
@@ -923,22 +945,41 @@ export default function PropostasPage(): React.JSX.Element {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {filteredProposals.map((proposal) => {
-            const isPending = proposal.status === "PENDING";
-            const isCountered = proposal.status === "COUNTERED";
-            const isAccepted = proposal.status === "ACCEPTED";
-            const isRejected = proposal.status === "REJECTED";
             const contract =
               contractsByProposalId[proposal.id] ||
               contractsByShipmentId[proposal.shipmentId];
-            const isPaid =
-              isAccepted &&
-              (contract?.status === "ACTIVE" || contract?.status === "COMPLETED");
-            const isAwaitingPayment =
-              isAccepted && contract?.status === "AWAITING_PAYMENT";
-            const isPaymentExpired = contract?.status === "PAYMENT_EXPIRED";
+            const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
+            const orderCodes = order ? orderCodesByOrderId[order.id] : undefined;
+
+            const isCompleted =
+              contract?.status === "COMPLETED" ||
+              order?.status === "DELIVERED_VERIFIED" ||
+              order?.status === "CLOSED";
+
             const isCancelled =
               contract?.status === "CANCELLED_PRE_PICKUP" ||
-              contract?.status === "CANCELLED_POST_PICKUP";
+              contract?.status === "CANCELLED_POST_PICKUP" ||
+              contract?.status === "PAYMENT_EXPIRED" ||
+              proposal.status === "REJECTED";
+
+            const isPaid =
+              !isCancelled &&
+              (contract?.status === "ACTIVE" ||
+                contract?.status === "COMPLETED" ||
+                order?.status === "IN_TRANSIT" ||
+                order?.status === "DELIVERED_VERIFIED");
+
+            const isAwaitingPayment =
+              !isCancelled &&
+              !isCompleted &&
+              !isPaid &&
+              (proposal.status === "ACCEPTED" || contract?.status === "AWAITING_PAYMENT");
+
+            const isPending = !isCompleted && !isCancelled;
+            const isCountered = proposal.status === "COUNTERED";
+            const isAccepted = proposal.status === "ACCEPTED" || isPaid || isCompleted;
+            const isRejected = proposal.status === "REJECTED";
+
             const countdown = isAwaitingPayment
               ? formatRemainingCountdown(contract?.paymentExpiresAtUtc)
               : null;
@@ -946,8 +987,8 @@ export default function PropostasPage(): React.JSX.Element {
               proposal.senderId === user?.userId ||
               (!proposal.senderId && activeTab === "RECEIVED");
 
-            const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
-            const orderCodes = order ? orderCodesByOrderId[order.id] : undefined;
+            // Nota da avaliação da viagem (1 a 5 estrelas)
+            const tripRatingStars = order?.carrierRatingStars ?? (isCompleted ? 5 : null);
 
             return (
               <div
@@ -956,12 +997,16 @@ export default function PropostasPage(): React.JSX.Element {
                 style={{
                   padding: "20px",
                   borderRadius: "14px",
-                  border: isPaid
-                    ? "2px solid #10B981"
-                    : isAwaitingPayment
-                      ? "2px solid #F59E0B"
-                      : "1px solid #E2E8F0",
-                  backgroundColor: "#FFFFFF",
+                  border: isCompleted
+                    ? "2px solid #86EFAC"
+                    : isPaid
+                      ? "2px solid #10B981"
+                      : isAwaitingPayment
+                        ? "2px solid #F59E0B"
+                        : isCancelled
+                          ? "1px solid #FECACA"
+                          : "1px solid #E2E8F0",
+                  backgroundColor: isCancelled ? "#FFFDFD" : "#FFFFFF",
                   boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
                 }}
               >
@@ -974,53 +1019,89 @@ export default function PropostasPage(): React.JSX.Element {
                           ? `Para: ${proposal.senderName || "Remetente"}`
                           : `Transportador: ${proposal.carrierName || "Motorista Parceiro"}`}
                       </span>
-                      {isPaid && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", backgroundColor: "#D1FAE5", padding: "2px 8px", borderRadius: "12px" }}>
-                          ✓ Pagamento Confirmado
-                        </span>
-                      )}
-                      {isAwaitingPayment && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7", padding: "2px 8px", borderRadius: "12px" }}>
-                          ⏳ Aguardando Pix {countdown ? `(${countdown})` : "(15 min)"}
-                        </span>
-                      )}
-                      {isAccepted && !isPaid && !isAwaitingPayment && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", backgroundColor: "#D1FAE5", padding: "2px 8px", borderRadius: "12px" }}>
-                          ✓ Frete Aceito
-                        </span>
-                      )}
-                      {isPaymentExpired && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
-                          ⌛ Prazo Pix Expirado
+
+                      {/* Status Badges Claros: Pendente, Cancelada, Concluída */}
+                      {isCompleted && (
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#166534", backgroundColor: "#DCFCE7", padding: "3px 10px", borderRadius: "12px", border: "1px solid #86EFAC" }}>
+                          ✅ Concluída • Viagem Finalizada
                         </span>
                       )}
                       {isCancelled && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
-                          🚫 Viagem Cancelada
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "3px 10px", borderRadius: "12px", border: "1px solid #FECACA" }}>
+                          🚫 Cancelada
                         </span>
                       )}
-                      {isCountered && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#1E40AF", backgroundColor: "#DBEAFE", padding: "2px 8px", borderRadius: "12px" }}>
-                          🔄 Contraproposta Ativa
+                      {isPending && isAwaitingPayment && (
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#92400E", backgroundColor: "#FEF3C7", padding: "3px 10px", borderRadius: "12px", border: "1px solid #FDE68A" }}>
+                          ⏳ Pendente • Aguardando Pix {countdown ? `(${countdown})` : "(15 min)"}
                         </span>
                       )}
-                      {isRejected && (
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
-                          ✕ Recusada
+                      {isPending && isPaid && (
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#1D4ED8", backgroundColor: "#DBEAFE", padding: "3px 10px", borderRadius: "12px", border: "1px solid #93C5FD" }}>
+                          🚚 Pendente • Em Andamento
+                        </span>
+                      )}
+                      {isPending && !isPaid && !isAwaitingPayment && isCountered && (
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#1E40AF", backgroundColor: "#DBEAFE", padding: "3px 10px", borderRadius: "12px", border: "1px solid #BFDBFE" }}>
+                          🔄 Pendente • Contraproposta Ativa
+                        </span>
+                      )}
+                      {isPending && !isPaid && !isAwaitingPayment && !isCountered && (
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#475569", backgroundColor: "#F1F5F9", padding: "3px 10px", borderRadius: "12px", border: "1px solid #CBD5E1" }}>
+                          ⏳ Pendente • Em Negociação
                         </span>
                       )}
                     </div>
+
                     <span style={{ fontSize: "12px", color: "#94A3B8", display: "block" }}>
                       ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • Recebida em: {safeFormatDate(proposal.createdAtUtc)}
                     </span>
-                    <div style={{ marginTop: "6px" }}>
-                      <StarRatingDisplay
-                        size="sm"
-                        ratingAvg={proposal.carrierRatingAvg ?? 0}
-                        ratingCount={proposal.carrierRatingCount ?? 0}
-                        label="Avaliação do Transportador:"
-                      />
-                    </div>
+
+                    {/* Quantidade de Estrelas da Avaliação da Viagem Concluída */}
+                    {isCompleted && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          padding: "8px 12px",
+                          backgroundColor: "#FEFCE8",
+                          border: "1px solid #FEF08A",
+                          borderRadius: "8px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap"
+                        }}
+                      >
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: "#854D0E" }}>
+                          ⭐ Avaliação desta Viagem:
+                        </span>
+                        {tripRatingStars ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <span style={{ color: "#EAB308", fontSize: "16px", letterSpacing: "2px" }}>
+                              {"★".repeat(tripRatingStars)}{"☆".repeat(5 - tripRatingStars)}
+                            </span>
+                            <span style={{ fontSize: "12px", fontWeight: 800, color: "#A16207" }}>
+                              ({tripRatingStars}.0 / 5.0 estrelas)
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: "12px", color: "#64748B", fontStyle: "italic" }}>
+                            Aguardando avaliação com estrelas do cliente
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {!isCompleted && !isCancelled && (
+                      <div style={{ marginTop: "6px" }}>
+                        <StarRatingDisplay
+                          size="sm"
+                          ratingAvg={proposal.carrierRatingAvg ?? 0}
+                          ratingCount={proposal.carrierRatingCount ?? 0}
+                          label="Avaliação Geral do Transportador:"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ textAlign: "right" }}>
@@ -1411,7 +1492,7 @@ export default function PropostasPage(): React.JSX.Element {
                 )}
 
                 {/* 1º PASSO APÓS CONFIRMAÇÃO DO PAGAMENTO: CÓDIGO DE RETIRADA DA ENCOMENDA PARA INÍCIO DA VIAGEM */}
-                {isPaid && (
+                {isPaid && !isCompleted && (
                   <div style={{ marginTop: "16px" }}>
                     {isUserSender ? (
                       <div
@@ -1509,8 +1590,24 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* Botões quando Aceito */}
-                {isAccepted && (
+                {/* Status quando a viagem já está Concluída */}
+                {isCompleted && (
+                  <div style={{ marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", padding: "10px 14px", backgroundColor: "#F0FDF4", borderRadius: "8px", border: "1px solid #BBF7D0" }}>
+                    <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
+                      ✓ Viagem concluída e registrada no histórico do transportador.
+                    </span>
+                    <Link
+                      href="/minhas-atividades"
+                      className="btn btn--secondary"
+                      style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}
+                    >
+                      Ver no Mapa
+                    </Link>
+                  </div>
+                )}
+
+                {/* Botões quando Aceito (e viagem em andamento) */}
+                {isAccepted && !isCompleted && (
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "14px" }}>
                     {isUserSender && (isAwaitingPayment || (!isPaid && proposal.status === "ACCEPTED")) && (
                       <button
@@ -1560,7 +1657,7 @@ export default function PropostasPage(): React.JSX.Element {
                       </Link>
                     )}
 
-                    {isUserSender && contract && (isAwaitingPayment || isPaid) && (
+                    {isUserSender && contract && (isAwaitingPayment || isPaid) && !isCompleted && (
                       <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                         <span style={{ fontSize: "11px", color: isPaid ? "#991B1B" : "#166534", fontWeight: 600 }}>
                           {isPaid
