@@ -1209,26 +1209,33 @@ export default function PropostasPage(): React.JSX.Element {
                     )}
 
                     {isUserSender && contract && (isAwaitingPayment || isPaid) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCancelJustification("");
-                          setCancelReopen(true);
-                          setCancelTarget({ contract, proposal, isPaid });
-                        }}
-                        style={{
-                          padding: "8px 14px",
-                          backgroundColor: "#FEF2F2",
-                          color: "#B91C1C",
-                          border: "1px solid #FECACA",
-                          borderRadius: "8px",
-                          fontSize: "13px",
-                          fontWeight: 700,
-                          cursor: "pointer"
-                        }}
-                      >
-                        🚫 Cancelar Viagem
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11px", color: isPaid ? "#991B1B" : "#166534", fontWeight: 600 }}>
+                          {isPaid
+                            ? `Cancelável a qualquer momento (multa de ${Math.min(10, Math.max(0, cancellationPenaltyPercent)).toFixed(0)}% após pagamento)`
+                            : "Cancelável gratuitamente antes do pagamento Pix"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelJustification("");
+                            setCancelReopen(true);
+                            setCancelTarget({ contract, proposal, isPaid });
+                          }}
+                          style={{
+                            padding: "8px 14px",
+                            backgroundColor: "#DC2626",
+                            color: "#FFFFFF",
+                            border: "1px solid #B91C1C",
+                            borderRadius: "8px",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          🚫 Cancelar Viagem
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

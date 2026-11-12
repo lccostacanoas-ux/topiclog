@@ -7,9 +7,12 @@ import { useAuth } from "../../lib/auth-context";
 import {
   listMyShipmentsApi,
   updateShipmentApi,
-  deleteShipmentApi
+  deleteShipmentApi,
+  listMyContractsApi,
+  getCancellationPolicyApi,
+  cancelContractBySenderApi
 } from "../../lib/api-client";
-import type { ShipmentSummaryDto } from "../../lib/types";
+import type { ContractDto, ShipmentSummaryDto } from "../../lib/types";
 import StarRatingDisplay from "../../components/StarRatingDisplay";
 import {
   getDemoShipments,
@@ -58,6 +61,17 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const [editPrice, setEditPrice] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Cancelamento de Viagem pelo Remetente
+  const [contractsByShipmentId, setContractsByShipmentId] = useState<Record<string, ContractDto>>({});
+  const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+  const [cancelContractTarget, setCancelContractTarget] = useState<{
+    shipment: UnifiedShipment;
+    contract: ContractDto;
+  } | null>(null);
+  const [cancelJustification, setCancelJustification] = useState<string>("");
+  const [cancelReopen, setCancelReopen] = useState<boolean>(true);
+  const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
+
   const loadShipments = useCallback(async () => {
     if (!isAuthenticated || !token) {
       setShipments([]);
@@ -74,7 +88,28 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     // 1. Carrega do Backend API se autenticado
     if (token) {
       try {
-        const res = await listMyShipmentsApi(token);
+        const [res, contractsRes, policyRes] = await Promise.all([
+          listMyShipmentsApi(token),
+          listMyContractsApi(token),
+          getCancellationPolicyApi()
+        ]);
+        if (policyRes.ok && policyRes.data) {
+          setCancellationPenaltyPercent(
+            Math.min(10, Math.max(0, Number(policyRes.data.cancellationPenaltyPercent ?? 10)))
+          );
+        }
+        if (contractsRes.ok && contractsRes.data) {
+          const map: Record<string, ContractDto> = {};
+          const prio = (st: string) =>
+            st === "ACTIVE" ? 3 : st === "AWAITING_PAYMENT" ? 2 : 1;
+          for (const c of contractsRes.data) {
+            const prev = map[c.shipmentId];
+            if (!prev || prio(c.status) >= prio(prev.status)) {
+              map[c.shipmentId] = c;
+            }
+          }
+          setContractsByShipmentId(map);
+        }
         if (res.ok && res.data) {
           const userShipments = res.data;
           for (const s of userShipments) {
@@ -315,6 +350,22 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
         </span>
       );
     }
+    if (s === "CANCELLED" || s === "CANCELED") {
+      return (
+        <span
+          style={{
+            backgroundColor: "#FEE2E2",
+            color: "#991B1B",
+            padding: "4px 10px",
+            borderRadius: "9999px",
+            fontSize: "12px",
+            fontWeight: 700
+          }}
+        >
+          🚫 Viagem Cancelada
+        </span>
+      );
+    }
     return (
       <span
         style={{
@@ -423,6 +474,23 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
           >
             <span>+ Publicar Nova Encomenda</span>
           </Link>
+        </div>
+
+        {/* Aviso claro sobre política de cancelamento pelo remetente */}
+        <div
+          style={{
+            backgroundColor: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: "10px",
+            padding: "10px 14px",
+            marginBottom: "16px",
+            fontSize: "12px",
+            color: "#78350F",
+            lineHeight: 1.5
+          }}
+        >
+          <strong>🚫 Cancelamento pelo Remetente:</strong> Você pode cancelar sua viagem a qualquer momento. Antes do pagamento Pix o cancelamento é gratuito; após o pagamento, aplica-se multa de{" "}
+          <strong>{Math.min(10, Math.max(0, cancellationPenaltyPercent)).toFixed(0)}%</strong> (até 10% do valor acordado, conforme Console Administrativo).
         </div>
 
         {/* Mensagens de Sucesso ou Alerta */}
@@ -713,6 +781,43 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                           🔐 Códigos & Acompanhamento
                         </Link>
                       )}
+
+                      {(() => {
+                        const contract = contractsByShipmentId[s.id];
+                        if (
+                          !contract ||
+                          (contract.status !== "AWAITING_PAYMENT" && contract.status !== "ACTIVE") ||
+                          s.status === "DELIVERED" ||
+                          s.status === "CANCELLED"
+                        ) {
+                          return null;
+                        }
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelJustification("");
+                              setCancelReopen(true);
+                              setCancelContractTarget({ shipment: s, contract });
+                            }}
+                            style={{
+                              padding: "6px 14px",
+                              backgroundColor: "#DC2626",
+                              border: "1px solid #B91C1C",
+                              borderRadius: "8px",
+                              color: "#FFFFFF",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px"
+                            }}
+                          >
+                            🚫 Cancelar Viagem
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     {/* Botão Rastrear / Mapa */}
@@ -926,6 +1031,189 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
             </div>
           </div>
         )}
+        {/* Modal de Cancelamento de Viagem pelo Remetente */}
+        {cancelContractTarget && (() => {
+          const isPaid = cancelContractTarget.contract.status === "ACTIVE";
+          const agreedCents = cancelContractTarget.contract.amountCents ?? cancelContractTarget.shipment.suggestedPriceCents ?? 0;
+          const pct = Math.min(10, Math.max(0, cancellationPenaltyPercent));
+          const penaltyCents = isPaid
+            ? Math.min(agreedCents, Math.round(agreedCents * (pct / 100)))
+            : 0;
+          const refundCents = Math.max(0, agreedCents - penaltyCents);
+          const fmt = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+
+          const handleConfirmCancel = async () => {
+            if (!token || submittingCancel) return;
+            setSubmittingCancel(true);
+            setErrorMessage(null);
+            const res = await cancelContractBySenderApi(
+              cancelContractTarget.contract.id,
+              {
+                justification: cancelJustification.trim() || undefined,
+                reopenForBidding: cancelReopen
+              },
+              token
+            );
+            if (res.ok && res.data) {
+              const applied = res.data.cancellation?.simulatedPenaltyCents ?? penaltyCents;
+              setSuccessMessage(
+                applied > 0
+                  ? `🚫 Viagem cancelada pelo remetente. Multa aplicada (${pct.toFixed(0)}%): R$ ${fmt(applied)}.`
+                  : "🚫 Viagem cancelada pelo remetente antes do pagamento: isento de multa."
+              );
+              setCancelContractTarget(null);
+              setCancelJustification("");
+              await loadShipments();
+            } else {
+              setErrorMessage(res.problem?.detail || "Não foi possível cancelar a viagem no momento.");
+            }
+            setSubmittingCancel(false);
+          };
+
+          return (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="encomendas-cancel-modal-title"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2100,
+                backgroundColor: "rgba(15, 23, 42, 0.65)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "16px"
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  maxWidth: "480px",
+                  width: "100%",
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.25)"
+                }}
+              >
+                <h2
+                  id="encomendas-cancel-modal-title"
+                  style={{ fontSize: "19px", fontWeight: 800, color: "#991B1B", margin: "0 0 8px 0" }}
+                >
+                  🚫 Cancelar Viagem
+                </h2>
+                <p style={{ fontSize: "13px", color: "#475569", margin: "0 0 14px 0", lineHeight: 1.5 }}>
+                  {isPaid
+                    ? "Como o pagamento Pix já foi confirmado, o cancelamento está sujeito à multa configurada no Console Administrativo (até 10% do valor acordado)."
+                    : "O pagamento Pix ainda não foi confirmado. Você pode cancelar agora sem cobrança de multa."}
+                </p>
+
+                <div
+                  style={{
+                    backgroundColor: isPaid ? "#FFFBEB" : "#F0FDF4",
+                    border: isPaid ? "1px solid #FDE68A" : "1px solid #BBF7D0",
+                    borderRadius: "10px",
+                    padding: "12px 14px",
+                    fontSize: "13px",
+                    color: isPaid ? "#78350F" : "#166534",
+                    marginBottom: "14px",
+                    display: "grid",
+                    gap: "6px"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Valor acordado do transporte:</span>
+                    <strong>R$ {fmt(agreedCents)}</strong>
+                  </div>
+                  {isPaid ? (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>Multa administrativa ({pct.toFixed(0)}%):</span>
+                        <strong style={{ color: "#B91C1C" }}>- R$ {fmt(penaltyCents)}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #FCD34D", paddingTop: "6px" }}>
+                        <span>Saldo líquido estimado:</span>
+                        <strong style={{ color: "#065F46" }}>R$ {fmt(refundCents)}</strong>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                      <span>Multa aplicável:</span>
+                      <span>Isento de multa (R$ 0,00)</span>
+                    </div>
+                  )}
+                </div>
+
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Motivo do cancelamento (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={cancelJustification}
+                  onChange={(e) => setCancelJustification(e.target.value)}
+                  placeholder="Ex.: Alteração de planos"
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "13px",
+                    marginBottom: "12px",
+                    boxSizing: "border-box"
+                  }}
+                />
+
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "13px",
+                    color: "#334155",
+                    marginBottom: "18px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={cancelReopen}
+                    onChange={(e) => setCancelReopen(e.target.checked)}
+                  />
+                  <span>Republicar encomenda no Mural para novas propostas</span>
+                </label>
+
+                <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    disabled={submittingCancel}
+                    onClick={() => setCancelContractTarget(null)}
+                    className="btn btn--outline"
+                    style={{ padding: "9px 16px", fontSize: "13px", fontWeight: 700 }}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submittingCancel}
+                    onClick={() => void handleConfirmCancel()}
+                    style={{
+                      padding: "9px 18px",
+                      borderRadius: "8px",
+                      border: "none",
+                      backgroundColor: "#DC2626",
+                      color: "#FFFFFF",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {submittingCancel ? "Cancelando..." : "Confirmar Cancelamento"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </main>
   );

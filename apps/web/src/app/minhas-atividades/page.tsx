@@ -941,6 +941,79 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                   />
                 </div>
 
+                {/* Aviso claro e botão de Cancelamento pelo Remetente */}
+                {isSender && !isDelivered && order.status !== "CLOSED" && order.contractId && (
+                  <div
+                    style={{
+                      marginBottom: "14px",
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      backgroundColor: "#FFFBEB",
+                      border: "1px solid #FDE68A",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px"
+                    }}
+                  >
+                    <div style={{ fontSize: "12px", color: "#78350F", lineHeight: 1.45, maxWidth: "600px" }}>
+                      <strong>🚫 Cancelamento pelo Remetente:</strong> Você pode cancelar esta viagem a qualquer momento. Após o pagamento, aplica-se multa de{" "}
+                      <strong>{Math.min(10, Math.max(0, cancellationPenaltyPercent)).toFixed(0)}%</strong> (até 10% conforme Console Administrativo) ={" "}
+                      <strong>
+                        R${" "}
+                        {(
+                          Math.round(
+                            (order.agreedAmountCents ?? order.amountCents ?? 0) *
+                              (Math.min(10, Math.max(0, cancellationPenaltyPercent)) / 100)
+                          ) / 100
+                        )
+                          .toFixed(2)
+                          .replace(".", ",")}
+                      </strong>
+                      .
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCancelJustification("");
+                        setCancelReopen(true);
+                        setCancelModalOrder(order);
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        borderRadius: "8px",
+                        border: "1px solid #FCA5A5",
+                        backgroundColor: "#DC2626",
+                        color: "#FFFFFF",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      🚫 Cancelar Viagem
+                    </button>
+                  </div>
+                )}
+
+                {order.status === "CLOSED" && (
+                  <div
+                    style={{
+                      marginBottom: "14px",
+                      padding: "10px 14px",
+                      borderRadius: "10px",
+                      backgroundColor: "#FEF2F2",
+                      border: "1px solid #FECACA",
+                      color: "#991B1B",
+                      fontSize: "13px",
+                      fontWeight: 700
+                    }}
+                  >
+                    🚫 Viagem cancelada pelo remetente.
+                  </div>
+                )}
+
                 {/* Rodapé com atalho do chat privado */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
                   <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -949,28 +1022,6 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                       : "O marcador do transportador aparece no mapa assim que a viagem for iniciada."}
                   </span>
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {isSender && !isDelivered && order.status !== "CLOSED" && order.contractId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCancelJustification("");
-                          setCancelReopen(true);
-                          setCancelModalOrder(order);
-                        }}
-                        style={{
-                          padding: "7px 14px",
-                          fontSize: "13px",
-                          fontWeight: 700,
-                          borderRadius: "8px",
-                          border: "1px solid #FECACA",
-                          backgroundColor: "#FEF2F2",
-                          color: "#B91C1C",
-                          cursor: "pointer"
-                        }}
-                      >
-                        🚫 Cancelar Viagem
-                      </button>
-                    )}
                     <Link
                       href="/mensagens"
                       className="btn btn--outline"
