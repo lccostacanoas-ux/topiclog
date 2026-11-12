@@ -405,13 +405,18 @@ a:focus {
   cursor: not-allowed;
 }
 
-.btn--primary {
+.btn--primary,
+.btn--primary:visited,
+.btn--primary:hover,
+.btn--primary:focus,
+.btn--primary:active {
   background-color: var(--color-primary);
-  color: var(--color-surface);
+  color: #FFFFFF !important;
 }
 
 .btn--primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
+  color: #FFFFFF !important;
 }
 
 .btn--secondary {

@@ -749,6 +749,21 @@ export async function updatePrivateProfileApi(
   request: UpdateProfileRequest,
   customCorrelationId?: string
 ): Promise<ApiFetchResult<PrivateUserProfileResponse>> {
+  if (request.cpf && !isValidCpf(request.cpf)) {
+    return {
+      ok: false,
+      status: 400,
+      isFallback: false,
+      correlationId: customCorrelationId ?? "client-validation",
+      problem: {
+        title: "CPF inválido",
+        status: 400,
+        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos.",
+        ruleCode: "INVALID_CPF"
+      }
+    };
+  }
+
   const result = await apiRequest<PrivateUserProfileResponse>("/api/v1/me", {
     method: "PATCH",
     token,

@@ -142,15 +142,20 @@ export default function MyAccountPage(): React.JSX.Element {
     setSuccessMessage(null);
     setCarrierValidationMsg(null);
 
-    if (editCpf.trim() && !isValidCpf(editCpf)) {
+    if ((!user?.cpfMasked && !editCpf.trim()) || (editCpf.trim() && !isValidCpf(editCpf))) {
       setEditCpfTouched(true);
       setProblem({
-        title: "CPF inválido",
+        title: "CPF inválido ou ausente",
         status: 400,
-        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos ou deixe o campo em branco."
+        detail: "Informe um CPF válido com 11 dígitos e dígitos verificadores corretos."
       });
       const cpfEl = document.getElementById("edit-cpf") as HTMLInputElement | null;
       cpfEl?.focus();
+      return;
+    }
+
+    if (editRoles.includes("CARRIER") && editPixKeyType === "CPF" && editPixKey.trim() && !isValidCpf(editPixKey)) {
+      setCarrierValidationMsg("A Chave Pix informada do tipo CPF é inválida. Confira os 11 dígitos.");
       return;
     }
 
@@ -263,12 +268,6 @@ export default function MyAccountPage(): React.JSX.Element {
               Olá, {user.displayName}
             </h1>
           </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <StatusPill
-              label={user.kycStatus === "VERIFIED" ? "Identidade Confirmada" : "Cadastro Ativo"}
-              tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
-            />
-          </div>
         </div>
       </header>
 
@@ -313,10 +312,6 @@ export default function MyAccountPage(): React.JSX.Element {
               : "Para passar para o status Verificado automaticamente (sem envio de documentos ou fotos), preencha todos os dados cadastrais: Nome completo, CPF válido, E-mail, Telefone e Endereço completo (CEP, Rua, Número, Bairro, Cidade e UF)."}
           </p>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <StatusPill
-              label={user.kycStatus === "VERIFIED" ? "Perfil com Selo Verificado" : "Complete seu Cadastro para Verificar"}
-              tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
-            />
             <button
               type="button"
               onClick={() => setIsEditing(true)}
@@ -892,11 +887,30 @@ export default function MyAccountPage(): React.JSX.Element {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="Ex: seu CPF ou e-mail cadastrado no Mercado Pago"
+                      maxLength={editPixKeyType === "CPF" ? 14 : undefined}
+                      placeholder={editPixKeyType === "CPF" ? "000.000.000-00" : "Ex: seu CPF ou e-mail cadastrado no Mercado Pago"}
                       value={editPixKey}
-                      onChange={e => setEditPixKey(e.target.value)}
+                      onChange={e =>
+                        setEditPixKey(editPixKeyType === "CPF" ? formatCpf(e.target.value) : e.target.value)
+                      }
                       disabled={isSaving}
                     />
+                    {editPixKeyType === "CPF" && editPixKey.replace(/\D/g, "").length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "4px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: isValidCpf(editPixKey) ? "#15803D" : "#DC2626"
+                        }}
+                      >
+                        {isValidCpf(editPixKey)
+                          ? "✓ CPF Válido (Receita Federal)"
+                          : editPixKey.replace(/\D/g, "").length < 11
+                            ? "⚠️ CPF incompleto: informe os 11 dígitos."
+                            : "⚠️ CPF Inválido: confira os números digitados."}
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>

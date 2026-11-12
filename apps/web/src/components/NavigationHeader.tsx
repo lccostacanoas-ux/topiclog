@@ -501,6 +501,7 @@ export function NavigationHeader(): React.JSX.Element {
                   fontWeight: 700,
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "#059669",
+                  color: "#FFFFFF",
                   boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)"
                 }}
               >
@@ -516,6 +517,7 @@ export function NavigationHeader(): React.JSX.Element {
                   fontWeight: 700,
                   borderRadius: "var(--radius-full)",
                   backgroundColor: "#2563EB",
+                  color: "#FFFFFF",
                   boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)"
                 }}
               >
