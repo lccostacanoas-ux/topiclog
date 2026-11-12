@@ -593,7 +593,21 @@ export default function PropostasPage(): React.JSX.Element {
     );
   }
 
-  const filteredProposals = proposals.filter((p) => {
+  const visibleProposals = proposals.filter((p) => {
+    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    if (
+      c &&
+      (c.status === "COMPLETED" ||
+        c.status === "CANCELLED_PRE_PICKUP" ||
+        c.status === "CANCELLED_POST_PICKUP" ||
+        c.status === "PAYMENT_EXPIRED")
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredProposals = visibleProposals.filter((p) => {
     if (filterType === "PENDING") return p.status === "PENDING" || p.status === "COUNTERED";
     if (filterType === "ACCEPTED") return p.status === "ACCEPTED";
     return true;
@@ -893,8 +907,82 @@ export default function PropostasPage(): React.JSX.Element {
 
                 {/* Mensagem / Observações */}
                 {proposal.notes && (
-                  <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #EDF2F7", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#334155", marginBottom: "14px" }}>
+                  <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #EDF2F7", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#334155", marginBottom: "12px" }}>
                     💬 <em>&ldquo;{proposal.notes}&rdquo;</em>
+                  </div>
+                )}
+
+                {/* Proposta do Remetente e Contrapropostas Subsequentes */}
+                {(typeof proposal.senderSuggestedPriceCents === "number" ||
+                  (proposal.negotiationHistory && proposal.negotiationHistory.length > 0)) && (
+                  <div
+                    style={{
+                      backgroundColor: "#F8FAFC",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                      marginBottom: "14px",
+                      fontSize: "12px"
+                    }}
+                  >
+                    <strong style={{ display: "block", color: "#0F172A", marginBottom: "8px", fontSize: "13px" }}>
+                      📋 Histórico da Negociação{proposal.shipmentTitle ? ` — ${proposal.shipmentTitle}` : ""}
+                    </strong>
+
+                    {typeof proposal.senderSuggestedPriceCents === "number" && (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "6px 8px",
+                          borderRadius: "6px",
+                          backgroundColor: "#FFFFFF",
+                          border: "1px solid #E2E8F0",
+                          marginBottom: "6px"
+                        }}
+                      >
+                        <span style={{ color: "#334155", fontWeight: 600 }}>
+                          📦 Valor proposto pelo Remetente ({proposal.senderName})
+                        </span>
+                        <strong style={{ color: "#0F172A" }}>
+                          R$ {(proposal.senderSuggestedPriceCents / 100).toFixed(2).replace(".", ",")}
+                        </strong>
+                      </div>
+                    )}
+
+                    {proposal.negotiationHistory && proposal.negotiationHistory.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {proposal.negotiationHistory.map((item, idx) => {
+                          const isInitial = item.eventType === "PROPOSAL_CREATED";
+                          const roleLabel = item.actorRole === "SENDER" ? "Remetente" : "Transportador";
+                          return (
+                            <div
+                              key={item.eventId || idx}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: "6px",
+                                padding: "6px 8px",
+                                borderRadius: "6px",
+                                backgroundColor: isInitial ? "#EFF6FF" : "#FEFCE8",
+                                border: `1px solid ${isInitial ? "#BFDBFE" : "#FDE68A"}`
+                              }}
+                            >
+                              <span style={{ color: "#1E293B" }}>
+                                <strong>{isInitial ? "🚚 Proposta inicial" : "🔄 Contraproposta"}</strong>{" "}
+                                ({roleLabel}: {item.actorName}) • {safeFormatDate(item.occurredAtUtc)}
+                              </span>
+                              <strong style={{ color: "#1D4ED8" }}>
+                                R$ {(item.amountCents / 100).toFixed(2).replace(".", ",")}
+                              </strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -941,8 +1029,29 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* Botões de Ação para o Remetente (quando na aba Recebidas) */}
-                {activeTab === "RECEIVED" && (isPending || isCountered) && (
+                {/* Aviso de turno quando a última oferta foi enviada pelo próprio usuário */}
+                {(isPending || isCountered) &&
+                  proposal.lastNegotiationActorId &&
+                  proposal.lastNegotiationActorId === user?.userId && (
+                    <div
+                      style={{
+                        backgroundColor: "#F8FAFC",
+                        border: "1px dashed #CBD5E1",
+                        borderRadius: "8px",
+                        padding: "10px 12px",
+                        fontSize: "13px",
+                        color: "#475569",
+                        marginBottom: "8px"
+                      }}
+                    >
+                      ⏳ <strong>Aguardando resposta da outra parte:</strong> sua {isCountered ? "contraproposta" : "proposta"} já foi enviada.
+                    </div>
+                  )}
+
+                {/* Botões de Ação para o Remetente (quando na aba Recebidas e for seu turno) */}
+                {activeTab === "RECEIVED" &&
+                  (isPending || isCountered) &&
+                  (!proposal.lastNegotiationActorId || proposal.lastNegotiationActorId !== user?.userId) && (
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button
                       type="button"
@@ -1025,8 +1134,10 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* Botões de Ação para o Transportador quando houver Contraproposta Ativa na aba Enviadas */}
-                {activeTab === "SENT" && isCountered && (
+                {/* Botões de Ação para o Transportador quando houver Contraproposta Ativa do Remetente na aba Enviadas */}
+                {activeTab === "SENT" &&
+                  isCountered &&
+                  (!proposal.lastNegotiationActorId || proposal.lastNegotiationActorId !== user?.userId) && (
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end", marginTop: "12px" }}>
                     <button
                       type="button"

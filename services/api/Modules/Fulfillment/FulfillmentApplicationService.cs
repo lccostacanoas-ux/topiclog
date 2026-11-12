@@ -904,8 +904,21 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             .GroupBy(o => o.Id)
             .Select(g => g.First())
             .Where(o =>
-                (o.Status != DeliveryOrderStatus.DELIVERED_VERIFIED && o.Status != DeliveryOrderStatus.CLOSED) ||
-                (o.DeliveredAtUtc ?? o.UpdatedAtUtc) > cutoff)
+            {
+                bool isTerminal = o.Status == DeliveryOrderStatus.DELIVERED_VERIFIED || o.Status == DeliveryOrderStatus.CLOSED;
+                if (!isTerminal) return true;
+
+                // Para o transportador, viagens encerradas/canceladas são removidas imediatamente das telas da plataforma
+                if (o.CarrierId == actorId && o.SenderId != actorId) return false;
+
+                // Para o remetente, mantém apenas se for DELIVERED_VERIFIED ainda sem avaliação (para disparo do pop-up de estrelas) dentro de 24h
+                if (o.Status == DeliveryOrderStatus.DELIVERED_VERIFIED && o.CarrierRatingStars is null)
+                {
+                    return (o.DeliveredAtUtc ?? o.UpdatedAtUtc) > cutoff;
+                }
+
+                return false;
+            })
             .OrderByDescending(o => o.CreatedAtUtc)
             .ToList();
 

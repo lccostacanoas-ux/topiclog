@@ -698,6 +698,17 @@ export interface CancellationRecordDto {
   readonly policyDisclaimer: string;
 }
 
+export interface ProposalNegotiationHistoryItemDto {
+  readonly eventId: string;
+  readonly actorId: string;
+  readonly actorRole: "SENDER" | "CARRIER" | string;
+  readonly actorName: string;
+  readonly eventType: string;
+  readonly amountCents: number;
+  readonly justification?: string | null;
+  readonly occurredAtUtc: string;
+}
+
 export interface ProposalDto {
   readonly id: string;
   readonly shipmentId: string;
@@ -718,6 +729,10 @@ export interface ProposalDto {
   readonly version: number;
   readonly carrierRatingAvg?: number;
   readonly carrierRatingCount?: number;
+  readonly shipmentTitle?: string | null;
+  readonly senderSuggestedPriceCents?: number | null;
+  readonly lastNegotiationActorId?: string | null;
+  readonly negotiationHistory?: readonly ProposalNegotiationHistoryItemDto[] | null;
   readonly createdAtUtc: string;
 }
 

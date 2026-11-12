@@ -73,7 +73,7 @@ public class PaymentMethodSetting
     public Guid Id { get; set; } = Guid.NewGuid();
     public PaymentMethodCode MethodCode { get; set; }
     public string DisplayName { get; set; } = string.Empty;
-    public string ProviderName { get; set; } = "Asaas Sandbox";
+    public string ProviderName { get; set; } = "Mercado Pago";
     public bool IsEnabled { get; set; } = true;
     public decimal FeePercent { get; set; }
     public long FixedFeeCents { get; set; }

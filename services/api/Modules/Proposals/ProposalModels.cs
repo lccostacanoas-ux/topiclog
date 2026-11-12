@@ -247,6 +247,16 @@ public sealed record CancelContractBySenderRequest(
     string? Justification = null,
     bool ReopenForBidding = true);
 
+public sealed record ProposalNegotiationHistoryItem(
+    Guid EventId,
+    Guid ActorId,
+    string ActorRole,
+    string ActorName,
+    string EventType,
+    long AmountCents,
+    string? Justification,
+    DateTimeOffset OccurredAtUtc);
+
 public sealed record ProposalResponse(
     Guid Id,
     Guid ShipmentId,
@@ -267,7 +277,11 @@ public sealed record ProposalResponse(
     int Version,
     DateTimeOffset CreatedAtUtc,
     decimal CarrierRatingAvg = 0m,
-    int CarrierRatingCount = 0);
+    int CarrierRatingCount = 0,
+    string? ShipmentTitle = null,
+    long? SenderSuggestedPriceCents = null,
+    Guid? LastNegotiationActorId = null,
+    IReadOnlyList<ProposalNegotiationHistoryItem>? NegotiationHistory = null);
 
 public sealed record ContractResponse(
     Guid Id,

@@ -132,7 +132,7 @@ export default function MensagensPage(): React.JSX.Element {
   const [protocol, setProtocol] = useState<string | null>(null);
   const [sentSuccess, setSentSuccess] = useState(false);
 
-  // Somente contratos com pagamento confirmado (ACTIVE / COMPLETED)
+  // Somente contratos ativos com pagamento confirmado (viagens encerradas removem o chat da tela)
   const [paidContracts, setPaidContracts] = useState<ContractDto[]>([]);
   const [loadingContracts, setLoadingContracts] = useState(false);
 
@@ -152,7 +152,7 @@ export default function MensagensPage(): React.JSX.Element {
           setPaidContracts(
             res.data.filter(
               (c) =>
-                (c.status === "ACTIVE" || c.status === "COMPLETED") &&
+                c.status === "ACTIVE" &&
                 (c.senderId === user.userId || c.carrierId === user.userId)
             )
           );

@@ -1206,6 +1206,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
     {
         if (list.Count == 0) return [];
         var ratings = new Dictionary<Guid, (decimal Avg, int Count)>();
+        var shipments = new Dictionary<Guid, Shipment?>();
         var results = new List<ProposalResponse>(list.Count);
         foreach (var p in list)
         {
@@ -1221,7 +1222,39 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 ratings[p.CarrierId] = rating;
             }
 
-            results.Add(MapToProposalResponse(p, rating.Avg, rating.Count));
+            if (!shipments.TryGetValue(p.ShipmentId, out var shipment))
+            {
+                shipment = await _shipmentsRepository.GetByIdAsync(p.ShipmentId, cancellationToken).ConfigureAwait(false);
+                shipments[p.ShipmentId] = shipment;
+            }
+
+            var events = await _proposalsRepository.GetEventsByProposalIdAsync(p.Id, cancellationToken).ConfigureAwait(false);
+            var negotiationEvents = events
+                .Where(e => e.EventType == ProposalEventType.PROPOSAL_CREATED || e.EventType == ProposalEventType.COUNTER_PROPOSAL_SENT)
+                .OrderBy(e => e.OccurredAtUtc)
+                .ToList();
+
+            var lastActorId = negotiationEvents.LastOrDefault()?.ActorId ?? p.CarrierId;
+            var history = negotiationEvents
+                .Select(e => new ProposalNegotiationHistoryItem(
+                    EventId: e.Id,
+                    ActorId: e.ActorId,
+                    ActorRole: e.ActorId == p.SenderId ? "SENDER" : "CARRIER",
+                    ActorName: e.ActorId == p.SenderId ? p.SenderName : p.CarrierName,
+                    EventType: e.EventType.ToString(),
+                    AmountCents: e.AmountCents > 0 ? e.AmountCents : p.AmountCents,
+                    Justification: e.Justification,
+                    OccurredAtUtc: e.OccurredAtUtc))
+                .ToList();
+
+            results.Add(MapToProposalResponse(
+                p,
+                rating.Avg,
+                rating.Count,
+                shipment?.Title,
+                shipment?.SuggestedPriceCents,
+                lastActorId,
+                history));
         }
         return results;
     }
@@ -1747,7 +1780,14 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
 
     private static ProposalResponse MapToProposalResponse(Proposal p) => MapToProposalResponse(p, 0m, 0);
 
-    private static ProposalResponse MapToProposalResponse(Proposal p, decimal carrierRatingAvg, int carrierRatingCount) => new(
+    private static ProposalResponse MapToProposalResponse(
+        Proposal p,
+        decimal carrierRatingAvg,
+        int carrierRatingCount,
+        string? shipmentTitle = null,
+        long? senderSuggestedPriceCents = null,
+        Guid? lastNegotiationActorId = null,
+        IReadOnlyList<ProposalNegotiationHistoryItem>? negotiationHistory = null) => new(
         Id: p.Id,
         ShipmentId: p.ShipmentId,
         TripId: p.TripId,
@@ -1767,7 +1807,11 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         Version: p.Version,
         CreatedAtUtc: p.CreatedAtUtc,
         CarrierRatingAvg: carrierRatingAvg,
-        CarrierRatingCount: carrierRatingCount);
+        CarrierRatingCount: carrierRatingCount,
+        ShipmentTitle: shipmentTitle,
+        SenderSuggestedPriceCents: senderSuggestedPriceCents,
+        LastNegotiationActorId: lastNegotiationActorId,
+        NegotiationHistory: negotiationHistory);
 
     private static ContractResponse MapToContractResponse(Contract c) => new(
         Id: c.Id,

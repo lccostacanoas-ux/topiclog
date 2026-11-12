@@ -170,7 +170,15 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       }
     }
 
-    setShipments(unifiedList);
+    setShipments(
+      unifiedList.filter(
+        (s) =>
+          s.status !== "DELIVERED" &&
+          s.status !== "CLOSED" &&
+          s.status !== "CANCELLED" &&
+          s.status !== "CANCELED"
+      )
+    );
     setLoading(false);
   }, [isAuthenticated, token, user]);
 

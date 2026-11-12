@@ -490,7 +490,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
         <div className="card" style={{ padding: "40px", textAlign: "center" }}>
           <p style={{ color: "#64748B", margin: 0 }}>Carregando contratos e ordens de entrega...</p>
         </div>
-      ) : orders.length === 0 ? (
+      ) : orders.filter((o) => o.status !== "DELIVERED_VERIFIED" && o.status !== "CLOSED").length === 0 ? (
         <div className="card" style={{ padding: "40px 24px", textAlign: "center", borderRadius: "14px" }}>
           <div style={{ fontSize: "44px", marginBottom: "10px" }}>🗺️</div>
           <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: "0 0 8px 0" }}>
@@ -510,7 +510,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {orders.map((order) => {
+          {orders.filter((o) => o.status !== "DELIVERED_VERIFIED" && o.status !== "CLOSED").map((order) => {
             const shipment = shipmentsById[order.shipmentId];
             const codes = codesByOrderId[order.id];
             const isSender = order.senderId === user?.userId;
