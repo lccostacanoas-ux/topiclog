@@ -8,10 +8,12 @@ using System.Text.Json;
 using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Domain;
 using TopicLog.Api.Modules.Finance;
+using TopicLog.Api.Modules.Fulfillment;
 using TopicLog.Api.Modules.Identity;
 using TopicLog.Api.Modules.Proposals;
 using TopicLog.Api.Modules.Shipments;
 using TopicLog.Api.Modules.Trips;
+using TopicLog.Api.Common;
 
 namespace TopicLog.Api.Modules.Admin;
 
@@ -27,6 +29,7 @@ public class AdminApplicationService
     private readonly ITripsRepository? _tripsRepository;
     private readonly IProposalsRepository? _proposalsRepository;
     private readonly ISubscriptionRepository? _subscriptionRepository;
+    private readonly IFulfillmentRepository? _fulfillmentRepository;
 
     public AdminApplicationService(
         IOperationalSettingsRepository settingsRepository,
@@ -38,7 +41,8 @@ public class AdminApplicationService
         IShipmentsRepository? shipmentsRepository = null,
         ITripsRepository? tripsRepository = null,
         IProposalsRepository? proposalsRepository = null,
-        ISubscriptionRepository? subscriptionRepository = null)
+        ISubscriptionRepository? subscriptionRepository = null,
+        IFulfillmentRepository? fulfillmentRepository = null)
     {
         _settingsRepository = settingsRepository;
         _vehicleRepository = vehicleRepository;
@@ -50,6 +54,7 @@ public class AdminApplicationService
         _tripsRepository = tripsRepository;
         _proposalsRepository = proposalsRepository;
         _subscriptionRepository = subscriptionRepository;
+        _fulfillmentRepository = fulfillmentRepository;
     }
 
     // ------------------------------------------------------------------------
@@ -566,6 +571,230 @@ public class AdminApplicationService
             ageYears,
             regulatoryAgeWarning,
             v.CreatedAtUtc);
+    }
+
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
+
+    // ------------------------------------------------------------------------
+    // 5. CONSULTA CENTRALIZADA DE USUÁRIOS E DILIGÊNCIAS PARA COMPLIANCE / ADMIN
+    // ------------------------------------------------------------------------
+
+    public async Task<AdminUsersListResponse> GetUsersForAdminAsync(
+        string? search = null,
+        string? roleFilter = null,
+        string? kycFilter = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_userRepository is null)
+        {
+            return new AdminUsersListResponse([], [], "InMemoryFallback");
+        }
+
+        var allUsers = await _userRepository.ListAllAsync(cancellationToken);
+        var usersList = new List<AdminUserSummaryResponse>();
+
+        string cleanSearch = search?.Trim() ?? string.Empty;
+
+        foreach (var (user, profile) in allUsers)
+        {
+            // Filtro de texto por nome, email, cpf mascarado ou cidade
+            if (!string.IsNullOrEmpty(cleanSearch))
+            {
+                bool matchName = profile.DisplayName?.Contains(cleanSearch, StringComparison.OrdinalIgnoreCase) == true;
+                bool matchEmail = user.Email?.Contains(cleanSearch, StringComparison.OrdinalIgnoreCase) == true;
+                bool matchCpf = profile.CpfMasked?.Contains(cleanSearch, StringComparison.OrdinalIgnoreCase) == true;
+                bool matchCity = profile.City?.Contains(cleanSearch, StringComparison.OrdinalIgnoreCase) == true;
+
+                if (!matchName && !matchEmail && !matchCpf && !matchCity)
+                {
+                    continue;
+                }
+            }
+
+            var rolesStrings = profile.Roles.Select(r => r.ToString()).ToList();
+            if (!string.IsNullOrEmpty(roleFilter) && !rolesStrings.Contains(roleFilter, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string kycStatusStr = profile.KycStatus.ToString();
+            if (!string.IsNullOrEmpty(kycFilter) && !string.Equals(kycStatusStr, kycFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var docs = new List<string>();
+            if (!string.IsNullOrEmpty(profile.IdentityDocumentName)) docs.Add($"Identidade: {profile.IdentityDocumentName}");
+            if (!string.IsNullOrEmpty(profile.CnhDocumentName)) docs.Add($"CNH: {profile.CnhDocumentName}");
+            if (!string.IsNullOrEmpty(profile.CrlvDocumentName)) docs.Add($"CRLV: {profile.CrlvDocumentName}");
+
+            var vehicleHistory = profile.VehicleHistory
+                .Select(vh => new AdminVehicleHistoryItem(
+                    vh.VehicleType ?? string.Empty,
+                    vh.VehicleModel ?? string.Empty,
+                    vh.VehiclePlate ?? string.Empty,
+                    vh.VehicleYear ?? string.Empty,
+                    vh.Renavam ?? string.Empty,
+                    vh.CrlvDocumentName ?? string.Empty,
+                    vh.ReplacedAtUtc.ToString("o", CultureInfo.InvariantCulture)))
+                .ToList();
+
+            var tripHistory = new List<AdminTripHistoryItem>();
+            if (_fulfillmentRepository is not null)
+            {
+                try
+                {
+                    var carrierOrders = await _fulfillmentRepository.ListOrdersByCarrierIdAsync(user.Id, cancellationToken);
+                    foreach (var o in carrierOrders)
+                    {
+                        tripHistory.Add(new AdminTripHistoryItem(
+                            o.Id.ToString(),
+                            "ENTREGA",
+                            "TRANSPORTADOR",
+                            "Viagem / Transporte de Carga",
+                            o.Status.ToString(),
+                            null,
+                            o.CarrierRatingStars,
+                            o.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture),
+                            o.DeliveredAtUtc?.ToString("o", CultureInfo.InvariantCulture) ?? o.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture)));
+                    }
+
+                    var senderOrders = await _fulfillmentRepository.ListOrdersBySenderIdAsync(user.Id, cancellationToken);
+                    foreach (var o in senderOrders)
+                    {
+                        if (tripHistory.Any(th => th.Id == o.Id.ToString())) continue;
+                        tripHistory.Add(new AdminTripHistoryItem(
+                            o.Id.ToString(),
+                            "ENTREGA",
+                            "REMETENTE",
+                            "Envio de Encomenda",
+                            o.Status.ToString(),
+                            null,
+                            o.CarrierRatingStars,
+                            o.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture),
+                            o.DeliveredAtUtc?.ToString("o", CultureInfo.InvariantCulture) ?? o.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture)));
+                    }
+                }
+                catch
+                {
+                    // Fallback silencioso em caso de leitura concorrente
+                }
+            }
+
+            usersList.Add(new AdminUserSummaryResponse(
+                user.Id.ToString(),
+                user.Email ?? string.Empty,
+                profile.DisplayName ?? string.Empty,
+                user.PhoneMasked ?? string.Empty,
+                profile.CpfMasked ?? string.Empty,
+                profile.CpfHash ?? string.Empty,
+                profile.PostalCode ?? string.Empty,
+                profile.Street ?? string.Empty,
+                profile.Number ?? string.Empty,
+                profile.Neighborhood ?? string.Empty,
+                profile.Complement ?? string.Empty,
+                profile.City ?? string.Empty,
+                profile.StateUf ?? string.Empty,
+                rolesStrings,
+                kycStatusStr,
+                user.Status.ToString(),
+                profile.TermsAcceptedVersion ?? string.Empty,
+                profile.TermsAcceptedAtUtc.ToString("o", CultureInfo.InvariantCulture),
+                profile.VehicleType ?? string.Empty,
+                profile.VehicleModel ?? string.Empty,
+                profile.VehiclePlate ?? string.Empty,
+                profile.VehicleYear ?? string.Empty,
+                profile.Renavam ?? string.Empty,
+                profile.CnhCategory ?? string.Empty,
+                profile.CnhNumber ?? string.Empty,
+                profile.PixKeyType ?? string.Empty,
+                profile.PixKey ?? string.Empty,
+                profile.BankName ?? string.Empty,
+                profile.MpAccountEmail ?? string.Empty,
+                docs,
+                vehicleHistory,
+                tripHistory,
+                user.CreatedAtUtc.ToString("o", CultureInfo.InvariantCulture),
+                profile.UpdatedAtUtc.ToString("o", CultureInfo.InvariantCulture)));
+        }
+
+        // Carregar logs recentes de diligências oficiais
+        var recentLogs = LoadDiligenceLogsSafe();
+
+        return new AdminUsersListResponse(usersList, recentLogs, StoragePathResolver.ResolveStorageDirectory());
+    }
+
+    public async Task<AdminDiligenceLogResponse> RegisterDiligenceAsync(
+        AdminUserDiligenceRequest request,
+        AuthenticatedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var logEntry = new AdminDiligenceLogResponse(
+            Guid.NewGuid().ToString("N"),
+            request.TargetUserId,
+            request.TargetDisplayName,
+            request.AuthorityOrBank,
+            request.ProtocolNumber,
+            request.Reason,
+            request.OperatorRole,
+            DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+
+        SaveDiligenceLogSafe(logEntry);
+
+        // Registro de auditoria administrativa canônica
+        string firstRole = "GENERAL_ADMIN";
+        foreach (var r in actor.Roles)
+        {
+            firstRole = r.ToString();
+            break;
+        }
+
+        await _auditRepository.RecordEventAsync(new AdminAuditEvent
+        {
+            ActorUserId = actor.UserId,
+            ActorRole = firstRole,
+            Category = "COMPLIANCE_DILIGENCE",
+            Action = "REGISTER_OFFICIAL_CONSULT",
+            EntityId = request.TargetUserId,
+            PayloadAfter = JsonSerializer.Serialize(request)
+        }, cancellationToken);
+
+        return logEntry;
+    }
+
+    private static List<AdminDiligenceLogResponse> LoadDiligenceLogsSafe()
+    {
+        try
+        {
+            string filePath = StoragePathResolver.ResolveFilePath("diligence_logs.json");
+            if (!File.Exists(filePath)) return [];
+            string raw = File.ReadAllText(filePath).Trim();
+            if (string.IsNullOrEmpty(raw)) return [];
+            return JsonSerializer.Deserialize<List<AdminDiligenceLogResponse>>(raw) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static void SaveDiligenceLogSafe(AdminDiligenceLogResponse entry)
+    {
+        try
+        {
+            string filePath = StoragePathResolver.ResolveFilePath("diligence_logs.json");
+            var list = LoadDiligenceLogsSafe();
+            list.Insert(0, entry);
+            if (list.Count > 100) list = list.Take(100).ToList();
+            string json = JsonSerializer.Serialize(list, IndentedJsonOptions);
+            StoragePathResolver.SaveFileAtomically(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Admin] Aviso ao salvar log de diligência: {ex.Message}");
+        }
     }
 
     private static PaymentMethodResponse MapPaymentMethod(PaymentMethodSetting m) => new(

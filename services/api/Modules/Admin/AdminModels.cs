@@ -224,3 +224,82 @@ public record AdminDashboardMetricsResponse(
     decimal PremiumPlanCommissionPercent,
     long PremiumMonthlyFeeCents,
     DateTimeOffset GeneratedAtUtc);
+
+public record AdminVehicleHistoryItem(
+    string VehicleType,
+    string VehicleModel,
+    string VehiclePlate,
+    string VehicleYear,
+    string Renavam,
+    string CrlvDocumentName,
+    string ReplacedAtUtc);
+
+public record AdminTripHistoryItem(
+    string Id,
+    string Kind,
+    string RoleInRecord,
+    string TitleOrRoute,
+    string Status,
+    long? AmountCents,
+    int? Stars,
+    string CreatedAtUtc,
+    string ClosedOrUpdatedAtUtc);
+
+public record AdminDiligenceLogResponse(
+    string Id,
+    string TargetUserId,
+    string TargetDisplayName,
+    string AuthorityOrBank,
+    string ProtocolNumber,
+    string Reason,
+    string OperatorRole,
+    string ConsultedAtUtc);
+
+public record AdminUserSummaryResponse(
+    string UserId,
+    string Email,
+    string DisplayName,
+    string PhoneMasked,
+    string CpfMasked,
+    string CpfHash,
+    string PostalCode,
+    string Street,
+    string Number,
+    string Neighborhood,
+    string Complement,
+    string City,
+    string StateUf,
+    IReadOnlyList<string> Roles,
+    string KycStatus,
+    string AccountStatus,
+    string TermsAcceptedVersion,
+    string TermsAcceptedAtUtc,
+    string VehicleType,
+    string VehicleModel,
+    string VehiclePlate,
+    string VehicleYear,
+    string Renavam,
+    string CnhCategory,
+    string CnhNumber,
+    string PixKeyType,
+    string PixKey,
+    string BankName,
+    string MpAccountEmail,
+    IReadOnlyList<string> DocumentsOnFile,
+    IReadOnlyList<AdminVehicleHistoryItem> VehicleHistory,
+    IReadOnlyList<AdminTripHistoryItem> TripHistory,
+    string CreatedAtUtc,
+    string UpdatedAtUtc);
+
+public record AdminUsersListResponse(
+    IReadOnlyList<AdminUserSummaryResponse> Users,
+    IReadOnlyList<AdminDiligenceLogResponse> RecentLogs,
+    string StorageSource);
+
+public record AdminUserDiligenceRequest(
+    string TargetUserId,
+    string TargetDisplayName,
+    string AuthorityOrBank,
+    string ProtocolNumber,
+    string Reason,
+    string OperatorRole);

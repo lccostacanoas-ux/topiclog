@@ -342,6 +342,48 @@ public static class AdminEndpoints
             });
         });
 
+        // 12. GET /api/v1/admin/users — Consulta unificada da base oficial de usuários para auditoria e compliance
+        group.MapGet("/users", async (
+            [FromQuery] string? q,
+            [FromQuery] string? role,
+            [FromQuery] string? kycStatus,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            AdminApplicationService adminService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            await authorization.EnsureHasAnyRoleAsync(
+                actor,
+                AllAdminRoles,
+                "ListAdminUsers",
+                httpContext.TraceIdentifier,
+                cancellationToken);
+
+            var result = await adminService.GetUsersForAdminAsync(q, role, kycStatus, cancellationToken);
+            return Results.Ok(result);
+        });
+
+        // 13. POST /api/v1/admin/users/diligence — Registro oficial de diligência na trilha central de auditoria
+        group.MapPost("/users/diligence", async (
+            [FromBody] AdminUserDiligenceRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            AdminApplicationService adminService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            await authorization.EnsureHasAnyRoleAsync(
+                actor,
+                AllAdminRoles,
+                "RegisterAdminDiligence",
+                httpContext.TraceIdentifier,
+                cancellationToken);
+
+            var created = await adminService.RegisterDiligenceAsync(request, actor, cancellationToken);
+            return Results.Ok(created);
+        });
+
         // Endpoint público somente leitura com os parâmetros atuais de multa por cancelamento configurados no Console Administrativo
         app.MapGet("/api/v1/public/cancellation-policy", async (
             IOperationalSettingsRepository settingsRepository,
