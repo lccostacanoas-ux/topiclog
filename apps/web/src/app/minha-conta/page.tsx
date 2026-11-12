@@ -9,6 +9,7 @@ import { changePasswordApi, getPublicUserCardApi, updatePrivateProfileApi } from
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
 import { BRAZILIAN_STATES, formatCep, lookupCepViaCep } from "../../lib/brazil-address";
+import { getMercadoPagoOAuthUrl } from "../../lib/mercadopago";
 import type { ProblemDetailsDto, PublicUserCardResponse, UserRole } from "../../lib/types";
 
 export default function MyAccountPage(): React.JSX.Element {
@@ -57,6 +58,42 @@ export default function MyAccountPage(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [problem, setProblem] = useState<ProblemDetailsDto | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [localMpSeller, setLocalMpSeller] = useState<{ connected: boolean; userId: string; connectedAt?: string } | null>(null);
+
+  // Escuta retorno do OAuth do Mercado Pago Marketplace
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const mpOauth = params.get("mp_oauth");
+    const mpUserId = params.get("mp_user_id");
+
+    if (user?.userId) {
+      const stored = localStorage.getItem(`topiclog_mp_connected_${user.userId}`);
+      if (stored) {
+        try {
+          setLocalMpSeller(JSON.parse(stored));
+        } catch {}
+      }
+    }
+
+    if (mpOauth === "success") {
+      const sellerData = {
+        connected: true,
+        userId: mpUserId || "conectado",
+        connectedAt: new Date().toISOString()
+      };
+      setLocalMpSeller(sellerData);
+      if (user?.userId) {
+        localStorage.setItem(`topiclog_mp_connected_${user.userId}`, JSON.stringify(sellerData));
+      }
+      setSuccessMessage(`🎉 Conta Mercado Pago vinculada com sucesso! Você agora recebe fretes com Split Automático e CUSTO ZERO de transferência.`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (mpOauth === "error") {
+      const msg = params.get("msg");
+      setCarrierValidationMsg(`Não foi possível conectar a conta Mercado Pago: ${msg || "Operação cancelada"}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [user?.userId]);
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -407,40 +444,107 @@ export default function MyAccountPage(): React.JSX.Element {
               {/* Seção de Dados Bancários para Recebimento de Repasses (Exclusivo Transportador) */}
               {user.roles.includes("CARRIER") && (
                 <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "16px" }}>💳</span>
-                    <strong style={{ fontSize: "14px", color: "#0F172A" }}>Dados Bancários para Repasse de Frete (Mercado Pago Exclusivo)</strong>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "18px" }}>⚡</span>
+                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>Recebimento de Fretes • Mercado Pago Marketplace (Split Nativo)</strong>
+                    </div>
+                    <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D", padding: "2px 8px", borderRadius: "12px", border: "1px solid #86EFAC" }}>
+                      Custo Zero de Tarifa
+                    </span>
                   </div>
-                  {user.pixKey || user.mpAccountEmail ? (
-                    <div style={{ backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "12px 14px", fontSize: "13px" }}>
-                      <p style={{ margin: "2px 0" }}>
-                        <strong>Instituição Financeira:</strong>{" "}
-                        <span style={{ fontWeight: 700, color: "#047857" }}>Mercado Pago (Banco 323 - Homologado Exclusivo)</span>
-                      </p>
-                      <p style={{ margin: "4px 0" }}>
-                        <strong>Chave Pix Mercado Pago:</strong>{" "}
-                        <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#DCFCE7", padding: "2px 8px", borderRadius: "4px", border: "1px solid #86EFAC" }}>
-                          {user.pixKey || "Não informada"}
-                        </span>{" "}
-                        ({user.pixKeyType || "CPF"})
-                      </p>
-                      {user.mpAccountEmail && (
-                        <p style={{ margin: "4px 0" }}>
-                          <strong>Conta Mercado Pago (Repasse Instantâneo):</strong> {user.mpAccountEmail}
-                        </p>
-                      )}
+
+                  {/* Bloco de Integração OAuth Marketplace (Split) */}
+                  {(user.mpSellerConnected || localMpSeller?.connected) ? (
+                    <div style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "20px" }}>✅</span>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: "13px", color: "#166534" }}>
+                              Conta Mercado Pago Conectada via OAuth
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#15803D", marginTop: "2px" }}>
+                              ID do Vendedor: <code>{user.mpSellerUserId || localMpSeller?.userId || "Ativo"}</code> • Split automático habilitado
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Deseja desconectar sua conta Mercado Pago?")) {
+                              if (user?.userId) {
+                                localStorage.removeItem(`topiclog_mp_connected_${user.userId}`);
+                              }
+                              setLocalMpSeller(null);
+                              setSuccessMessage("Conta Mercado Pago desconectada. Você pode reconectar a qualquer momento.");
+                            }
+                          }}
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#DC2626",
+                            backgroundColor: "#FEF2F2",
+                            border: "1px solid #FCA5A5",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Desconectar
+                        </button>
+                      </div>
                       <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed #BBF7D0", fontSize: "11px", color: "#166534", lineHeight: 1.4 }}>
-                        ✓ Conta habilitada para split automático de fretes conforme Política Comercial vigente (85% Transportador / 15% Topic Log) e liquidação sob custódia garantida.
+                        ✓ Quando você concluir uma viagem, o valor líquido do frete entra imediatamente na sua conta Mercado Pago sem nenhuma retenção nem tarifa de TED ou Pix.
                       </div>
                     </div>
                   ) : (
-                    <div style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", color: "#991B1B" }}>
-                      <strong>⚠️ Requisito Obrigatório: Chave Pix / Conta Mercado Pago não cadastrada.</strong>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "12px" }}>
-                        Para receber a divisão e repasse dos seus fretes, clique em <em>&ldquo;Editar Dados&rdquo;</em> e cadastre sua chave Pix ou e-mail vinculados à sua conta Mercado Pago.
-                      </p>
+                    <div style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                        <div style={{ maxWidth: "520px" }}>
+                          <div style={{ fontWeight: 800, fontSize: "13px", color: "#1E40AF" }}>
+                            Conecte sua Conta Mercado Pago para Receber com Split Automático
+                          </div>
+                          <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#1D4ED8", lineHeight: 1.4 }}>
+                            Conectando sua conta com 1 clique, você recebe os valores das entregas diretamente no seu saldo do Mercado Pago assim que o remetente confirmar a entrega, com <strong>tarifa ZERO de transferência</strong>.
+                          </p>
+                        </div>
+                        <a
+                          href={getMercadoPagoOAuthUrl(user.userId, "/minha-conta")}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            backgroundColor: "#009EE3",
+                            color: "#FFFFFF",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            textDecoration: "none",
+                            boxShadow: "0 2px 6px rgba(0, 158, 227, 0.35)",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <span>🔗</span>
+                          <span>Conectar Mercado Pago</span>
+                        </a>
+                      </div>
                     </div>
                   )}
+
+                  {/* Informações Complementares de Chave Pix Cadastrada */}
+                  {user.pixKey || user.mpAccountEmail ? (
+                    <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: "#334155" }}>
+                      <p style={{ margin: "2px 0" }}>
+                        <strong>Chave Pix de Contingência:</strong>{" "}
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#E2E8F0", padding: "2px 6px", borderRadius: "4px" }}>
+                          {user.pixKey || "Não informada"}
+                        </span>{" "}
+                        ({user.pixKeyType || "CPF"}) • <strong>E-mail:</strong> {user.mpAccountEmail || user.email || "Não informado"}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

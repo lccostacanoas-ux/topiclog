@@ -23,10 +23,10 @@ export async function POST(request: Request) {
     }
 
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
-
+    const marketplaceFee = body.marketplaceFeeReais ? Math.round(Number(body.marketplaceFeeReais) * 100) / 100 : undefined;
     const expirationIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
-    const mpPayload = {
+    const mpPayload: Record<string, unknown> = {
       transaction_amount: amount,
       description: body.description || "Frete TopicLog",
       payment_method_id: "pix",
@@ -34,13 +34,23 @@ export async function POST(request: Request) {
       payer: payerPayload
     };
 
+    // Split de Marketplace: se o vendedor (transportador) estiver conectado via OAuth ou se houver comissão
+    if (marketplaceFee && marketplaceFee > 0 && marketplaceFee < amount) {
+      // application_fee / marketplace_fee desconta a comissão da TopicLog e transfere o restante sem tarifa
+      mpPayload.application_fee = marketplaceFee;
+    }
+
+    const authHeader = body.sellerAccessToken
+      ? `Bearer ${body.sellerAccessToken}`
+      : `Bearer ${MERCADO_PAGO_CONFIG.accessToken}`;
+
     const idempotencyKey = `topiclog-pix-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
     // Chamada segura efetuada no backend (Node.js runtime sem restrição de CORS)
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${MERCADO_PAGO_CONFIG.accessToken}`,
+        Authorization: authHeader,
         "Content-Type": "application/json",
         "X-Idempotency-Key": idempotencyKey
       },
@@ -58,6 +68,8 @@ export async function POST(request: Request) {
         qrCodeBase64: txData?.qr_code_base64 || "",
         ticketUrl: txData?.ticket_url || "",
         transactionAmount: json.transaction_amount || amount,
+        marketplaceFee: marketplaceFee,
+        sellerNetReceivable: marketplaceFee ? Math.max(0, amount - marketplaceFee) : undefined,
         createdAt: json.date_created || new Date().toISOString()
       });
     }
@@ -74,10 +86,12 @@ export async function POST(request: Request) {
       qrCodeBase64: "",
       ticketUrl: "",
       transactionAmount: amount,
+      marketplaceFee: marketplaceFee,
+      sellerNetReceivable: marketplaceFee ? Math.max(0, amount - marketplaceFee) : undefined,
       createdAt: new Date().toISOString(),
       isSimulated: true
     });
-  } catch (err: unknown) {
+  } catch {
     const amount = 1.0;
     const mockId = Date.now();
     const mockPixCode = `00020126580014br.gov.bcb.pix0136topiclog-${mockId}520400005303986540${amount.toFixed(2)}5802BR5925LUIZ C COSTA LTDA6014BELO HORIZONTE62070503***6304ABCD`;

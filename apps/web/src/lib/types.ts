@@ -174,6 +174,11 @@ export interface UpdateProfileRequest {
   readonly identityDocumentData?: string;
   readonly selfieDocumentName?: string;
   readonly selfieDocumentData?: string;
+  readonly mpSellerConnected?: boolean;
+  readonly mpSellerUserId?: string;
+  readonly mpSellerEmail?: string;
+  readonly mpSellerConnectedAt?: string;
+  readonly mpSellerAccessToken?: string;
 }
 
 export interface PrivateUserProfileResponse {
@@ -219,6 +224,11 @@ export interface PrivateUserProfileResponse {
   readonly identityDocumentData?: string;
   readonly selfieDocumentName?: string;
   readonly selfieDocumentData?: string;
+  readonly mpSellerConnected?: boolean;
+  readonly mpSellerUserId?: string;
+  readonly mpSellerEmail?: string;
+  readonly mpSellerConnectedAt?: string;
+  readonly mpSellerAccessToken?: string;
   readonly createdAtUtc: string;
   readonly updatedAtUtc: string;
 }
