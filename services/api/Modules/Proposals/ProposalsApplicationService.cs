@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Domain;
 using TopicLog.Api.Modules.Finance;
 using TopicLog.Api.Modules.Fulfillment;
+using TopicLog.Api.Modules.Identity;
 using TopicLog.Api.Modules.Notifications;
 using TopicLog.Api.Modules.Shipments;
 using TopicLog.Api.Modules.Trips;
@@ -104,6 +105,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
     private readonly IFinancialPolicyProvider? _financialPolicyProvider;
     private readonly IFulfillmentApplicationService? _fulfillmentService;
     private readonly INotificationsService? _notificationsService;
+    private readonly IUserRepository? _userRepository;
 
     public ProposalsApplicationService(
         IProposalsRepository proposalsRepository,
@@ -112,7 +114,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         IOptions<TopicLog.Api.Common.Options.TopicLogOptions> options,
         IFinancialPolicyProvider? financialPolicyProvider = null,
         IFulfillmentApplicationService? fulfillmentService = null,
-        INotificationsService? notificationsService = null)
+        INotificationsService? notificationsService = null,
+        IUserRepository? userRepository = null)
     {
         _proposalsRepository = proposalsRepository ?? throw new ArgumentNullException(nameof(proposalsRepository));
         _shipmentsRepository = shipmentsRepository ?? throw new ArgumentNullException(nameof(shipmentsRepository));
@@ -121,6 +124,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         _financialPolicyProvider = financialPolicyProvider;
         _fulfillmentService = fulfillmentService;
         _notificationsService = notificationsService;
+        _userRepository = userRepository;
     }
 
     public async Task<ProposalResponse> CreateProposalAsync(
@@ -948,19 +952,45 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 list = list.Where(p => p.CarrierId == viewerUserId.Value).ToList();
             }
         }
-        return list.Select(MapToProposalResponse).ToList();
+        return await MapProposalsWithRatingsAsync(list, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ProposalResponse>> ListProposalsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default)
     {
         var list = await _proposalsRepository.ListProposalsByCarrierIdAsync(carrierId, cancellationToken);
-        return list.Select(MapToProposalResponse).ToList();
+        return await MapProposalsWithRatingsAsync(list, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ProposalResponse>> ListProposalsForSenderAsync(Guid senderId, CancellationToken cancellationToken = default)
     {
         var list = await _proposalsRepository.ListProposalsForSenderAsync(senderId, cancellationToken);
-        return list.Select(MapToProposalResponse).ToList();
+        return await MapProposalsWithRatingsAsync(list, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ProposalResponse>> MapProposalsWithRatingsAsync(
+        IReadOnlyList<Proposal> list,
+        CancellationToken cancellationToken)
+    {
+        if (list.Count == 0) return [];
+        var ratings = new Dictionary<Guid, (decimal Avg, int Count)>();
+        var results = new List<ProposalResponse>(list.Count);
+        foreach (var p in list)
+        {
+            if (!ratings.TryGetValue(p.CarrierId, out var rating))
+            {
+                if (_userRepository is not null)
+                {
+                    var found = await _userRepository.FindByIdAsync(p.CarrierId, cancellationToken);
+                    rating = found.HasValue && found.Value.Profile.RatingCount > 0
+                        ? (found.Value.Profile.RatingAvg, found.Value.Profile.RatingCount)
+                        : (0m, 0);
+                }
+                ratings[p.CarrierId] = rating;
+            }
+
+            results.Add(MapToProposalResponse(p, rating.Avg, rating.Count));
+        }
+        return results;
     }
 
     public async Task<ContractResponse?> GetContractByIdAsync(Guid contractId, Guid? viewerUserId = null, CancellationToken cancellationToken = default)
@@ -1480,7 +1510,9 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         }
     }
 
-    private static ProposalResponse MapToProposalResponse(Proposal p) => new(
+    private static ProposalResponse MapToProposalResponse(Proposal p) => MapToProposalResponse(p, 0m, 0);
+
+    private static ProposalResponse MapToProposalResponse(Proposal p, decimal carrierRatingAvg, int carrierRatingCount) => new(
         Id: p.Id,
         ShipmentId: p.ShipmentId,
         TripId: p.TripId,
@@ -1498,7 +1530,9 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         ExpiresAtUtc: p.ExpiresAtUtc,
         IsExpired: p.ExpiresAtUtc <= DateTimeOffset.UtcNow,
         Version: p.Version,
-        CreatedAtUtc: p.CreatedAtUtc);
+        CreatedAtUtc: p.CreatedAtUtc,
+        CarrierRatingAvg: carrierRatingAvg,
+        CarrierRatingCount: carrierRatingCount);
 
     private static ContractResponse MapToContractResponse(Contract c) => new(
         Id: c.Id,

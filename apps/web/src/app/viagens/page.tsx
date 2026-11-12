@@ -22,6 +22,8 @@ interface UnifiedTrip {
   carrierId: string;
   carrierName: string;
   carrierKycVerified: boolean;
+  carrierRatingAvg?: number;
+  carrierRatingCount?: number;
   vehicleType: string;
   vehicleModel: string;
   originCity: string;
@@ -99,6 +101,8 @@ export default function MuralViagensPage(): React.JSX.Element {
             carrierId: t.carrierId,
             carrierName: resolvedCarrierName,
             carrierKycVerified: t.carrierKycVerified ?? true,
+            carrierRatingAvg: t.carrierRatingAvg ?? 0,
+            carrierRatingCount: t.carrierRatingCount ?? 0,
             vehicleType: t.vehicleType,
             vehicleModel: t.vehicleModel || "Veículo Cadastrado",
             originCity: t.originCity,
@@ -729,7 +733,11 @@ export default function MuralViagensPage(): React.JSX.Element {
                         {vehicleInfo.label} • {t.vehicleModel}
                       </span>
                       <div style={{ marginTop: "4px" }}>
-                        <StarRatingDisplay size="sm" ratingAvg={null} ratingCount={0} />
+                        <StarRatingDisplay
+                          size="sm"
+                          ratingAvg={t.carrierRatingAvg ?? 0}
+                          ratingCount={t.carrierRatingCount ?? 0}
+                        />
                       </div>
                     </div>
                   </div>

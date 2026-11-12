@@ -261,7 +261,9 @@ public sealed record ProposalResponse(
     DateTimeOffset ExpiresAtUtc,
     bool IsExpired,
     int Version,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    decimal CarrierRatingAvg = 0m,
+    int CarrierRatingCount = 0);
 
 public sealed record ContractResponse(
     Guid Id,

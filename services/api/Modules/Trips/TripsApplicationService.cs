@@ -1,4 +1,5 @@
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Identity;
 
 namespace TopicLog.Api.Modules.Trips;
 
@@ -35,10 +36,12 @@ public interface ITripsApplicationService
 public sealed class TripsApplicationService : ITripsApplicationService
 {
     private readonly ITripsRepository _repository;
+    private readonly IUserRepository? _userRepository;
 
-    public TripsApplicationService(ITripsRepository repository)
+    public TripsApplicationService(ITripsRepository repository, IUserRepository? userRepository = null)
     {
         _repository = repository;
+        _userRepository = userRepository;
     }
 
     public async Task<TripResponse> CreateTripAsync(
@@ -129,7 +132,9 @@ public sealed class TripsApplicationService : ITripsApplicationService
     public async Task<TripResponse?> GetTripByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var trip = await _repository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
-        return trip is null ? null : MapToResponse(trip);
+        if (trip is null) return null;
+        var (avg, count) = await GetCarrierRatingAsync(trip.CarrierId, cancellationToken).ConfigureAwait(false);
+        return MapToResponse(trip, avg, count);
     }
 
     public async Task<IReadOnlyList<TripSummaryResponse>> ListTripsAsync(
@@ -138,23 +143,36 @@ public sealed class TripsApplicationService : ITripsApplicationService
         CancellationToken cancellationToken = default)
     {
         var list = await _repository.ListActiveAsync(originCity, destinationCity, cancellationToken).ConfigureAwait(false);
-        return list.Select(t => new TripSummaryResponse(
-            Id: t.Id,
-            CarrierId: t.CarrierId,
-            CarrierName: t.CarrierName,
-            CarrierKycVerified: t.CarrierKycVerified,
-            VehicleType: t.VehicleType.ToString(),
-            VehicleModel: t.VehicleModel,
-            OriginCity: t.OriginCity,
-            DestinationCity: t.DestinationCity,
-            IntermediateStops: t.IntermediateStops,
-            StopCount: t.IntermediateStops.Count,
-            DepartureDate: t.DepartureDate,
-            DepartureTime: t.DepartureTime,
-            AvailableCapacityGrams: t.AvailableCapacityGrams,
-            SuggestedPricePerKgCents: t.SuggestedPricePerKgCents,
-            Status: t.Status.ToString(),
-            CreatedAtUtc: t.CreatedAtUtc)).ToList();
+        var ratings = new Dictionary<Guid, (decimal Avg, int Count)>();
+        var results = new List<TripSummaryResponse>(list.Count);
+        foreach (var t in list)
+        {
+            if (!ratings.TryGetValue(t.CarrierId, out var rating))
+            {
+                rating = await GetCarrierRatingAsync(t.CarrierId, cancellationToken).ConfigureAwait(false);
+                ratings[t.CarrierId] = rating;
+            }
+            results.Add(new TripSummaryResponse(
+                Id: t.Id,
+                CarrierId: t.CarrierId,
+                CarrierName: t.CarrierName,
+                CarrierKycVerified: t.CarrierKycVerified,
+                VehicleType: t.VehicleType.ToString(),
+                VehicleModel: t.VehicleModel,
+                OriginCity: t.OriginCity,
+                DestinationCity: t.DestinationCity,
+                IntermediateStops: t.IntermediateStops,
+                StopCount: t.IntermediateStops.Count,
+                DepartureDate: t.DepartureDate,
+                DepartureTime: t.DepartureTime,
+                AvailableCapacityGrams: t.AvailableCapacityGrams,
+                SuggestedPricePerKgCents: t.SuggestedPricePerKgCents,
+                Status: t.Status.ToString(),
+                CreatedAtUtc: t.CreatedAtUtc,
+                CarrierRatingAvg: rating.Avg,
+                CarrierRatingCount: rating.Count));
+        }
+        return results;
     }
 
     public async Task<TripResponse> UpdateTripAsync(
@@ -227,7 +245,16 @@ public sealed class TripsApplicationService : ITripsApplicationService
         return await _repository.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
     }
 
-    private static TripResponse MapToResponse(Trip t) => new(
+    private async Task<(decimal Avg, int Count)> GetCarrierRatingAsync(Guid carrierId, CancellationToken cancellationToken)
+    {
+        if (_userRepository is null) return (0m, 0);
+        var found = await _userRepository.FindByIdAsync(carrierId, cancellationToken).ConfigureAwait(false);
+        if (!found.HasValue) return (0m, 0);
+        var (_, profile) = found.Value;
+        return profile.RatingCount > 0 ? (profile.RatingAvg, profile.RatingCount) : (0m, 0);
+    }
+
+    private static TripResponse MapToResponse(Trip t, decimal carrierRatingAvg = 0m, int carrierRatingCount = 0) => new(
         Id: t.Id,
         CarrierId: t.CarrierId,
         CarrierName: t.CarrierName,
@@ -245,5 +272,7 @@ public sealed class TripsApplicationService : ITripsApplicationService
         FlexiblePickup: t.FlexiblePickup,
         SuggestedPricePerKgCents: t.SuggestedPricePerKgCents,
         Status: t.Status.ToString(),
-        CreatedAtUtc: t.CreatedAtUtc);
+        CreatedAtUtc: t.CreatedAtUtc,
+        CarrierRatingAvg: carrierRatingAvg,
+        CarrierRatingCount: carrierRatingCount);
 }

@@ -82,7 +82,9 @@ public sealed record TripResponse(
     bool FlexiblePickup,
     long SuggestedPricePerKgCents,
     string Status,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    decimal CarrierRatingAvg = 0m,
+    int CarrierRatingCount = 0);
 
 public sealed record TripSummaryResponse(
     Guid Id,
@@ -100,4 +102,6 @@ public sealed record TripSummaryResponse(
     int AvailableCapacityGrams,
     long SuggestedPricePerKgCents,
     string Status,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    decimal CarrierRatingAvg = 0m,
+    int CarrierRatingCount = 0);

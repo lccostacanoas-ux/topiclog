@@ -422,6 +422,28 @@ public static class FulfillmentEndpoints
             return Results.Ok(result);
         });
 
+        // POST /api/v1/deliveries/{orderId}/rate-carrier
+        group.MapPost("/{orderId:guid}/rate-carrier", async (
+            Guid orderId,
+            [FromBody] RateCarrierRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IFulfillmentApplicationService fulfillmentService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.SENDER) ? ActorRole.SENDER : ActorRole.CARRIER;
+
+            var result = await fulfillmentService.RateCarrierAsync(
+                actor.UserId,
+                actorRole,
+                orderId,
+                request,
+                cancellationToken);
+
+            return Results.Ok(result);
+        });
+
         // GET /api/v1/opportunities/post-delivery-suggestions
         app.MapGet("/api/v1/opportunities/post-delivery-suggestions", async (
             [FromQuery] double latitude,

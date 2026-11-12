@@ -2770,6 +2770,20 @@ export async function markAllNotificationsReadApi(
   });
 }
 
+export async function rateCarrierApi(
+  orderId: string,
+  stars: number,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<DeliveryOrderDto>> {
+  return apiRequest<DeliveryOrderDto>(`/api/v1/deliveries/${orderId}/rate-carrier`, {
+    method: "POST",
+    token,
+    body: { stars },
+    customCorrelationId
+  });
+}
+
 
 
 

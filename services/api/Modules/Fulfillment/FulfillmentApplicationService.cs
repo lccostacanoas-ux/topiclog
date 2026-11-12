@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Identity;
 using TopicLog.Api.Modules.Notifications;
 using TopicLog.Api.Modules.Proposals;
 using TopicLog.Api.Modules.Shipments;
@@ -119,6 +120,13 @@ public interface IFulfillmentApplicationService
         Guid orderId,
         UpdateDeliveryLocationRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<DeliveryOrderResponse> RateCarrierAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        RateCarrierRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class FulfillmentApplicationService : IFulfillmentApplicationService
@@ -128,19 +136,22 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
     private readonly IProposalsRepository? _proposalsRepo;
     private readonly ITripsRepository? _tripsRepo;
     private readonly INotificationsService? _notificationsService;
+    private readonly IUserRepository? _userRepository;
 
     public FulfillmentApplicationService(
         IFulfillmentRepository fulfillmentRepo,
         IShipmentsRepository? shipmentsRepo = null,
         IProposalsRepository? proposalsRepo = null,
         ITripsRepository? tripsRepo = null,
-        INotificationsService? notificationsService = null)
+        INotificationsService? notificationsService = null,
+        IUserRepository? userRepository = null)
     {
         _fulfillmentRepo = fulfillmentRepo;
         _shipmentsRepo = shipmentsRepo;
         _proposalsRepo = proposalsRepo;
         _tripsRepo = tripsRepo;
         _notificationsService = notificationsService;
+        _userRepository = userRepository;
     }
 
     public async Task<DeliveryOrderResponse> PickupCheckinAsync(
@@ -1100,6 +1111,76 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         return MapOrderToResponse(order);
     }
 
+    public async Task<DeliveryOrderResponse> RateCarrierAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        RateCarrierRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Stars < 1 || request.Stars > 5)
+        {
+            throw new DomainRuleViolationException(
+                "INVALID_RATING_STARS",
+                "A avaliação deve conter entre 1 e 5 estrelas.",
+                400);
+        }
+
+        var order = await GetOrderOrThrowAsync(orderId, cancellationToken);
+        if (order.SenderId != actorId && actorRole != ActorRole.ADMIN)
+        {
+            throw new DomainRuleViolationException(
+                "AUTH_FORBIDDEN",
+                "Apenas o remetente da encomenda pode avaliar o transportador.",
+                403);
+        }
+
+        if (order.Status != DeliveryOrderStatus.DELIVERED_VERIFIED)
+        {
+            throw new DomainRuleViolationException(
+                "DELIVERY_NOT_COMPLETED",
+                "A avaliação do transportador só é permitida após a entrega confirmada.",
+                409);
+        }
+
+        if (order.CarrierRatingStars.HasValue)
+        {
+            throw new DomainRuleViolationException(
+                "CARRIER_ALREADY_RATED",
+                "Você já avaliou o transportador desta entrega.",
+                409);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        order.CarrierRatingStars = request.Stars;
+        order.CarrierRatedAtUtc = now;
+        order.UpdatedAtUtc = now;
+        await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+
+        if (_userRepository is not null)
+        {
+            var found = await _userRepository.FindByIdAsync(order.CarrierId, cancellationToken);
+            if (found.HasValue)
+            {
+                var (carrierUser, carrierProfile) = found.Value;
+                var newAvg = carrierProfile.RatingCount <= 0
+                    ? request.Stars
+                    : Math.Round(
+                        ((carrierProfile.RatingAvg * carrierProfile.RatingCount) + request.Stars) / (carrierProfile.RatingCount + 1),
+                        2,
+                        MidpointRounding.AwayFromZero);
+
+                carrierProfile.RatingAvg = newAvg;
+                carrierProfile.RatingCount += 1;
+                await _userRepository.UpdateAsync(carrierUser, carrierProfile, cancellationToken);
+            }
+        }
+
+        return MapOrderToResponse(order);
+    }
+
     private static DeliveryOrderResponse MapOrderToResponse(DeliveryOrder o)
     {
         return new DeliveryOrderResponse(
@@ -1129,7 +1210,9 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             CurrentLatitude: o.CurrentLatitude,
             CurrentLongitude: o.CurrentLongitude,
             LastLocationUpdatedAtUtc: o.LastLocationUpdatedAtUtc,
-            AmountCents: o.AmountCents);
+            AmountCents: o.AmountCents,
+            CarrierRatingStars: o.CarrierRatingStars,
+            CarrierRatedAtUtc: o.CarrierRatedAtUtc);
     }
 
     private static double HaversineDistanceKm(double lat1, double lon1, double lat2, double lon2)

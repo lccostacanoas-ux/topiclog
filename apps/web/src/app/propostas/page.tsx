@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { EmptyState } from "../../components/EmptyState";
+import { StarRatingDisplay } from "../../components/StarRatingDisplay";
 import {
   listProposalsForSenderApi,
   listProposalsByCarrierApi,
@@ -803,9 +804,17 @@ export default function PropostasPage(): React.JSX.Element {
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: "12px", color: "#94A3B8" }}>
+                    <span style={{ fontSize: "12px", color: "#94A3B8", display: "block" }}>
                       ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • Recebida em: {safeFormatDate(proposal.createdAtUtc)}
                     </span>
+                    <div style={{ marginTop: "6px" }}>
+                      <StarRatingDisplay
+                        size="sm"
+                        ratingAvg={proposal.carrierRatingAvg ?? 0}
+                        ratingCount={proposal.carrierRatingCount ?? 0}
+                        label="Avaliação do Transportador:"
+                      />
+                    </div>
                   </div>
 
                   <div style={{ textAlign: "right" }}>

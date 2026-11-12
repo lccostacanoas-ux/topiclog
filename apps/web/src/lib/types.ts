@@ -425,6 +425,8 @@ export interface ShipmentDetailDto {
   readonly insuranceInterest: InsuranceInterestDto;
   readonly status: string;
   readonly photoUrls: readonly string[];
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -444,6 +446,8 @@ export interface ShipmentSummaryDto {
   readonly deliveryWindow: string;
   readonly status: string;
   readonly photoCount: number;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -480,6 +484,8 @@ export interface TripDto {
   readonly flexiblePickup: boolean;
   readonly suggestedPricePerKgCents: number;
   readonly status: string;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -499,6 +505,8 @@ export interface TripSummaryDto {
   readonly availableCapacityGrams: number;
   readonly suggestedPricePerKgCents: number;
   readonly status: string;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -549,6 +557,8 @@ export interface NearbyShipmentOpportunityDto {
   readonly destinationCity: string;
   readonly distanceMeters: number;
   readonly isWithin2Km: boolean;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -706,6 +716,8 @@ export interface ProposalDto {
   readonly expiresAtUtc: string;
   readonly isExpired: boolean;
   readonly version: number;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 
@@ -888,6 +900,8 @@ export interface DeliveryOrderDto {
   readonly scheduledDeliveryWindowEndUtc?: string | null;
   readonly inTransitAtUtc?: string | null;
   readonly completedAtUtc?: string | null;
+  readonly carrierRatingStars?: number | null;
+  readonly carrierRatedAtUtc?: string | null;
 }
 
 export interface DeliveryChallengeDto {
@@ -1120,6 +1134,8 @@ export interface CarrierVehicleDto {
   readonly moderatedAtUtc?: string | null;
   readonly ageYears: number;
   readonly regulatoryAgeWarning: boolean;
+  readonly carrierRatingAvg?: number;
+  readonly carrierRatingCount?: number;
   readonly createdAtUtc: string;
 }
 

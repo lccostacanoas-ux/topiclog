@@ -12,7 +12,8 @@ import {
   getOrderCodesApi,
   confirmPickupApi,
   confirmDeliveryApi,
-  updateDeliveryLocationApi
+  updateDeliveryLocationApi,
+  rateCarrierApi
 } from "../../lib/api-client";
 import type {
   DeliveryOrderDto,
@@ -107,6 +108,10 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
   const [deliveryCodeInputs, setDeliveryCodeInputs] = useState<Record<string, string>>({});
   const [gpsWatchingOrderId, setGpsWatchingOrderId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [ratingModalOrder, setRatingModalOrder] = useState<DeliveryOrderDto | null>(null);
+  const [selectedRatingStars, setSelectedRatingStars] = useState<number>(5);
+  const [dismissedRatingIds, setDismissedRatingIds] = useState<Record<string, boolean>>({});
+  const [submittingRating, setSubmittingRating] = useState(false);
   const watchIdRef = useRef<number | null>(null);
 
   const loadActivities = useCallback(
@@ -183,6 +188,42 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
       }
     };
   }, []);
+
+  // Pop-up automático para o remetente avaliar o transportador assim que a entrega for concluída
+  useEffect(() => {
+    if (!user?.userId || ratingModalOrder) return;
+    const pendingRating = orders.find(
+      (o) =>
+        o.senderId === user.userId &&
+        o.status === "DELIVERED_VERIFIED" &&
+        o.carrierRatingStars == null &&
+        !dismissedRatingIds[o.id]
+    );
+    if (pendingRating) {
+      setSelectedRatingStars(5);
+      setRatingModalOrder(pendingRating);
+    }
+  }, [orders, user?.userId, ratingModalOrder, dismissedRatingIds]);
+
+  const handleSubmitCarrierRating = async () => {
+    if (!token || !ratingModalOrder || submittingRating) return;
+    setSubmittingRating(true);
+    const res = await rateCarrierApi(ratingModalOrder.id, selectedRatingStars, token);
+    if (res.ok) {
+      setBanner({
+        type: "success",
+        text: `⭐ Avaliação de ${selectedRatingStars} estrela(s) registrada para ${ratingModalOrder.carrierName || "o transportador"}!`
+      });
+      setRatingModalOrder(null);
+      await loadActivities(true);
+    } else {
+      setBanner({
+        type: "error",
+        text: res.problem?.detail || "Não foi possível registrar sua avaliação no momento."
+      });
+    }
+    setSubmittingRating(false);
+  };
 
   const handleConfirmPickup = async (order: DeliveryOrderDto) => {
     if (!token) return;
@@ -766,11 +807,54 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                       color: "#166534",
                       fontSize: "13px",
                       fontWeight: 700,
-                      marginBottom: "16px"
+                      marginBottom: "16px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "10px"
                     }}
                   >
-                    ✅ Viagem concluída e verificada com sucesso!
-                    {order.deliveredAtUtc ? ` Entregue em ${new Date(order.deliveredAtUtc).toLocaleString("pt-BR")}.` : ""}
+                    <span>
+                      ✅ Viagem concluída e verificada com sucesso!
+                      {order.deliveredAtUtc ? ` Entregue em ${new Date(order.deliveredAtUtc).toLocaleString("pt-BR")}.` : ""}
+                    </span>
+                    {isSender && order.carrierRatingStars != null && (
+                      <span
+                        style={{
+                          backgroundColor: "#FFFFFF",
+                          color: "#B45309",
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          border: "1px solid #FDE68A",
+                          fontSize: "12px",
+                          fontWeight: 800
+                        }}
+                      >
+                        {"★".repeat(order.carrierRatingStars)} {order.carrierRatingStars}/5 avaliado
+                      </span>
+                    )}
+                    {isSender && order.carrierRatingStars == null && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedRatingStars(5);
+                          setRatingModalOrder(order);
+                        }}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          border: "none",
+                          backgroundColor: "#F59E0B",
+                          color: "#FFFFFF",
+                          fontSize: "12px",
+                          fontWeight: 800,
+                          cursor: "pointer"
+                        }}
+                      >
+                        ⭐ Avaliar Transportador
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -814,6 +898,100 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Pop-up de Avaliação Exclusiva em Estrelas (1 a 5, sem comentários) para o Remetente */}
+      {ratingModalOrder && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rate-carrier-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px"
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+              padding: "28px 24px",
+              maxWidth: "420px",
+              width: "100%",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
+              textAlign: "center"
+            }}
+          >
+            <div style={{ fontSize: "40px", marginBottom: "8px" }}>⭐</div>
+            <h2
+              id="rate-carrier-modal-title"
+              style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: "0 0 8px 0" }}
+            >
+              Avalie o Transportador
+            </h2>
+            <p style={{ fontSize: "14px", color: "#475569", margin: "0 0 18px 0", lineHeight: 1.5 }}>
+              Sua entrega foi finalizada! Quantas estrelas você dá para{" "}
+              <strong>{ratingModalOrder.carrierName || "o transportador"}</strong>?
+            </p>
+
+            <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "12px" }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setSelectedRatingStars(star)}
+                  aria-label={`${star} ${star === 1 ? "estrela" : "estrelas"}`}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: "2px",
+                    cursor: "pointer",
+                    fontSize: "34px",
+                    lineHeight: 1,
+                    color: star <= selectedRatingStars ? "#F59E0B" : "#CBD5E1",
+                    transition: "transform 0.1s ease"
+                  }}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <div style={{ fontSize: "14px", fontWeight: 700, color: "#B45309", marginBottom: "20px" }}>
+              {selectedRatingStars} de 5 {selectedRatingStars === 1 ? "estrela" : "estrelas"}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+              <button
+                type="button"
+                disabled={submittingRating}
+                onClick={() => {
+                  setDismissedRatingIds((prev) => ({ ...prev, [ratingModalOrder.id]: true }));
+                  setRatingModalOrder(null);
+                }}
+                className="btn btn--outline"
+                style={{ padding: "10px 16px", fontSize: "13px", fontWeight: 700 }}
+              >
+                Agora não
+              </button>
+              <button
+                type="button"
+                disabled={submittingRating}
+                onClick={() => void handleSubmitCarrierRating()}
+                className="btn btn--primary"
+                style={{ padding: "10px 20px", fontSize: "14px", fontWeight: 700 }}
+              >
+                {submittingRating ? "Enviando..." : "Confirmar Avaliação"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

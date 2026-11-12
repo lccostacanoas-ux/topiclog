@@ -83,6 +83,8 @@ public sealed class DeliveryOrder
     public long AmountCents { get; set; }
     public DateTimeOffset? PickedUpAtUtc { get; set; }
     public DateTimeOffset? DeliveredAtUtc { get; set; }
+    public int? CarrierRatingStars { get; set; }
+    public DateTimeOffset? CarrierRatedAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -166,6 +168,9 @@ public sealed record UpdateDeliveryLocationRequest(
     double Latitude,
     double Longitude);
 
+public sealed record RateCarrierRequest(
+    int Stars);
+
 public sealed record DeliveryProofUploadRequest(
     string FileBase64OrUrl,
     string? MimeType = "image/jpeg",
@@ -223,7 +228,9 @@ public sealed record DeliveryOrderResponse(
     double? CurrentLatitude = null,
     double? CurrentLongitude = null,
     DateTimeOffset? LastLocationUpdatedAtUtc = null,
-    long AmountCents = 0);
+    long AmountCents = 0,
+    int? CarrierRatingStars = null,
+    DateTimeOffset? CarrierRatedAtUtc = null);
 
 public sealed record OrderCodesResponse(
     Guid OrderId,
