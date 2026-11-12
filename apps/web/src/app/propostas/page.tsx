@@ -403,6 +403,37 @@ export default function PropostasPage(): React.JSX.Element {
     }
   };
 
+  // Aceite pelo Transportador de uma Contraproposta enviada pelo Remetente (gera contrato AWAITING_PAYMENT para o remetente pagar em 15 min)
+  const handleCarrierAcceptCounter = async (proposal: ProposalDto) => {
+    if (!token) return;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setActionNotice(null);
+
+    try {
+      if (proposal.id.startsWith("prop-")) {
+        updateProposalStatus(proposal.id, "ACCEPTED");
+        setActionNotice("✓ Contraproposta aceita! O remetente foi notificado para efetuar o pagamento Pix.");
+        await loadData(true);
+        return;
+      }
+
+      const res = await acceptProposalApi(proposal.id, proposal.version ?? 1, token, undefined, true);
+      if (res.ok && res.data) {
+        setActionNotice("✓ Contraproposta aceita! O remetente foi notificado e tem 15 minutos para efetuar o pagamento Pix.");
+        await loadData(true);
+      } else if (res.problem) {
+        setErrorMessage(res.problem.detail || "Não foi possível aceitar a contraproposta.");
+      } else {
+        setErrorMessage("Erro ao formalizar aceite da contraproposta.");
+      }
+    } catch {
+      setErrorMessage("Erro ao processar o aceite da contraproposta.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleResumePixPayment = (proposal: ProposalDto, contract: ContractDto) => {
     setSelectedProposalForPix(proposal);
     setSelectedContractForPix(contract);
@@ -990,6 +1021,71 @@ export default function PropostasPage(): React.JSX.Element {
                       title="Excluir proposta"
                     >
                       🗑️ Excluir
+                    </button>
+                  </div>
+                )}
+
+                {/* Botões de Ação para o Transportador quando houver Contraproposta Ativa na aba Enviadas */}
+                {activeTab === "SENT" && isCountered && (
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end", marginTop: "12px" }}>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => void handleCarrierAcceptCounter(proposal)}
+                      style={{
+                        padding: "8px 18px",
+                        backgroundColor: "#059669",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}
+                    >
+                      ✓ Aceitar Contraproposta
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setCounterProposalId(proposal.id);
+                        setCounterValueInput((proposal.amountCents / 100).toFixed(2).replace(".", ","));
+                      }}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#EFF6FF",
+                        color: "#1D4ED8",
+                        border: "1px solid #BFDBFE",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      🔄 Fazer Contraproposta
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => void handleReject(proposal.id)}
+                      style={{
+                        padding: "8px 14px",
+                        backgroundColor: "#FFFFFF",
+                        color: "#DC2626",
+                        border: "1px solid #FECACA",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      ✕ Recusar
                     </button>
                   </div>
                 )}

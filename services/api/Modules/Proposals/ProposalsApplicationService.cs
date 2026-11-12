@@ -670,18 +670,23 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             await _fulfillmentService.CreateOrderForContractAsync(contract, shipment, cancellationToken);
         }
 
-        // Notifica o transportador (ou contraparte) sobre o aceite da proposta
+        // Notifica o transportador (ou o remetente, quando o transportador aceita contraproposta) sobre o aceite
         if (_notificationsService is not null)
         {
             var amountFormatted = (targetProposal.AmountCents / 100.0m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
-            var notifyRecipientId = actorId == targetProposal.SenderId ? targetProposal.CarrierId : targetProposal.SenderId;
+            bool acceptedBySender = actorId == targetProposal.SenderId;
+            var notifyRecipientId = acceptedBySender ? targetProposal.CarrierId : targetProposal.SenderId;
+            string notificationBody = deferPayment
+                ? acceptedBySender
+                    ? $"{targetProposal.SenderName} aceitou sua proposta de R$ {amountFormatted} para '{shipment.Title}'. Aguardando pagamento Pix do remetente (prazo: 15 min)."
+                    : $"{targetProposal.CarrierName} aceitou sua contraproposta de R$ {amountFormatted} para '{shipment.Title}'. Efetue o pagamento Pix em até 15 minutos para confirmar o frete."
+                : $"Sua proposta de R$ {amountFormatted} para '{shipment.Title}' foi aceita e contratada!";
+
             await _notificationsService.NotifyAsync(
                 notifyRecipientId,
                 "PROPOSAL_ACCEPTED",
                 "Proposta aceita!",
-                deferPayment
-                    ? $"{targetProposal.SenderName} aceitou sua proposta de R$ {amountFormatted} para '{shipment.Title}'. Aguardando pagamento Pix do remetente (prazo: 15 min)."
-                    : $"Sua proposta de R$ {amountFormatted} para '{shipment.Title}' foi aceita e contratada!",
+                notificationBody,
                 "/propostas",
                 relatedShipmentId: shipment.Id,
                 relatedContractId: contract.Id,
