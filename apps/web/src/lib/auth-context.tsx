@@ -204,17 +204,25 @@ export function AuthProvider({
   );
 
   const logout = useCallback(async (): Promise<void> => {
-    if (token && refreshTokenVal) {
-      try {
-        await logoutUserApi(token, { refreshToken: refreshTokenVal });
-      } catch {
-        // Encerramento local mesmo se a chamada falhar
-      }
-    }
+    const activeToken = token;
+    const activeRefreshToken = refreshTokenVal;
+
     setToken(null);
     setRefreshTokenVal(null);
     setUser(null);
     writeStoredSession(null);
+
+    if (activeToken && activeRefreshToken) {
+      try {
+        await logoutUserApi(activeToken, { refreshToken: activeRefreshToken });
+      } catch {
+        // Encerramento local garantido mesmo se a chamada de rede falhar
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.location.replace("/");
+    }
   }, [token, refreshTokenVal]);
 
   const refresh = useCallback(async (): Promise<boolean> => {

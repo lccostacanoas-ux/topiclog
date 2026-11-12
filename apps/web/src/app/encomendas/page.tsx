@@ -59,6 +59,12 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
 
   const loadShipments = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      setShipments([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
 
@@ -133,7 +139,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
 
     setShipments(unifiedList);
     setLoading(false);
-  }, [token, user]);
+  }, [isAuthenticated, token, user]);
 
   useEffect(() => {
     void loadShipments();

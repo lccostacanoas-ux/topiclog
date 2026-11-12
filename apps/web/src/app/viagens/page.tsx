@@ -15,6 +15,7 @@ import {
   type DemoTrip
 } from "../../lib/demo-marketplace-store";
 import StarRatingDisplay from "../../components/StarRatingDisplay";
+import { AuthRequiredGate } from "../../components/AuthRequiredGate";
 
 interface UnifiedTrip {
   id: string;
@@ -44,7 +45,7 @@ const VEHICLE_LABELS: Record<string, { label: string; icon: string }> = {
 
 export default function MuralViagensPage(): React.JSX.Element {
   const router = useRouter();
-  const { user, token, isAuthenticated } = useAuth();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
   const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
   const isSender = Boolean(user?.roles?.includes("SENDER") && !user?.roles?.includes("CARRIER"));
 
@@ -75,13 +76,19 @@ export default function MuralViagensPage(): React.JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const loadTrips = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      setTrips([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const unified: UnifiedTrip[] = [];
     const seenIds = new Set<string>();
 
     // 1. Carrega do Backend API
     try {
-      const res = await listTripsApi();
+      const res = await listTripsApi(undefined, token);
       if (res.ok && res.data) {
         for (const t of res.data) {
           seenIds.add(t.id);
@@ -143,7 +150,7 @@ export default function MuralViagensPage(): React.JSX.Element {
 
     setTrips(unified);
     setLoading(false);
-  }, []);
+  }, [isAuthenticated, token, user]);
 
   useEffect(() => {
     void loadTrips();
@@ -347,6 +354,15 @@ export default function MuralViagensPage(): React.JSX.Element {
     }
     return true;
   });
+
+  if (!authLoading && (!isAuthenticated || !user)) {
+    return (
+      <AuthRequiredGate
+        title="Acesse sua conta para ver o Mural de Viagens"
+        description="As viagens programadas e ofertas de transporte estão disponíveis apenas para usuários conectados na plataforma."
+      />
+    );
+  }
 
   return (
     <main

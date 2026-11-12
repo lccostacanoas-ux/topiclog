@@ -96,9 +96,9 @@ const FAQ_ITEMS: readonly FaqItem[] = [
 
 export default function HomePage(): React.JSX.Element {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const displayName = user?.displayName ? user.displayName.split(" ")[0] : null;
-  const [recentShipments, setRecentShipments] = useState<ShipmentSummaryDto[]>([]);
+  const [, setRecentShipments] = useState<ShipmentSummaryDto[]>([]);
   const [ratingsSummary, setRatingsSummary] = useState<RatingsSummary>({
     carrierCount: 0,
     carrierAvg: 0,
@@ -118,12 +118,16 @@ export default function HomePage(): React.JSX.Element {
 
   React.useEffect(() => {
     setRatingsSummary(getRatingsSummary());
+    if (!isAuthenticated || !user) {
+      setRecentShipments([]);
+      return;
+    }
     void listShipmentsApi().then((res) => {
       if (res.ok && !res.isFallback && Array.isArray(res.data)) {
         setRecentShipments(res.data.slice(0, 3));
       }
     });
-  }, []);
+  }, [isAuthenticated, user]);
 
   React.useEffect(() => {
     if (user?.roles?.includes("CARRIER")) {
@@ -262,20 +266,22 @@ export default function HomePage(): React.JSX.Element {
         )}
 
         {/* =========================================================================
-            1. BOTÕES DE AÇÃO PRINCIPAL (HERO / CTA COMPACTO E LADO A LADO)
+            1 & 2. BOTÕES DE AÇÃO E SERVIÇOS (SOMENTE QUANDO CONECTADO)
            ========================================================================= */}
-        <section
-          className="flex flex-row items-center gap-3 sm:gap-4 flex-wrap"
-          style={{
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap",
-            marginBottom: "28px"
-          }}
-          aria-label="Ações Principais Topic Log"
-        >
+        {isAuthenticated && user && (
+          <>
+            <section
+              className="flex flex-row items-center gap-3 sm:gap-4 flex-wrap"
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+                marginBottom: "28px"
+              }}
+              aria-label="Ações Principais Topic Log"
+            >
           {activeRole === "CARRIER" ? (
             <>
               {/* Botão 1 Transportador: MURAL DE ENCOMENDAS */}
@@ -826,6 +832,8 @@ export default function HomePage(): React.JSX.Element {
             )}
           </div>
         </section>
+          </>
+        )}
 
         {/* =========================================================================
             3. SEÇÃO DE REPUTAÇÃO E AVALIAÇÕES EM ESTRELAS (APARECE QUANDO HOUVER INTERAÇÃO)

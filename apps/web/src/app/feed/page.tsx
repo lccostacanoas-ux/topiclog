@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusPill } from "../../components/StatusPill";
+import { AuthRequiredGate } from "../../components/AuthRequiredGate";
 import {
   type DemoShipment,
   type DemoTrip,
@@ -61,7 +62,7 @@ type DiscoveryMode = "STANDARD" | "NEARBY" | "ON_MY_ROUTE" | "REGIONAL";
 function FeedContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, token } = useAuth();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
   const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
   const isSender = Boolean(user?.roles?.includes("SENDER"));
   const urlOrigin = searchParams.get("origem")?.trim() || "";
@@ -301,8 +302,12 @@ function FeedContent(): React.JSX.Element {
   const [shipments, setShipments] = useState<DemoShipment[]>([]);
 
   useEffect(() => {
+    if (!isAuthenticated || !token) {
+      setShipments([]);
+      return;
+    }
     let isMounted = true;
-    void listShipmentsApi().then((res) => {
+    void listShipmentsApi(undefined, token).then((res) => {
       if (isMounted && res.ok && res.data) {
         const merged: DemoShipment[] = [];
         const seenIds = new Set<string>();
@@ -350,7 +355,7 @@ function FeedContent(): React.JSX.Element {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAuthenticated, token]);
 
   // Filtragem estrita de Encomendas padrão
   const filteredShipments = shipments.filter((s) => {
@@ -512,6 +517,15 @@ function FeedContent(): React.JSX.Element {
       </div>
     );
   };
+
+  if (!authLoading && (!isAuthenticated || !user)) {
+    return (
+      <AuthRequiredGate
+        title="Acesse sua conta para ver o Mural de Encomendas"
+        description="As encomendas em aberto, rotas disponíveis e propostas estão disponíveis apenas para usuários autenticados na plataforma."
+      />
+    );
+  }
 
   return (
     <main className="container" style={{ paddingTop: "28px", paddingBottom: "64px", maxWidth: "980px" }}>

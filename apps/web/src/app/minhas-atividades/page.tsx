@@ -14,6 +14,8 @@ import {
 import { CITY_CENTROIDS } from "../../components/BrazilianAddressInput";
 import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
 import { StarRatingDisplay } from "../../components/StarRatingDisplay";
+import { AuthRequiredGate } from "../../components/AuthRequiredGate";
+import { useAuth } from "../../lib/auth-context";
 
 // Carregamento dinâmico do mapa de rotas sem SSR
 const TopicLogRouteMap = dynamic(
@@ -104,6 +106,7 @@ interface ShipmentTrackingState {
 }
 
 export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [shipments, setShipments] = useState<readonly DemoShipment[]>([]);
   const [trackingStates, setTrackingStates] = useState<Record<string, ShipmentTrackingState>>({});
   const [copiedPinId, setCopiedPinId] = useState<string | null>(null);
@@ -116,8 +119,13 @@ export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
   const [carrierDeliveryInput, setCarrierDeliveryInput] = useState<Record<string, string>>({});
   const [actionFeedback, setActionFeedback] = useState<Record<string, { success: boolean; message: string }>>({});
 
-  // Carrega encomendas publicadas do store local
+  // Carrega encomendas publicadas do store local apenas quando conectado
   useEffect(() => {
+    if (!isAuthenticated || !user) {
+      setShipments([]);
+      setTrackingStates({});
+      return;
+    }
     const list = getDemoShipments();
     setShipments(list);
 
@@ -166,7 +174,7 @@ export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
     });
 
     setTrackingStates(states);
-  }, []);
+  }, [isAuthenticated, user]);
 
   const toggleMap = (id: string) => {
     setTrackingStates((prev) => {
@@ -257,6 +265,15 @@ export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
         return 1;
     }
   };
+
+  if (!authLoading && (!isAuthenticated || !user)) {
+    return (
+      <AuthRequiredGate
+        title="Acesse sua conta para acompanhar suas encomendas"
+        description="O rastreamento e os códigos de coleta/entrega ficam disponíveis apenas para usuários autenticados na plataforma."
+      />
+    );
+  }
 
   return (
     <main className="container" style={{ paddingTop: "24px", paddingBottom: "64px", maxWidth: "900px" }}>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
+import { useAuth } from "../lib/auth-context";
 
 const NAV_ITEMS = [
   { href: "/", label: "Início", icon: "🏠" },
@@ -14,9 +15,10 @@ const NAV_ITEMS = [
 
 export function MobileBottomNav(): React.JSX.Element | null {
   const pathname = usePathname();
+  const { isAuthenticated, user } = useAuth();
 
-  // Ocultar a barra inferior mobile quando dentro do painel administrativo (/admin) ou no fluxo de publicação (/encomendas/publicar)
-  if (pathname.startsWith("/admin") || pathname.startsWith("/encomendas/publicar")) {
+  // Ocultar quando não estiver logado, ou dentro do painel administrativo (/admin) ou no fluxo de publicação (/encomendas/publicar)
+  if (!isAuthenticated || !user || pathname.startsWith("/admin") || pathname.startsWith("/encomendas/publicar")) {
     return null;
   }
 
