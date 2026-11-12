@@ -925,9 +925,11 @@ export default function RegisterPage(): React.JSX.Element {
                 </span>
               </label>
 
-              <div style={{ fontSize: "12px", color: "#1E40AF", paddingLeft: "26px", lineHeight: 1.4 }}>
-                💳 <strong>Aviso de Split e Repasse:</strong> Concordo que, para viabilizar a divisão de fretes, custódia garantida e estornos, o recebimento de valores opera exclusivamente através do <strong>Mercado Pago (Banco 323)</strong>.
-              </div>
+              {isCarrier && (
+                <div style={{ fontSize: "12px", color: "#1E40AF", paddingLeft: "26px", lineHeight: 1.4 }}>
+                  💳 <strong>Aviso de Split e Repasse:</strong> Concordo que, para viabilizar a divisão de fretes, custódia garantida e estornos, o recebimento de valores opera exclusivamente através do <strong>Mercado Pago (Banco 323)</strong>.
+                </div>
+              )}
             </div>
 
             <button

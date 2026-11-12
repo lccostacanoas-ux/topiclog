@@ -985,14 +985,13 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 ? await _operationalSettingsRepository.GetActiveSettingsAsync(cancellationToken)
                 : null;
             decimal effectivePercent = Math.Clamp(settings?.CancellationPenaltyPercent ?? 10.00m, 0m, 10.00m);
-            decimal injuredShare = settings?.CancellationInjuredPartySharePercent ?? 80.00m;
 
             penaltyCents = Math.Min(
                 contract.AmountCents,
                 (long)decimal.Round(contract.AmountCents * (effectivePercent / 100m), 0, MidpointRounding.AwayFromZero));
 
             disclaimer =
-                $"Cancelamento após pagamento efetuado pelo remetente: aplicada multa de {effectivePercent:0.##}% (máx. 10%) conforme Console Administrativo = R$ {(penaltyCents / 100m):N2} (rateio {injuredShare:0.##}% transportador / {100m - injuredShare:0.##}% plataforma).";
+                $"Cancelamento após pagamento efetuado pelo remetente: aplicada multa de {effectivePercent:0.##}% (máx. 10%) conforme Console Administrativo = R$ {(penaltyCents / 100m):N2}.";
         }
         else
         {

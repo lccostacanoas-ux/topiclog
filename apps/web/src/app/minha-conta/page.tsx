@@ -363,7 +363,7 @@ export default function MyAccountPage(): React.JSX.Element {
               <p><strong>Cidade / UF:</strong> {user.city || "Não informada"}{user.stateUf ? ` - ${user.stateUf}` : ""}</p>
               <p>
                 <strong>Meu Perfil:</strong>{" "}
-                {user.roles.map(r => (
+                {user.roles.filter(r => r === "SENDER" || r === "CARRIER").map(r => (
                   <span
                     key={r}
                     style={{
@@ -377,7 +377,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       fontSize: "12px"
                     }}
                   >
-                    {r === "SENDER" ? "Remetente" : r === "CARRIER" ? "Transportador" : "Destinatário"}
+                    {r === "SENDER" ? "Remetente" : "Transportador"}
                   </span>
                 ))}
               </p>
@@ -409,8 +409,8 @@ export default function MyAccountPage(): React.JSX.Element {
                 </div>
               )}
 
-              {/* Seção de Dados Bancários para Recebimento de Repasses */}
-              {(user.roles.includes("CARRIER") || user.pixKey || user.bankName) && (
+              {/* Seção de Dados Bancários para Recebimento de Repasses (Exclusivo Transportador) */}
+              {user.roles.includes("CARRIER") && (
                 <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E2E8F0" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
                     <span style={{ fontSize: "16px" }}>💳</span>
@@ -664,14 +664,6 @@ export default function MyAccountPage(): React.JSX.Element {
                     />
                     Transportador (Realizar transportes)
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-                    <input
-                      type="checkbox"
-                      checked={editRoles.includes("RECIPIENT")}
-                      onChange={() => handleRoleToggle("RECIPIENT")}
-                    />
-                    Destinatário (Receber)
-                  </label>
                 </div>
               </fieldset>
 
@@ -822,6 +814,8 @@ export default function MyAccountPage(): React.JSX.Element {
               )}
 
               {/* Seção Bancária e Chave Pix para Recebimento de Repasses */}
+              {/* Seção Condicional de Dados Bancários — Exclusiva para Transportador */}
+              {editRoles.includes("CARRIER") && (
               <div
                 style={{
                   backgroundColor: "#EFF6FF",
@@ -854,7 +848,7 @@ export default function MyAccountPage(): React.JSX.Element {
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, marginBottom: "4px" }}>
                     <span>⚠️</span> AVISO OBRIGATÓRIO: CONTA NO MERCADO PAGO EXIGIDA
                   </div>
-                  Para viabilizar a divisão automatizada de valores (split financeiro: 80% transportador / 20% plataforma), a retenção de segurança em custódia e eventuais devoluções imediatas, <strong>a única instituição financeira aceita é o Mercado Pago (Banco 323)</strong>. É obrigatório que tanto o transportador quanto o remetente possuam conta no Mercado Pago. Sua chave Pix e e-mail informados abaixo devem pertencer a essa conta.
+                  Para viabilizar a divisão automatizada de valores (split financeiro entre transportador e plataforma) e o repasse seguro dos fretes, <strong>a única instituição financeira aceita é o Mercado Pago (Banco 323)</strong>. É obrigatório que o transportador possua conta ativa no Mercado Pago. Sua chave Pix e e-mail informados abaixo devem pertencer a essa conta.
                 </div>
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
@@ -871,7 +865,7 @@ export default function MyAccountPage(): React.JSX.Element {
                       <option value="Mercado Pago (Banco 323)">Mercado Pago (Banco 323 - Exclusivo para Split & Repasses)</option>
                     </select>
                     <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                      Única instituição autorizada para split automático e devoluções na TopicLog.
+                      Única instituição autorizada para split automático e repasses ao transportador na TopicLog.
                     </small>
                   </div>
 
@@ -918,6 +912,7 @@ export default function MyAccountPage(): React.JSX.Element {
                   </div>
                 </div>
               </div>
+              )}
 
               {carrierValidationMsg && (
                 <div style={{ backgroundColor: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", padding: "10px 14px", color: "#991B1B", fontSize: "13px", fontWeight: 600, marginTop: "12px" }}>
