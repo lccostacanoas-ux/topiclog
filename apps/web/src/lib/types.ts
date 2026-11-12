@@ -888,6 +888,11 @@ export interface DeliveryOrderDto {
   readonly agreedAmountCents?: number;
   readonly platformFeeCents?: number;
   readonly carrierNetCents?: number;
+  readonly payoutStatus?: string | null;
+  readonly payoutAmountCents?: number | null;
+  readonly payoutTransferId?: string | null;
+  readonly payoutMessage?: string | null;
+  readonly payoutProcessedAtUtc?: string | null;
   readonly requiresPhotoProof?: boolean;
   readonly requiresCodeVerification?: boolean;
   readonly hasValidPhotoProof?: boolean;

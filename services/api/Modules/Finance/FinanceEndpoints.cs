@@ -17,6 +17,7 @@ public static class FinanceEndpoints
         services.AddSingleton<IFinancialSnapshotRepository, InMemoryFinancialSnapshotRepository>();
         services.AddSingleton<IFinancialAuditRepository, InMemoryFinancialAuditRepository>();
         services.AddSingleton<IFinancialPolicyProvider, FinancialApplicationService>();
+        services.AddSingleton<IMercadoPagoPayoutService, MercadoPagoPayoutService>();
         return services;
     }
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Finance;
 using TopicLog.Api.Modules.Identity;
 using TopicLog.Api.Modules.Notifications;
 using TopicLog.Api.Modules.Proposals;
@@ -137,6 +138,8 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
     private readonly ITripsRepository? _tripsRepo;
     private readonly INotificationsService? _notificationsService;
     private readonly IUserRepository? _userRepository;
+    private readonly IFinancialPolicyProvider? _financialPolicyProvider;
+    private readonly IMercadoPagoPayoutService? _payoutService;
 
     public FulfillmentApplicationService(
         IFulfillmentRepository fulfillmentRepo,
@@ -144,7 +147,9 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         IProposalsRepository? proposalsRepo = null,
         ITripsRepository? tripsRepo = null,
         INotificationsService? notificationsService = null,
-        IUserRepository? userRepository = null)
+        IUserRepository? userRepository = null,
+        IFinancialPolicyProvider? financialPolicyProvider = null,
+        IMercadoPagoPayoutService? payoutService = null)
     {
         _fulfillmentRepo = fulfillmentRepo;
         _shipmentsRepo = shipmentsRepo;
@@ -152,6 +157,8 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         _tripsRepo = tripsRepo;
         _notificationsService = notificationsService;
         _userRepository = userRepository;
+        _financialPolicyProvider = financialPolicyProvider;
+        _payoutService = payoutService;
     }
 
     public async Task<DeliveryOrderResponse> PickupCheckinAsync(
@@ -593,9 +600,97 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             ActorRole = actorRole.ToString(),
             PreviousStatus = prev,
             NewStatus = order.Status.ToString(),
-            Notes = $"Entrega verificada com sucesso via código de segurança / senha de 4 dígitos válido. Elegível para liberação futura de repasse (Gate G3). Observações: {request.RecipientSignatureOrNotes ?? "Nenhuma"}.",
+            Notes = $"Entrega verificada com sucesso via código de segurança / senha de 4 dígitos válido. Elegível para liberação de repasse (Gate G3). Observações: {request.RecipientSignatureOrNotes ?? "Nenhuma"}.",
             OccurredAtUtc = DateTimeOffset.UtcNow
         }, cancellationToken);
+
+        // Opção 2: Custódia na plataforma + Repasse Pix automático ao transportador na conclusão da entrega
+        if (_payoutService is not null)
+        {
+            long grossCents = order.AmountCents;
+            Guid proposalIdForSnap = Guid.Empty;
+            if (grossCents <= 0 && _proposalsRepo is not null)
+            {
+                var c = await _proposalsRepo.GetContractByIdAsync(order.ContractId, cancellationToken);
+                if (c is not null)
+                {
+                    grossCents = c.AmountCents;
+                    proposalIdForSnap = c.ProposalId;
+                }
+            }
+
+            long carrierNetCents = grossCents;
+            if (grossCents > 0 && _financialPolicyProvider is not null)
+            {
+                var snapshot = await _financialPolicyProvider.GetSnapshotByContractIdAsync(order.ContractId, cancellationToken);
+                if (snapshot is null)
+                {
+                    snapshot = await _financialPolicyProvider.CreateOrGetSnapshotForContractAsync(
+                        contractId: order.ContractId,
+                        proposalId: proposalIdForSnap,
+                        shipmentId: order.ShipmentId,
+                        carrierId: order.CarrierId,
+                        senderId: order.SenderId,
+                        amountCents: grossCents,
+                        referenceDate: order.CreatedAtUtc,
+                        cancellationToken: cancellationToken);
+                }
+                carrierNetCents = snapshot.CarrierNetCents;
+            }
+
+            if (carrierNetCents > 0)
+            {
+                var carrierUser = _userRepository is not null
+                    ? await _userRepository.FindByIdAsync(order.CarrierId, cancellationToken)
+                    : null;
+
+                var payoutResult = await _payoutService.ExecutePixPayoutAsync(
+                    new MercadoPagoPixPayoutRequest(
+                        OrderId: order.Id,
+                        ContractId: order.ContractId,
+                        CarrierId: order.CarrierId,
+                        CarrierName: order.CarrierName,
+                        PixKeyType: carrierUser?.Profile.PixKeyType,
+                        PixKey: carrierUser?.Profile.PixKey,
+                        NetAmountCents: carrierNetCents,
+                        IdempotencyKey: $"payout-{order.Id}"),
+                    cancellationToken);
+
+                order.PayoutStatus = payoutResult.Status;
+                order.PayoutAmountCents = payoutResult.AmountCents;
+                order.PayoutTransferId = payoutResult.ProviderTransferId;
+                order.PayoutMessage = payoutResult.Message;
+                order.PayoutProcessedAtUtc = DateTimeOffset.UtcNow;
+                await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+
+                await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
+                {
+                    DeliveryOrderId = order.Id,
+                    EventType = payoutResult.Status == "SUCCEEDED"
+                        ? DeliveryEventType.PAYOUT_DISPATCHED
+                        : DeliveryEventType.PAYOUT_PENDING,
+                    ActorId = actorId,
+                    ActorRole = actorRole.ToString(),
+                    PreviousStatus = order.Status.ToString(),
+                    NewStatus = order.Status.ToString(),
+                    Notes = payoutResult.Message,
+                    OccurredAtUtc = DateTimeOffset.UtcNow
+                }, cancellationToken);
+
+                if (_notificationsService != null)
+                {
+                    await _notificationsService.NotifyAsync(
+                        order.CarrierId,
+                        payoutResult.Status == "SUCCEEDED" ? "PAYOUT_DISPATCHED" : "PAYOUT_PENDING",
+                        payoutResult.Status == "SUCCEEDED" ? "Repasse Pix enviado!" : "Repasse liberado (aguardando liquidação)",
+                        payoutResult.Message,
+                        "/minhas-atividades",
+                        relatedShipmentId: order.ShipmentId,
+                        relatedContractId: order.ContractId,
+                        cancellationToken: cancellationToken);
+                }
+            }
+        }
 
         if (_notificationsService != null)
         {
@@ -1212,7 +1307,12 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             LastLocationUpdatedAtUtc: o.LastLocationUpdatedAtUtc,
             AmountCents: o.AmountCents,
             CarrierRatingStars: o.CarrierRatingStars,
-            CarrierRatedAtUtc: o.CarrierRatedAtUtc);
+            CarrierRatedAtUtc: o.CarrierRatedAtUtc,
+            PayoutStatus: o.PayoutStatus,
+            PayoutAmountCents: o.PayoutAmountCents,
+            PayoutTransferId: o.PayoutTransferId,
+            PayoutMessage: o.PayoutMessage,
+            PayoutProcessedAtUtc: o.PayoutProcessedAtUtc);
     }
 
     private static double HaversineDistanceKm(double lat1, double lon1, double lat2, double lon2)

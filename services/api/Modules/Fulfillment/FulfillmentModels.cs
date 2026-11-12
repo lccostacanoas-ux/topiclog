@@ -49,7 +49,9 @@ public enum DeliveryEventType
     DELIVERY_VERIFIED = 8,
     EXCEPTION_REPORTED = 9,
     DELIVERY_RESCHEDULED = 10,
-    RETURN_INITIATED = 11
+    RETURN_INITIATED = 11,
+    PAYOUT_DISPATCHED = 12,
+    PAYOUT_PENDING = 13
 }
 
 public sealed class DeliveryOrder
@@ -85,6 +87,11 @@ public sealed class DeliveryOrder
     public DateTimeOffset? DeliveredAtUtc { get; set; }
     public int? CarrierRatingStars { get; set; }
     public DateTimeOffset? CarrierRatedAtUtc { get; set; }
+    public string? PayoutStatus { get; set; }
+    public long? PayoutAmountCents { get; set; }
+    public string? PayoutTransferId { get; set; }
+    public string? PayoutMessage { get; set; }
+    public DateTimeOffset? PayoutProcessedAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -230,7 +237,12 @@ public sealed record DeliveryOrderResponse(
     DateTimeOffset? LastLocationUpdatedAtUtc = null,
     long AmountCents = 0,
     int? CarrierRatingStars = null,
-    DateTimeOffset? CarrierRatedAtUtc = null);
+    DateTimeOffset? CarrierRatedAtUtc = null,
+    string? PayoutStatus = null,
+    long? PayoutAmountCents = null,
+    string? PayoutTransferId = null,
+    string? PayoutMessage = null,
+    DateTimeOffset? PayoutProcessedAtUtc = null);
 
 public sealed record OrderCodesResponse(
     Guid OrderId,

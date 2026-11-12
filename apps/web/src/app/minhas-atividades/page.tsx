@@ -921,6 +921,42 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                   </div>
                 )}
 
+                {/* Status de Repasse Pix (Exclusivo para o Transportador) */}
+                {isDelivered && !isSender && order.payoutStatus && (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      backgroundColor: order.payoutStatus === "SUCCEEDED" ? "#ECFDF5" : "#FFFBEB",
+                      border: order.payoutStatus === "SUCCEEDED" ? "1px solid #6EE7B7" : "1px solid #FDE68A",
+                      color: order.payoutStatus === "SUCCEEDED" ? "#065F46" : "#92400E",
+                      fontSize: "13px",
+                      marginBottom: "16px",
+                      lineHeight: 1.45
+                    }}
+                  >
+                    <strong>
+                      {order.payoutStatus === "SUCCEEDED"
+                        ? "💸 Repasse Pix Enviado:"
+                        : order.payoutStatus === "PENDING_PIX_KEY"
+                          ? "⚠️ Chave Pix Necessária para Repasse:"
+                          : "⏳ Repasse Liberado em Custódia:"}
+                    </strong>{" "}
+                    {order.payoutMessage ||
+                      (order.payoutAmountCents
+                        ? `Valor líquido: R$ ${(order.payoutAmountCents / 100).toFixed(2).replace(".", ",")}.`
+                        : "Processado na conclusão da entrega.")}
+                    {order.payoutStatus === "PENDING_PIX_KEY" && (
+                      <>
+                        {" "}
+                        <Link href="/minha-conta" style={{ color: "#1D4ED8", fontWeight: 700, textDecoration: "underline" }}>
+                          Cadastrar chave Pix
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* Mapa de Rota e Deslocamento */}
                 <div style={{ marginBottom: "14px" }}>
                   <TopicLogRouteMap
