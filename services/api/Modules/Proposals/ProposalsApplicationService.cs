@@ -1136,14 +1136,11 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
 
     private static bool IsContractArchivedAfter24h(Contract contract, DateTimeOffset cutoff)
     {
-        var isTerminal = contract.Status is
+        return contract.Status is
             ContractStatus.COMPLETED or
             ContractStatus.CANCELLED_PRE_PICKUP or
             ContractStatus.CANCELLED_POST_PICKUP or
             ContractStatus.PAYMENT_EXPIRED;
-        if (!isTerminal) return false;
-        var terminalAt = contract.Cancellation?.CancelledAtUtc ?? contract.UpdatedAtUtc;
-        return terminalAt <= cutoff;
     }
 
     private async Task<IReadOnlyList<Proposal>> FilterActiveProposalsAsync(

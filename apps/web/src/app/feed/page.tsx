@@ -1814,6 +1814,10 @@ function FeedContent(): React.JSX.Element {
                       }, token);
 
                       if (!apiRes.ok) {
+                        if (apiRes.problem?.detail) {
+                          alert(apiRes.problem.detail);
+                          return;
+                        }
                         // Fallback resiliente para ambiente sem backend dedicado
                         const ownerSenderName = isShipment ? ((selectedItem as any).senderName || "Remetente") : (user.displayName || user.email || "Remetente");
                         const driverCarrierName = isShipment ? (user.displayName || "Transportador") : ((selectedItem as any).carrierName || "Transportador Parceiro");
