@@ -8,6 +8,8 @@ import {
   listProposalsForSenderApi,
   listProposalsByCarrierApi,
   listMyContractsApi,
+  listMyDeliveryOrdersApi,
+  getOrderCodesApi,
   acceptProposalApi,
   confirmContractPaymentApi,
   rejectProposalApi,
@@ -24,7 +26,13 @@ import {
   type DemoProposal
 } from "../../lib/demo-marketplace-store";
 import { useAuth } from "../../lib/auth-context";
-import type { ContractDto, ContractMessageDto, ProposalDto } from "../../lib/types";
+import type {
+  ContractDto,
+  ContractMessageDto,
+  ProposalDto,
+  DeliveryOrderDto,
+  OrderCodesDto
+} from "../../lib/types";
 import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
 import type { MercadoPagoPixData } from "../../lib/mercadopago";
 
@@ -212,7 +220,10 @@ export default function PropostasPage(): React.JSX.Element {
   const [proposals, setProposals] = useState<ProposalDto[]>([]);
   const [contractsByProposalId, setContractsByProposalId] = useState<Record<string, ContractDto>>({});
   const [contractsByShipmentId, setContractsByShipmentId] = useState<Record<string, ContractDto>>({});
-  const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "ACCEPTED">("ALL");
+  const [ordersByContractId, setOrdersByContractId] = useState<Record<string, DeliveryOrderDto>>({});
+  const [ordersByShipmentId, setOrdersByShipmentId] = useState<Record<string, DeliveryOrderDto>>({});
+  const [orderCodesByOrderId, setOrderCodesByOrderId] = useState<Record<string, OrderCodesDto>>({});
+  const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "AWAITING_PAYMENT" | "ACCEPTED">("ALL");
   const [counterProposalId, setCounterProposalId] = useState<string | null>(null);
   const [counterValueInput, setCounterValueInput] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -285,6 +296,34 @@ export default function PropostasPage(): React.JSX.Element {
         }
         setContractsByProposalId(byProp);
         setContractsByShipmentId(byShip);
+      }
+
+      // Carrega ordens de entrega para recuperar status e códigos de coleta/retirada
+      const ordersRes = await listMyDeliveryOrdersApi(token);
+      if (ordersRes.ok && ordersRes.data) {
+        const byContract: Record<string, DeliveryOrderDto> = {};
+        const byShipment: Record<string, DeliveryOrderDto> = {};
+        for (const o of ordersRes.data) {
+          if (o.contractId) byContract[o.contractId] = o;
+          if (o.shipmentId) byShipment[o.shipmentId] = o;
+        }
+        setOrdersByContractId(byContract);
+        setOrdersByShipmentId(byShipment);
+
+        // Se o usuário for remetente, busca os códigos de retirada/entrega das ordens ativas
+        const senderOrders = ordersRes.data.filter((o) => o.senderId === user.userId);
+        if (senderOrders.length > 0) {
+          const codesMap: Record<string, OrderCodesDto> = {};
+          await Promise.all(
+            senderOrders.map(async (o) => {
+              const cRes = await getOrderCodesApi(o.id, token);
+              if (cRes.ok && cRes.data) {
+                codesMap[o.id] = cRes.data;
+              }
+            })
+          );
+          setOrderCodesByOrderId(codesMap);
+        }
       }
 
       if (activeTab === "SENT") {
@@ -604,12 +643,31 @@ export default function PropostasPage(): React.JSX.Element {
     ) {
       return false;
     }
+    const o = (c && ordersByContractId[c.id]) || ordersByShipmentId[p.shipmentId];
+    if (o && (o.status === "DELIVERED_VERIFIED" || o.status === "CLOSED")) {
+      return false;
+    }
     return true;
   });
 
+  const awaitingPaymentCount = visibleProposals.filter((p) => {
+    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
+  }).length;
+
+  const pendingCount = visibleProposals.filter((p) => p.status === "PENDING" || p.status === "COUNTERED").length;
+
+  const acceptedCount = visibleProposals.filter((p) => {
+    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    return p.status === "ACCEPTED" && (c?.status === "ACTIVE" || c?.status === "COMPLETED");
+  }).length;
+
   const filteredProposals = visibleProposals.filter((p) => {
+    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    const isAwaiting = c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
+    if (filterType === "AWAITING_PAYMENT") return isAwaiting;
     if (filterType === "PENDING") return p.status === "PENDING" || p.status === "COUNTERED";
-    if (filterType === "ACCEPTED") return p.status === "ACCEPTED";
+    if (filterType === "ACCEPTED") return p.status === "ACCEPTED" && !isAwaiting;
     return true;
   });
 
@@ -729,8 +787,55 @@ export default function PropostasPage(): React.JSX.Element {
         </div>
       )}
 
+      {/* Banner de Aviso de Pagamento Pix Pendente para o Remetente */}
+      {awaitingPaymentCount > 0 && activeTab === "RECEIVED" && (
+        <div
+          style={{
+            backgroundColor: "#FEF3C7",
+            border: "2px solid #F59E0B",
+            borderRadius: "12px",
+            padding: "14px 18px",
+            marginBottom: "20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+            boxShadow: "0 2px 6px rgba(245, 158, 11, 0.15)"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "24px" }}>⚡</span>
+            <div>
+              <div style={{ fontWeight: 800, color: "#92400E", fontSize: "14px" }}>
+                Você tem {awaitingPaymentCount} {awaitingPaymentCount === 1 ? "proposta aceita aguardando" : "propostas aceitas aguardando"} pagamento Pix!
+              </div>
+              <div style={{ fontSize: "12px", color: "#B45309", marginTop: "2px" }}>
+                Após o pagamento Pix, o sistema confirma o frete e gera de imediato o <strong>Código de Retirada</strong> para início da viagem.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFilterType("AWAITING_PAYMENT")}
+            style={{
+              backgroundColor: "#D97706",
+              color: "#FFFFFF",
+              border: "none",
+              padding: "8px 16px",
+              borderRadius: "8px",
+              fontWeight: 700,
+              fontSize: "13px",
+              cursor: "pointer"
+            }}
+          >
+            Pagar com Pix Agora ➔
+          </button>
+        </div>
+      )}
+
       {/* Filtros de Status */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px" }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px", flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={() => setFilterType("ALL")}
@@ -745,7 +850,7 @@ export default function PropostasPage(): React.JSX.Element {
             color: filterType === "ALL" ? "#FFFFFF" : "#475569"
           }}
         >
-          Todas ({proposals.length})
+          Todas ({visibleProposals.length})
         </button>
         <button
           type="button"
@@ -761,8 +866,26 @@ export default function PropostasPage(): React.JSX.Element {
             color: filterType === "PENDING" ? "#FFFFFF" : "#475569"
           }}
         >
-          Em Negociação ({proposals.filter((p) => p.status === "PENDING" || p.status === "COUNTERED").length})
+          Em Negociação ({pendingCount})
         </button>
+        {awaitingPaymentCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilterType("AWAITING_PAYMENT")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              border: "none",
+              backgroundColor: filterType === "AWAITING_PAYMENT" ? "#D97706" : "#FEF3C7",
+              color: filterType === "AWAITING_PAYMENT" ? "#FFFFFF" : "#92400E"
+            }}
+          >
+            ⚡ Aguardando Pagamento ({awaitingPaymentCount})
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setFilterType("ACCEPTED")}
@@ -777,7 +900,7 @@ export default function PropostasPage(): React.JSX.Element {
             color: filterType === "ACCEPTED" ? "#FFFFFF" : "#475569"
           }}
         >
-          Aceitas ({proposals.filter((p) => p.status === "ACCEPTED").length})
+          Aceitas & Confirmadas ({acceptedCount})
         </button>
       </div>
 
@@ -822,6 +945,9 @@ export default function PropostasPage(): React.JSX.Element {
             const isUserSender =
               proposal.senderId === user?.userId ||
               (!proposal.senderId && activeTab === "RECEIVED");
+
+            const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
+            const orderCodes = order ? orderCodesByOrderId[order.id] : undefined;
 
             return (
               <div
@@ -1284,28 +1410,143 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
+                {/* 1º PASSO APÓS CONFIRMAÇÃO DO PAGAMENTO: CÓDIGO DE RETIRADA DA ENCOMENDA PARA INÍCIO DA VIAGEM */}
+                {isPaid && (
+                  <div style={{ marginTop: "16px" }}>
+                    {isUserSender ? (
+                      <div
+                        style={{
+                          backgroundColor: "#ECFDF5",
+                          border: "2px solid #10B981",
+                          borderRadius: "12px",
+                          padding: "16px 20px",
+                          boxShadow: "0 2px 8px rgba(16, 185, 129, 0.12)"
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                          <div>
+                            <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#047857" }}>
+                              ✓ Pagamento Confirmado • Pronto para Início da Viagem
+                            </div>
+                            <div style={{ fontSize: "16px", fontWeight: 800, color: "#065F46", marginTop: "2px" }}>
+                              📦 1º Passo: Código de Retirada da Encomenda
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "32px",
+                              fontWeight: 900,
+                              letterSpacing: "8px",
+                              color: "#065F46",
+                              backgroundColor: "#FFFFFF",
+                              padding: "6px 20px",
+                              borderRadius: "10px",
+                              border: "2px dashed #059669",
+                              fontFamily: "monospace"
+                            }}
+                          >
+                            {orderCodes?.pickupCode || "----"}
+                          </div>
+                        </div>
+
+                        <p style={{ margin: "10px 0 0 0", fontSize: "13px", color: "#047857", lineHeight: "1.5" }}>
+                          {orderCodes?.pickupConfirmed
+                            ? "✓ Coleta confirmada! O transportador já retirou o pacote e a viagem foi iniciada no mapa."
+                            : `Guarde este código. Forneça este PIN de 4 dígitos ao transportador (${proposal.carrierName}) no momento em que ele retirar o pacote físico. Ele digitará este código no aplicativo para confirmar a coleta e iniciar a viagem.`}
+                        </p>
+
+                        {orderCodes?.deliveryCode && (
+                          <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #A7F3D0", fontSize: "12px", color: "#065F46", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                            <span>
+                              <strong>2º Passo (Entrega no destino):</strong> Código Secreto de Entrega: <strong style={{ fontFamily: "monospace", fontSize: "14px", letterSpacing: "2px", backgroundColor: "#FFFFFF", padding: "2px 8px", borderRadius: "4px", border: "1px solid #A7F3D0" }}>{orderCodes.deliveryCode}</strong> (passe para quem receberá a carga).
+                            </span>
+                            <Link
+                              href="/minhas-atividades"
+                              style={{ color: "#047857", fontWeight: 700, textDecoration: "underline", fontSize: "12px" }}
+                            >
+                              Ver no Mapa em Tempo Real ➔
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          backgroundColor: "#EFF6FF",
+                          border: "2px solid #3B82F6",
+                          borderRadius: "12px",
+                          padding: "16px 20px"
+                        }}
+                      >
+                        <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#1D4ED8" }}>
+                          ✓ Pagamento Confirmado pelo Remetente
+                        </div>
+                        <div style={{ fontSize: "16px", fontWeight: 800, color: "#1E40AF", marginTop: "2px" }}>
+                          Retirada da Carga & Início da Viagem
+                        </div>
+                        <p style={{ margin: "8px 0 12px 0", fontSize: "13px", color: "#1E40AF", lineHeight: "1.5" }}>
+                          Dirija-se ao endereço de coleta do remetente ({proposal.senderName}). Ao retirar o pacote, solicite ao remetente o <strong>Código de Retirada (4 dígitos)</strong> e digite-o no sistema para validar a coleta e iniciar a viagem com rastreamento GPS.
+                        </p>
+                        <Link
+                          href="/minhas-atividades"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "8px 18px",
+                            backgroundColor: "#2563EB",
+                            color: "#FFFFFF",
+                            borderRadius: "8px",
+                            fontWeight: 700,
+                            fontSize: "13px",
+                            textDecoration: "none"
+                          }}
+                        >
+                          🚀 Digitar Código de Retirada & Iniciar Viagem
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Botões quando Aceito */}
                 {isAccepted && (
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "12px" }}>
-                    {isUserSender && isAwaitingPayment && contract && (
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "14px" }}>
+                    {isUserSender && (isAwaitingPayment || (!isPaid && proposal.status === "ACCEPTED")) && (
                       <button
                         type="button"
-                        onClick={() => handleResumePixPayment(proposal, contract)}
+                        onClick={() =>
+                          handleResumePixPayment(
+                            proposal,
+                            contract ||
+                              ({
+                                id: `contract-${proposal.id}`,
+                                proposalId: proposal.id,
+                                shipmentId: proposal.shipmentId,
+                                senderId: proposal.senderId,
+                                carrierId: proposal.carrierId,
+                                amountCents: proposal.amountCents,
+                                status: "AWAITING_PAYMENT",
+                                contractedAtUtc: new Date().toISOString()
+                              } as any)
+                          )
+                        }
                         style={{
-                          padding: "8px 16px",
+                          padding: "10px 20px",
                           backgroundColor: "#059669",
                           color: "#FFFFFF",
                           border: "none",
                           borderRadius: "8px",
-                          fontSize: "13px",
+                          fontSize: "14px",
                           fontWeight: 700,
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
-                          gap: "6px"
+                          gap: "8px",
+                          boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)"
                         }}
                       >
-                        ⚡ Concluir Pagamento Pix ({countdown || "15 min"})
+                        ⚡ Pagar Frete com Pix • Gerar QR Code ({countdown || "15 min"})
                       </button>
                     )}
 
@@ -1315,7 +1556,7 @@ export default function PropostasPage(): React.JSX.Element {
                         className="btn btn--primary"
                         style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, textDecoration: "none" }}
                       >
-                        🔐 Códigos & Acompanhamento no Mapa
+                        🔐 Acompanhar Viagem no Mapa
                       </Link>
                     )}
 
