@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import {
-  listShipmentsApi,
+  listMyShipmentsApi,
   updateShipmentApi,
   deleteShipmentApi
 } from "../../lib/api-client";
@@ -74,11 +74,9 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     // 1. Carrega do Backend API se autenticado
     if (token) {
       try {
-        const res = await listShipmentsApi(undefined, token);
+        const res = await listMyShipmentsApi(token);
         if (res.ok && res.data) {
-          const userShipments = res.data.filter(
-            (s) => !user?.userId || s.senderId === user.userId || s.senderId === "00000000-0000-0000-0000-000000000001"
-          );
+          const userShipments = res.data;
           for (const s of userShipments) {
             seenIds.add(s.id);
             unifiedList.push({
@@ -694,6 +692,27 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                       >
                         🤝 Ver Propostas
                       </Link>
+
+                      {(s.status === "CONTRACTED" || s.status === "IN_TRANSIT" || s.status === "DELIVERED") && (
+                        <Link
+                          href="/minhas-atividades"
+                          style={{
+                            padding: "6px 14px",
+                            backgroundColor: "#ECFDF5",
+                            border: "1px solid #6EE7B7",
+                            borderRadius: "8px",
+                            color: "#065F46",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px"
+                          }}
+                        >
+                          🔐 Códigos & Acompanhamento
+                        </Link>
+                      )}
                     </div>
 
                     {/* Botão Rastrear / Mapa */}

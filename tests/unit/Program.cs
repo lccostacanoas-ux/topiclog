@@ -1416,7 +1416,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.Parse("00000000-0000-0000-0000-000000000002");
@@ -1461,7 +1464,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.Parse("00000000-0000-0000-0000-000000000002");
@@ -1495,7 +1501,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.Parse("00000000-0000-0000-0000-000000000002");
@@ -1528,7 +1537,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrier1 = Guid.NewGuid();
@@ -1606,7 +1618,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -1638,7 +1653,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.NewGuid();
@@ -1712,7 +1730,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.NewGuid();
@@ -1764,7 +1785,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -1796,7 +1820,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.NewGuid();
@@ -1865,7 +1892,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.NewGuid();
@@ -1906,7 +1936,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.NewGuid();
@@ -1943,7 +1976,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -1974,7 +2010,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var thirdPartyId = Guid.NewGuid();
@@ -1998,7 +2037,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var thirdPartyId = Guid.NewGuid();
@@ -2022,7 +2064,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var carrierId = Guid.Parse("00000000-0000-0000-0000-000000000002");
@@ -2046,7 +2091,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -2075,7 +2123,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var senderId = Guid.Parse("00000000-0000-0000-0000-000000000001");
@@ -2108,7 +2159,10 @@ var tests = new List<(string Name, Action Execute)>
         var propRepo = new InMemoryProposalsRepository();
         var shipRepo = new InMemoryShipmentsRepository();
         var tripRepo = new InMemoryTripsRepository();
-        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new TopicLogOptions
+        {
+            DefaultCommercialPolicies = new CommercialPolicyOptions { FreePlanCommissionRate = 0.130000m }
+        });
         var service = new ProposalsApplicationService(propRepo, shipRepo, tripRepo, options);
 
         var shipmentId = Guid.Parse("e0000001-0000-0000-0000-000000000001");

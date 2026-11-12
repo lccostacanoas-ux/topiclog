@@ -6,9 +6,13 @@ import { EmptyState } from "../../components/EmptyState";
 import {
   listProposalsForSenderApi,
   listProposalsByCarrierApi,
+  listMyContractsApi,
   acceptProposalApi,
+  confirmContractPaymentApi,
   rejectProposalApi,
-  counterProposalApi
+  counterProposalApi,
+  listContractMessagesApi,
+  sendContractMessageApi
 } from "../../lib/api-client";
 import {
   getDemoProposals,
@@ -17,7 +21,7 @@ import {
   type DemoProposal
 } from "../../lib/demo-marketplace-store";
 import { useAuth } from "../../lib/auth-context";
-import type { ProposalDto } from "../../lib/types";
+import type { ContractDto, ContractMessageDto, ProposalDto } from "../../lib/types";
 import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
 import type { MercadoPagoPixData } from "../../lib/mercadopago";
 
@@ -27,61 +31,70 @@ function safeFormatDate(val?: string): string {
   return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
 }
 
-interface ChatMessage {
-  id: string;
-  senderName: string;
-  isCurrentUser: boolean;
-  isSystem?: boolean;
-  text: string;
-  timestamp: string;
+function formatTimeHHMM(val?: string): string {
+  if (!val) return "";
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatRemainingCountdown(expiresAtUtc?: string | null): string | null {
+  if (!expiresAtUtc) return null;
+  const diffMs = new Date(expiresAtUtc).getTime() - Date.now();
+  if (diffMs <= 0) return "Prazo expirado";
+  const mins = Math.floor(diffMs / 60000);
+  const secs = Math.floor((diffMs % 60000) / 1000);
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 function ProposalNegotiationChat({
-  proposalId,
-  currentUserName,
+  contractId,
+  token,
+  currentUserId,
   counterpartName
 }: {
-  proposalId: string;
-  currentUserName: string;
+  contractId: string;
+  token: string;
+  currentUserId: string;
   counterpartName: string;
 }): React.JSX.Element {
-  const storageKey = `topiclog_chat_prop_${proposalId}`;
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return [
-      {
-        id: "sys-init",
-        senderName: "Sistema TopicLog",
-        isCurrentUser: false,
-        isSystem: true,
-        text: "✓ Negociação fechada e pagamento confirmado pelo remetente via Mercado Pago. O chat direto entre os usuários está liberado.",
-        timestamp: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-      }
-    ];
-  });
+  const [messages, setMessages] = useState<ContractMessageDto[]>([]);
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
 
-  const handleSend = (e: React.FormEvent) => {
+  const loadMessages = useCallback(async () => {
+    if (!token || !contractId) return;
+    const res = await listContractMessagesApi(contractId, token);
+    if (res.ok && res.data) {
+      setMessages(res.data);
+      setChatError(null);
+    }
+  }, [contractId, token]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadMessages();
+    const timer = window.setInterval(() => {
+      void loadMessages();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, loadMessages]);
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    const newMsg: ChatMessage = {
-      id: "msg-" + Date.now(),
-      senderName: currentUserName,
-      isCurrentUser: true,
-      text: text.trim(),
-      timestamp: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    };
-    const updated = [...messages, newMsg];
-    setMessages(updated);
-    setText("");
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch {}
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    setChatError(null);
+    const res = await sendContractMessageApi(contractId, trimmed, token);
+    if (res.ok && res.data) {
+      setMessages((prev) => [...prev, res.data!]);
+      setText("");
+    } else {
+      setChatError(res.problem?.detail || "Não foi possível enviar a mensagem.");
+    }
+    setSending(false);
   };
 
   return (
@@ -98,13 +111,13 @@ function ProposalNegotiationChat({
           cursor: "pointer"
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           <span style={{ fontSize: "14px" }}>💬</span>
           <strong style={{ fontSize: "13px", color: "#1E40AF" }}>
-            Chat da Negociação Fechada ({counterpartName})
+            Chat Privado da Entrega ({counterpartName})
           </strong>
           <span style={{ fontSize: "11px", backgroundColor: "#D1FAE5", color: "#065F46", padding: "2px 8px", borderRadius: "12px", fontWeight: 700 }}>
-            ✓ Pagamento Confirmado
+            ✓ Pagamento Confirmado • Somente Vocês 2
           </span>
         </div>
         <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 600 }}>
@@ -114,16 +127,12 @@ function ProposalNegotiationChat({
 
       {isOpen && (
         <div style={{ padding: "12px" }}>
-          <div style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "10px", paddingRight: "4px" }}>
+          <div style={{ maxHeight: "220px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "10px", paddingRight: "4px" }}>
+            <div style={{ textAlign: "center", padding: "6px 12px", backgroundColor: "#E2E8F0", borderRadius: "6px", fontSize: "11px", color: "#475569", fontWeight: 600, margin: "4px 0" }}>
+              ✓ Pagamento Pix confirmado. Este chat direto é exclusivo entre remetente e transportador contratado.
+            </div>
             {messages.map((m) => {
-              if (m.isSystem) {
-                return (
-                  <div key={m.id} style={{ textAlign: "center", padding: "6px 12px", backgroundColor: "#E2E8F0", borderRadius: "6px", fontSize: "11px", color: "#475569", fontWeight: 600, margin: "4px 0" }}>
-                    {m.text}
-                  </div>
-                );
-              }
-              const isMine = m.isCurrentUser || m.senderName === currentUserName;
+              const isMine = m.senderUserId === currentUserId;
               return (
                 <div
                   key={m.id}
@@ -140,21 +149,28 @@ function ProposalNegotiationChat({
                   }}
                 >
                   <div style={{ fontSize: "10px", fontWeight: 700, color: isMine ? "#BFDBFE" : "#64748B", marginBottom: "2px", display: "flex", justifyContent: "space-between", gap: "8px" }}>
-                    <span>{isMine ? "Você" : m.senderName}</span>
-                    <span>{m.timestamp}</span>
+                    <span>{isMine ? "Você" : (m.senderName || counterpartName)}</span>
+                    <span>{formatTimeHHMM(m.sentAtUtc)}</span>
                   </div>
-                  <div>{m.text}</div>
+                  <div>{m.body}</div>
                 </div>
               );
             })}
           </div>
 
-          <form onSubmit={handleSend} style={{ display: "flex", gap: "8px" }}>
+          {chatError && (
+            <div style={{ fontSize: "12px", color: "#DC2626", marginBottom: "8px" }}>
+              {chatError}
+            </div>
+          )}
+
+          <form onSubmit={(e) => void handleSend(e)} style={{ display: "flex", gap: "8px" }}>
             <input
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Digite sua mensagem sobre esta entrega..."
+              placeholder="Digite sua mensagem privada sobre coleta ou entrega..."
+              disabled={sending}
               style={{
                 flex: 1,
                 padding: "8px 12px",
@@ -167,9 +183,10 @@ function ProposalNegotiationChat({
             <button
               type="submit"
               className="btn btn--primary"
+              disabled={sending || !text.trim()}
               style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, whiteSpace: "nowrap" }}
             >
-              Enviar
+              {sending ? "Enviando..." : "Enviar"}
             </button>
           </form>
         </div>
@@ -179,7 +196,7 @@ function ProposalNegotiationChat({
 }
 
 export default function PropostasPage(): React.JSX.Element {
-  const { user, token, isAuthenticated, isLoading: authLoading, refresh, logout } = useAuth();
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
   const isSender = Boolean(user?.roles?.includes("SENDER"));
@@ -190,6 +207,8 @@ export default function PropostasPage(): React.JSX.Element {
   );
 
   const [proposals, setProposals] = useState<ProposalDto[]>([]);
+  const [contractsByProposalId, setContractsByProposalId] = useState<Record<string, ContractDto>>({});
+  const [contractsByShipmentId, setContractsByShipmentId] = useState<Record<string, ContractDto>>({});
   const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "ACCEPTED">("ALL");
   const [counterProposalId, setCounterProposalId] = useState<string | null>(null);
   const [counterValueInput, setCounterValueInput] = useState<string>("");
@@ -199,33 +218,48 @@ export default function PropostasPage(): React.JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [pixModalOpen, setPixModalOpen] = useState(false);
   const [selectedProposalForPix, setSelectedProposalForPix] = useState<ProposalDto | null>(null);
+  const [selectedContractForPix, setSelectedContractForPix] = useState<ContractDto | null>(null);
+  const [, setClockTick] = useState(0);
 
-  const openPaymentModal = (proposal: ProposalDto) => {
-    setSelectedProposalForPix(proposal);
-    setPixModalOpen(true);
-  };
+  useEffect(() => {
+    const t = window.setInterval(() => setClockTick((v) => v + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
 
-  const handlePixSuccess = async (paymentData: MercadoPagoPixData) => {
-    if (!selectedProposalForPix) return;
-    await handleAccept(selectedProposalForPix);
-    setActionNotice(`✓ Pagamento Pix de R$ ${(selectedProposalForPix.amountCents / 100).toFixed(2).replace(".", ",")} confirmado com sucesso pelo Mercado Pago! O valor está em custódia segura na Topic Log.`);
-    setPixModalOpen(false);
-  };
-
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     if (!token || !user) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setErrorMessage(null);
 
     const unifiedList: ProposalDto[] = [];
     const seenIds = new Set<string>();
 
     try {
+      const contractsRes = await listMyContractsApi(token);
+      if (contractsRes.ok && contractsRes.data) {
+        const byProp: Record<string, ContractDto> = {};
+        const byShip: Record<string, ContractDto> = {};
+        const priority = (s: string) =>
+          s === "ACTIVE" || s === "COMPLETED" ? 3 : s === "AWAITING_PAYMENT" ? 2 : 1;
+
+        for (const c of contractsRes.data) {
+          const prevP = byProp[c.proposalId];
+          if (!prevP || priority(c.status) >= priority(prevP.status)) {
+            byProp[c.proposalId] = c;
+          }
+          const prevS = byShip[c.shipmentId];
+          if (!prevS || priority(c.status) >= priority(prevS.status)) {
+            byShip[c.shipmentId] = c;
+          }
+        }
+        setContractsByProposalId(byProp);
+        setContractsByShipmentId(byShip);
+      }
+
       if (activeTab === "SENT") {
-        // Busca propostas que o usuário enviou como Transportador
         const res = await listProposalsByCarrierApi(user.userId, token);
         if (res.ok && res.data) {
           for (const p of res.data) {
@@ -234,7 +268,6 @@ export default function PropostasPage(): React.JSX.Element {
           }
         }
       } else {
-        // Busca propostas recebidas para as cargas do usuário como Remetente
         const res = await listProposalsForSenderApi(user.userId, token);
         if (res.ok && res.data) {
           for (const p of res.data) {
@@ -247,7 +280,6 @@ export default function PropostasPage(): React.JSX.Element {
       console.warn("Aviso ao buscar propostas da API:", err);
     }
 
-    // Mescla com propostas locais apenas em ambiente de desenvolvimento local (localhost)
     const isLocalHost =
       typeof window !== "undefined" &&
       (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
@@ -288,7 +320,7 @@ export default function PropostasPage(): React.JSX.Element {
 
     setProposals(unifiedList);
     setLoading(false);
-  }, [token, user, activeTab]);
+  }, [token, user, activeTab, isCarrier, isSender]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -298,8 +330,8 @@ export default function PropostasPage(): React.JSX.Element {
     }
   }, [isAuthenticated, loadData]);
 
-  // Aceitar Proposta
-  const handleAccept = async (proposal: ProposalDto) => {
+  // Passo 1 do Remetente: Aceita proposta no backend com janela de 15 minutos e abre Pix
+  const handleAcceptAndOpenPix = async (proposal: ProposalDto) => {
     if (!token) return;
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -307,24 +339,85 @@ export default function PropostasPage(): React.JSX.Element {
 
     try {
       if (proposal.id.startsWith("prop-")) {
-        // Proposta do demo store
         updateProposalStatus(proposal.id, "ACCEPTED");
-        setActionNotice("✓ Proposta aceita com sucesso! O frete foi formalizado e a encomenda está pronta para transporte.");
-        await loadData();
+        setSelectedProposalForPix(proposal);
+        setSelectedContractForPix(null);
+        setPixModalOpen(true);
+        await loadData(true);
+        return;
+      }
+
+      const existingContract = contractsByProposalId[proposal.id] || contractsByShipmentId[proposal.shipmentId];
+      if (existingContract && existingContract.status === "AWAITING_PAYMENT") {
+        setSelectedProposalForPix(proposal);
+        setSelectedContractForPix(existingContract);
+        setPixModalOpen(true);
+        return;
+      }
+
+      const res = await acceptProposalApi(proposal.id, proposal.version ?? 1, token, undefined, true);
+      if (res.ok && res.data) {
+        const createdContract = res.data;
+        setSelectedProposalForPix(proposal);
+        setSelectedContractForPix(createdContract);
+        setPixModalOpen(true);
+        setActionNotice("✓ Proposta aceita! O código Pix foi gerado — conclua o pagamento em até 15 minutos para confirmar o frete.");
+        await loadData(true);
+      } else if (res.problem) {
+        setErrorMessage(res.problem.detail || "Não foi possível aceitar a proposta.");
       } else {
-        const res = await acceptProposalApi(proposal.id, proposal.version, token);
-        if (res.ok) {
-          setActionNotice("✓ Proposta aceita com sucesso! O frete foi formalizado e a encomenda está pronta para transporte.");
-          await loadData();
-        } else if (res.problem) {
-          setErrorMessage(res.problem.detail || "Não foi possível aceitar a proposta.");
-        }
+        setErrorMessage("Erro ao formalizar aceite da proposta.");
       }
     } catch {
       setErrorMessage("Erro ao processar o aceite da proposta.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleResumePixPayment = (proposal: ProposalDto, contract: ContractDto) => {
+    setSelectedProposalForPix(proposal);
+    setSelectedContractForPix(contract);
+    setPixModalOpen(true);
+  };
+
+  // Passo 2 do Remetente: Mercado Pago aprova o Pix -> Confirma pagamento na API (tira do Mural, libera códigos e chat)
+  const handlePixSuccess = async (paymentData: MercadoPagoPixData) => {
+    if (!token || !selectedProposalForPix) {
+      setPixModalOpen(false);
+      return;
+    }
+
+    const contract =
+      selectedContractForPix ||
+      contractsByProposalId[selectedProposalForPix.id] ||
+      contractsByShipmentId[selectedProposalForPix.shipmentId];
+
+    if (contract && !selectedProposalForPix.id.startsWith("prop-")) {
+      const confirmRes = await confirmContractPaymentApi(
+        contract.id,
+        {
+          paymentProvider: "mercadopago_pix",
+          paymentReferenceId: String(paymentData.id || `mp-${Date.now()}`)
+        },
+        token
+      );
+      if (!confirmRes.ok) {
+        setErrorMessage(
+          confirmRes.problem?.detail ||
+            "Pix aprovado, mas houve falha ao registrar a confirmação no servidor. Recarregue a página."
+        );
+        setPixModalOpen(false);
+        return;
+      }
+    }
+
+    setActionNotice(
+      `✓ Pagamento Pix de R$ ${(selectedProposalForPix.amountCents / 100).toFixed(2).replace(".", ",")} confirmado! Sua encomenda saiu do mural público, o chat privado foi liberado e os códigos de coleta/entrega já estão em Minhas Atividades.`
+    );
+    setPixModalOpen(false);
+    setSelectedContractForPix(null);
+    await loadData(true);
   };
 
   // Recusar Proposta
@@ -638,6 +731,21 @@ export default function PropostasPage(): React.JSX.Element {
             const isCountered = proposal.status === "COUNTERED";
             const isAccepted = proposal.status === "ACCEPTED";
             const isRejected = proposal.status === "REJECTED";
+            const contract =
+              contractsByProposalId[proposal.id] ||
+              contractsByShipmentId[proposal.shipmentId];
+            const isPaid =
+              isAccepted &&
+              (contract?.status === "ACTIVE" || contract?.status === "COMPLETED");
+            const isAwaitingPayment =
+              isAccepted && contract?.status === "AWAITING_PAYMENT";
+            const isPaymentExpired = contract?.status === "PAYMENT_EXPIRED";
+            const countdown = isAwaitingPayment
+              ? formatRemainingCountdown(contract?.paymentExpiresAtUtc)
+              : null;
+            const isUserSender =
+              proposal.senderId === user?.userId ||
+              (!proposal.senderId && activeTab === "RECEIVED");
 
             return (
               <div
@@ -646,7 +754,11 @@ export default function PropostasPage(): React.JSX.Element {
                 style={{
                   padding: "20px",
                   borderRadius: "14px",
-                  border: isAccepted ? "2px solid #10B981" : "1px solid #E2E8F0",
+                  border: isPaid
+                    ? "2px solid #10B981"
+                    : isAwaitingPayment
+                      ? "2px solid #F59E0B"
+                      : "1px solid #E2E8F0",
                   backgroundColor: "#FFFFFF",
                   boxShadow: "0 2px 6px rgba(0,0,0,0.03)"
                 }}
@@ -654,15 +766,30 @@ export default function PropostasPage(): React.JSX.Element {
                 {/* Linha Superior: Quem propôs e Valor */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
                       <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
                         {activeTab === "SENT"
                           ? `Para: ${proposal.senderName || "Remetente"}`
                           : `Transportador: ${proposal.carrierName || "Motorista Parceiro"}`}
                       </span>
-                      {isAccepted && (
+                      {isPaid && (
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", backgroundColor: "#D1FAE5", padding: "2px 8px", borderRadius: "12px" }}>
+                          ✓ Pagamento Confirmado
+                        </span>
+                      )}
+                      {isAwaitingPayment && (
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400E", backgroundColor: "#FEF3C7", padding: "2px 8px", borderRadius: "12px" }}>
+                          ⏳ Aguardando Pix {countdown ? `(${countdown})` : "(15 min)"}
+                        </span>
+                      )}
+                      {isAccepted && !isPaid && !isAwaitingPayment && (
                         <span style={{ fontSize: "11px", fontWeight: 700, color: "#065F46", backgroundColor: "#D1FAE5", padding: "2px 8px", borderRadius: "12px" }}>
                           ✓ Frete Aceito
+                        </span>
+                      )}
+                      {isPaymentExpired && (
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 8px", borderRadius: "12px" }}>
+                          ⌛ Prazo Pix Expirado
                         </span>
                       )}
                       {isCountered && (
@@ -745,7 +872,7 @@ export default function PropostasPage(): React.JSX.Element {
                     <button
                       type="button"
                       disabled={isSubmitting}
-                      onClick={() => openPaymentModal(proposal)}
+                      onClick={() => void handleAcceptAndOpenPix(proposal)}
                       style={{
                         padding: "8px 18px",
                         backgroundColor: "#059669",
@@ -760,7 +887,7 @@ export default function PropostasPage(): React.JSX.Element {
                         gap: "6px"
                       }}
                     >
-                      ⚡ Aceitar & Pagar com Pix
+                      ⚡ Aceitar Proposta & Gerar Pix
                     </button>
 
                     <button
@@ -847,12 +974,43 @@ export default function PropostasPage(): React.JSX.Element {
                 )}
 
                 {/* Seção de Comunicação Bilateral Direta da Negociação */}
-                {isAccepted ? (
+                {isPaid && contract && token ? (
                   <ProposalNegotiationChat
-                    proposalId={proposal.id}
-                    currentUserName={user?.displayName || (activeTab === "SENT" ? (proposal.carrierName || "Transportador") : (proposal.senderName || "Remetente"))}
+                    contractId={contract.id}
+                    token={token}
+                    currentUserId={user?.userId || ""}
                     counterpartName={activeTab === "SENT" ? (proposal.senderName || "Remetente") : (proposal.carrierName || "Transportador")}
                   />
+                ) : isAwaitingPayment ? (
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "12px 14px",
+                      backgroundColor: "#FFFBEB",
+                      border: "1px solid #FDE68A",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      color: "#92400E",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}
+                  >
+                    <span style={{ fontSize: "16px" }}>⏳</span>
+                    <span>
+                      {isUserSender ? (
+                        <>
+                          <strong>Aguardando seu pagamento Pix ({countdown || "15:00"}):</strong>{" "}
+                          Assim que o Pix for pago, a encomenda sairá do mural público e serão liberados o chat privado e os códigos de coleta e entrega.
+                        </>
+                      ) : (
+                        <>
+                          <strong>O remetente aceitou sua proposta!</strong>{" "}
+                          O remetente tem 15 minutos para efetuar o pagamento Pix ({countdown || "em andamento"}). Você receberá um alerta e os endereços completos assim que o pagamento for confirmado.
+                        </>
+                      )}
+                    </span>
+                  </div>
                 ) : (
                   <div
                     style={{
@@ -870,7 +1028,7 @@ export default function PropostasPage(): React.JSX.Element {
                   >
                     <span style={{ fontSize: "16px" }}>🔒</span>
                     <span>
-                      <strong>Troca de mensagens restrita:</strong> O chat direto entre os usuários só é liberado nesta aba após o fechamento da negociação e a confirmação do pagamento pelo remetente via Mercado Pago.
+                      <strong>Troca de mensagens restrita:</strong> O chat direto entre remetente e transportador só é liberado após o aceite da proposta e a confirmação do pagamento Pix.
                     </span>
                   </div>
                 )}
@@ -878,33 +1036,37 @@ export default function PropostasPage(): React.JSX.Element {
                 {/* Botões quando Aceito */}
                 {isAccepted && (
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "12px" }}>
-                    <button
-                      type="button"
-                      onClick={() => openPaymentModal(proposal)}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#059669",
-                        color: "#FFFFFF",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                      }}
-                    >
-                      ⚡ Pagar Frete com Pix (Mercado Pago)
-                    </button>
+                    {isUserSender && isAwaitingPayment && contract && (
+                      <button
+                        type="button"
+                        onClick={() => handleResumePixPayment(proposal, contract)}
+                        style={{
+                          padding: "8px 16px",
+                          backgroundColor: "#059669",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        ⚡ Concluir Pagamento Pix ({countdown || "15 min"})
+                      </button>
+                    )}
 
-                    <Link
-                      href="/minhas-atividades"
-                      className="btn btn--outline"
-                      style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, textDecoration: "none" }}
-                    >
-                      🗺️ Acompanhar Entrega no Mapa
-                    </Link>
+                    {isPaid && (
+                      <Link
+                        href="/minhas-atividades"
+                        className="btn btn--primary"
+                        style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700, textDecoration: "none" }}
+                      >
+                        🔐 Códigos & Acompanhamento no Mapa
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -922,6 +1084,13 @@ export default function PropostasPage(): React.JSX.Element {
           payerEmail={user?.email || "contato@topiclog.com.br"}
           payerName={user?.displayName || "Remetente TopicLog"}
           orderId={selectedProposalForPix.shipmentId}
+          expiresAtUtc={selectedContractForPix?.paymentExpiresAtUtc}
+          onExpired={() => {
+            setPixModalOpen(false);
+            setSelectedContractForPix(null);
+            setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a encomenda voltou ao mural.");
+            void loadData(true);
+          }}
           onPaymentSuccess={handlePixSuccess}
         />
       )}

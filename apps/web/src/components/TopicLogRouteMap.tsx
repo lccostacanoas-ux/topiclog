@@ -10,9 +10,17 @@ export interface RoutePoint {
   address?: string;
 }
 
+export interface CarrierLivePoint {
+  lat: number;
+  lon?: number;
+  lng?: number;
+  updatedAtUtc?: string | null;
+}
+
 interface TopicLogRouteMapProps {
   origin: RoutePoint | null;
   destination: RoutePoint | null;
+  carrierLocation?: CarrierLivePoint | null;
   onRouteCalculated?: (distanceKm: number, durationMinutes: number) => void;
   height?: string | number;
 }
@@ -20,6 +28,7 @@ interface TopicLogRouteMapProps {
 export default function TopicLogRouteMap({
   origin,
   destination,
+  carrierLocation,
   onRouteCalculated,
   height = "340px"
 }: TopicLogRouteMapProps): React.JSX.Element {
@@ -28,6 +37,7 @@ export default function TopicLogRouteMap({
   const routeLayerRef = useRef<any>(null);
   const originMarkerRef = useRef<any>(null);
   const destMarkerRef = useRef<any>(null);
+  const carrierMarkerRef = useRef<any>(null);
 
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [routeInfo, setRouteInfo] = useState<{ km: number; mins: number } | null>(null);
@@ -156,6 +166,49 @@ export default function TopicLogRouteMap({
       destMarkerRef.current = null;
     }
 
+    // 2.5 Posição em tempo real do Transportador (quando em viagem)
+    const carrierLat = carrierLocation?.lat;
+    const carrierLon = carrierLocation?.lon ?? carrierLocation?.lng;
+    if (typeof carrierLat === "number" && typeof carrierLon === "number") {
+      const carrierIcon = L.divIcon({
+        className: "topiclog-pin-carrier",
+        html: `
+          <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
+            <div style="
+              display:flex;align-items:center;justify-content:center;
+              width:38px;height:38px;background-color:#2563EB;color:#FFFFFF;
+              font-size:18px;border-radius:50%;
+              box-shadow:0 4px 14px rgba(37,99,235,0.55);border:3px solid #FFFFFF;
+            ">🚚</div>
+            <div style="
+              margin-top:3px;background-color:#1D4ED8;color:#FFFFFF;
+              font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;
+              white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.3);
+            ">Em Rota</div>
+          </div>
+        `,
+        iconSize: [64, 58],
+        iconAnchor: [32, 22]
+      });
+      if (carrierMarkerRef.current) {
+        carrierMarkerRef.current.setLatLng([carrierLat, carrierLon]);
+      } else {
+        carrierMarkerRef.current = L.marker([carrierLat, carrierLon], {
+          icon: carrierIcon,
+          zIndexOffset: 500
+        }).addTo(map);
+      }
+      const updatedLabel = carrierLocation?.updatedAtUtc
+        ? new Date(carrierLocation.updatedAtUtc).toLocaleTimeString("pt-BR")
+        : "Agora";
+      carrierMarkerRef.current.bindPopup(
+        `<div style="font-size: 13px;"><strong>🚚 Transportador em deslocamento</strong><br/>Atualizado: ${updatedLabel}</div>`
+      );
+    } else if (carrierMarkerRef.current) {
+      map.removeLayer(carrierMarkerRef.current);
+      carrierMarkerRef.current = null;
+    }
+
     // 3. Limpar traçado viário anterior
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
@@ -240,7 +293,7 @@ export default function TopicLogRouteMap({
         map.setView([destination.lat, destination.lon], 14);
       }
     }
-  }, [origin, destination, onRouteCalculated]);
+  }, [origin, destination, carrierLocation, onRouteCalculated]);
 
   useEffect(() => {
     updateRouteAndMarkers();
@@ -332,6 +385,7 @@ export default function TopicLogRouteMap({
       >
         <span style={{ color: "#059669" }}>● Ponto A: Retirada</span>
         <span style={{ color: "#DC2626" }}>● Ponto B: Entrega</span>
+        {carrierLocation && <span style={{ color: "#2563EB" }}>🚚 Em Rota</span>}
       </div>
     </div>
   );

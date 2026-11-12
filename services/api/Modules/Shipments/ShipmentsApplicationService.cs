@@ -1,5 +1,6 @@
 using TopicLog.Api.Common.Contracts;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Proposals;
 
 namespace TopicLog.Api.Modules.Shipments;
 
@@ -19,6 +20,10 @@ public interface IShipmentsApplicationService
     Task<IReadOnlyList<ShipmentSummaryResponse>> ListShipmentsAsync(
         string? originCity = null,
         string? destinationCity = null,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ShipmentSummaryResponse>> ListMyShipmentsAsync(
+        Guid senderId,
         CancellationToken cancellationToken = default);
 
     Task<string> AddShipmentPhotoAsync(
@@ -46,15 +51,18 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
     private readonly IShipmentsRepository _repository;
     private readonly IObjectStorageProvider _storageProvider;
     private readonly IMapsProvider _mapsProvider;
+    private readonly IProposalsRepository? _proposalsRepository;
 
     public ShipmentsApplicationService(
         IShipmentsRepository repository,
         IObjectStorageProvider storageProvider,
-        IMapsProvider? mapsProvider = null)
+        IMapsProvider? mapsProvider = null,
+        IProposalsRepository? proposalsRepository = null)
     {
         _repository = repository;
         _storageProvider = storageProvider;
         _mapsProvider = mapsProvider ?? new TopicLog.Api.Infrastructure.Providers.LocalFreeMapsProvider();
+        _proposalsRepository = proposalsRepository;
     }
 
     public async Task<ShipmentDetailResponse> CreateShipmentAsync(
@@ -294,7 +302,19 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
             return null;
         }
 
-        return MapToDetailResponse(shipment, requesterUserId);
+        bool revealExactAddress = requesterUserId.HasValue && requesterUserId.Value == shipment.SenderId;
+        if (!revealExactAddress && requesterUserId.HasValue && _proposalsRepository is not null)
+        {
+            var contract = await _proposalsRepository.GetContractByShipmentIdAsync(id, cancellationToken).ConfigureAwait(false);
+            if (contract is not null &&
+                contract.CarrierId == requesterUserId.Value &&
+                (contract.Status == ContractStatus.ACTIVE || contract.Status == ContractStatus.COMPLETED))
+            {
+                revealExactAddress = true;
+            }
+        }
+
+        return MapToDetailResponse(shipment, requesterUserId, revealExactAddress);
     }
 
     public async Task<IReadOnlyList<ShipmentSummaryResponse>> ListShipmentsAsync(
@@ -303,7 +323,38 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
         CancellationToken cancellationToken = default)
     {
         var list = await _repository.ListActiveAsync(originCity, destinationCity, cancellationToken).ConfigureAwait(false);
-        return list.Select(s => new ShipmentSummaryResponse(
+
+        if (_proposalsRepository is not null)
+        {
+            var filtered = new List<Shipment>(list.Count);
+            var now = DateTimeOffset.UtcNow;
+            foreach (var s in list)
+            {
+                var contract = await _proposalsRepository.GetContractByShipmentIdAsync(s.Id, cancellationToken).ConfigureAwait(false);
+                if (contract is not null &&
+                    (contract.Status == ContractStatus.ACTIVE ||
+                     contract.Status == ContractStatus.COMPLETED ||
+                     (contract.Status == ContractStatus.AWAITING_PAYMENT && (contract.PaymentExpiresAtUtc == null || contract.PaymentExpiresAtUtc > now))))
+                {
+                    continue;
+                }
+                filtered.Add(s);
+            }
+            list = filtered;
+        }
+
+        return list.Select(MapToSummaryResponse).ToList();
+    }
+
+    public async Task<IReadOnlyList<ShipmentSummaryResponse>> ListMyShipmentsAsync(
+        Guid senderId,
+        CancellationToken cancellationToken = default)
+    {
+        var list = await _repository.ListBySenderAsync(senderId, cancellationToken).ConfigureAwait(false);
+        return list.Select(MapToSummaryResponse).ToList();
+    }
+
+    private static ShipmentSummaryResponse MapToSummaryResponse(Shipment s) => new(
             Id: s.Id,
             SenderId: s.SenderId,
             SenderName: s.SenderName,
@@ -319,8 +370,7 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
             DeliveryWindow: s.DeliveryWindow,
             Status: s.Status.ToString(),
             PhotoCount: s.PhotoStorageKeys.Count,
-            CreatedAtUtc: s.CreatedAtUtc)).ToList();
-    }
+            CreatedAtUtc: s.CreatedAtUtc);
 
     public async Task<string> AddShipmentPhotoAsync(
         Guid shipmentId,
@@ -354,9 +404,9 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
         return _storageProvider.GenerateTemporarySignedPath(stored.StorageKey, TimeSpan.FromHours(2));
     }
 
-    private ShipmentDetailResponse MapToDetailResponse(Shipment s, Guid? requesterUserId)
+    private ShipmentDetailResponse MapToDetailResponse(Shipment s, Guid? requesterUserId, bool? forceRevealExact = null)
     {
-        bool isOwner = requesterUserId.HasValue && requesterUserId.Value == s.SenderId;
+        bool isOwner = forceRevealExact ?? (requesterUserId.HasValue && requesterUserId.Value == s.SenderId);
 
         var originResp = new ShipmentAddressResponse(
             Kind: "ORIGIN",

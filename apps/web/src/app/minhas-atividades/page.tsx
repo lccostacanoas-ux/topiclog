@@ -1,23 +1,25 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import {
-  getDemoShipments,
-  clearAllTestData,
-  addDemoRating,
-  startTripWithPickupCode,
-  completeTripWithDeliveryCode,
-  type DemoShipment
-} from "../../lib/demo-marketplace-store";
 import { CITY_CENTROIDS } from "../../components/BrazilianAddressInput";
-import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
-import { StarRatingDisplay } from "../../components/StarRatingDisplay";
 import { AuthRequiredGate } from "../../components/AuthRequiredGate";
 import { useAuth } from "../../lib/auth-context";
+import {
+  listMyDeliveryOrdersApi,
+  getShipmentByIdApi,
+  getOrderCodesApi,
+  confirmPickupApi,
+  confirmDeliveryApi,
+  updateDeliveryLocationApi
+} from "../../lib/api-client";
+import type {
+  DeliveryOrderDto,
+  OrderCodesDto,
+  ShipmentDetailDto
+} from "../../lib/types";
 
-// Carregamento dinâmico do mapa de rotas sem SSR
 const TopicLogRouteMap = dynamic(
   () => import("../../components/TopicLogRouteMap"),
   {
@@ -26,7 +28,7 @@ const TopicLogRouteMap = dynamic(
       <div
         style={{
           width: "100%",
-          height: "260px",
+          height: "280px",
           backgroundColor: "#F1F5F9",
           borderRadius: "12px",
           display: "flex",
@@ -37,954 +39,782 @@ const TopicLogRouteMap = dynamic(
           fontWeight: 600
         }}
       >
-        <span>🧭 Carregando mapa do trajeto...</span>
+        <span>🧭 Carregando mapa da viagem...</span>
       </div>
     )
   }
 );
 
-const BH_NEIGHBORHOOD_COORDS: Record<string, { lat: number; lon: number }> = {
-  "paqueta": { lat: -19.8647, lon: -43.9922 },
-  "santa efigenia": { lat: -19.9250, lon: -43.9230 },
-  "savassi": { lat: -19.9386, lon: -43.9333 },
-  "lourdes": { lat: -19.9325, lon: -43.9450 },
-  "funcionarios": { lat: -19.9338, lon: -43.9288 },
-  "pampulha": { lat: -19.8519, lon: -43.9708 },
-  "barreiro": { lat: -19.9754, lon: -44.0194 },
-  "venda nova": { lat: -19.8155, lon: -43.9612 },
-  "centro": { lat: -19.9167, lon: -43.9345 },
-  "castelo": { lat: -19.8769, lon: -44.0041 },
-  "ouro preto": { lat: -19.8661, lon: -43.9840 },
-  "buritis": { lat: -19.9678, lon: -43.9688 },
-  "sion": { lat: -19.9536, lon: -43.9317 },
-  "anchieta": { lat: -19.9482, lon: -43.9342 },
-  "floresta": { lat: -19.9118, lon: -43.9252 },
-  "prado": { lat: -19.9242, lon: -43.9625 },
-  "gutierrez": { lat: -19.9360, lon: -43.9610 },
-  "sagrada familia": { lat: -19.9032, lon: -43.9160 },
-  "padre eustaquio": { lat: -19.9077, lon: -43.9663 },
-  "carlos prates": { lat: -19.9125, lon: -43.9515 },
-  "caicara": { lat: -19.8972, lon: -43.9650 },
-  "mangabeiras": { lat: -19.9560, lon: -43.9110 },
-  "serra": { lat: -19.9380, lon: -43.9150 }
-};
-
-function resolveShipmentCoordinates(
-  city: string,
-  neighborhood: string,
-  isDestination: boolean,
+function resolveFallbackCoords(
+  city?: string | null,
+  isDest?: boolean,
   otherLat?: number,
   otherLon?: number
 ): { lat: number; lon: number } {
-  const normCity = (city || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const normNeigh = (neighborhood || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-  if (normCity.includes("belo horizonte") && BH_NEIGHBORHOOD_COORDS[normNeigh]) {
-    return BH_NEIGHBORHOOD_COORDS[normNeigh];
+  const norm = (city || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const base = CITY_CENTROIDS[norm] || { lat: -19.9167, lon: -43.9345 };
+  if (
+    isDest &&
+    otherLat !== undefined &&
+    otherLon !== undefined &&
+    Math.abs(base.lat - otherLat) < 0.002 &&
+    Math.abs(base.lon - otherLon) < 0.002
+  ) {
+    return { lat: base.lat - 0.02, lon: base.lon + 0.03 };
   }
-
-  const base = CITY_CENTROIDS[normCity] || { lat: -19.9167, lon: -43.9345 };
-  if (isDestination && otherLat !== undefined && otherLon !== undefined) {
-    if (Math.abs(base.lat - otherLat) < 0.001 && Math.abs(base.lon - otherLon) < 0.001) {
-      return { lat: base.lat - 0.025, lon: base.lon + 0.035 };
-    }
-  }
-
-  return { lat: base.lat, lon: base.lon };
+  return base;
 }
 
-interface ShipmentTrackingState {
-  status: "PUBLICADA" | "NEGOCIANDO" | "COLETA_AGENDADA" | "EM_TRANSITO" | "ENTREGUE";
-  pickupCode: string;
-  deliveryCode: string;
-  distanceKm: number;
-  durationMins: number;
-  expandedMap: boolean;
-  tripStartedAt?: string;
-  estimatedDeliveryAt?: string;
-  deliveredAt?: string;
+function getStatusBadge(status: string): { label: string; bg: string; color: string; border: string } {
+  switch (status) {
+    case "DELIVERED_VERIFIED":
+      return {
+        label: "✅ Viagem Encerrada • Entrega Confirmada",
+        bg: "#DCFCE7",
+        color: "#166534",
+        border: "#86EFAC"
+      };
+    case "IN_TRANSIT":
+    case "OUT_FOR_DELIVERY":
+      return {
+        label: "🚚 Viagem Iniciada • Em Deslocamento",
+        bg: "#DBEAFE",
+        color: "#1E40AF",
+        border: "#93C5FD"
+      };
+    default:
+      return {
+        label: "📦 Pagamento Confirmado • Aguardando Coleta",
+        bg: "#FEF3C7",
+        color: "#92400E",
+        border: "#FDE68A"
+      };
+  }
 }
 
-export default function AcompanheSuaEncomendaPage(): React.JSX.Element {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [shipments, setShipments] = useState<readonly DemoShipment[]>([]);
-  const [trackingStates, setTrackingStates] = useState<Record<string, ShipmentTrackingState>>({});
-  const [copiedPinId, setCopiedPinId] = useState<string | null>(null);
-  const [payingShipment, setPayingShipment] = useState<DemoShipment | null>(null);
-  const [paidShipmentIds, setPaidShipmentIds] = useState<Set<string>>(new Set());
+export default function MinhasAtividadesPage(): React.JSX.Element {
+  const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Controle de visão de perfil (Remetente vs Transportador para testes em tempo real)
-  const [activeRoleView, setActiveRoleView] = useState<"REMETENTE" | "TRANSPORTADOR">("REMETENTE");
-  const [carrierPickupInput, setCarrierPickupInput] = useState<Record<string, string>>({});
-  const [carrierDeliveryInput, setCarrierDeliveryInput] = useState<Record<string, string>>({});
-  const [actionFeedback, setActionFeedback] = useState<Record<string, { success: boolean; message: string }>>({});
+  const [orders, setOrders] = useState<DeliveryOrderDto[]>([]);
+  const [shipmentsById, setShipmentsById] = useState<Record<string, ShipmentDetailDto>>({});
+  const [codesByOrderId, setCodesByOrderId] = useState<Record<string, OrderCodesDto>>({});
+  const [loading, setLoading] = useState(true);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [pickupCodeInputs, setPickupCodeInputs] = useState<Record<string, string>>({});
+  const [deliveryCodeInputs, setDeliveryCodeInputs] = useState<Record<string, string>>({});
+  const [gpsWatchingOrderId, setGpsWatchingOrderId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
-  // Carrega encomendas publicadas do store local apenas quando conectado
+  const loadActivities = useCallback(
+    async (silent = false) => {
+      if (!token || !user?.userId) {
+        setLoading(false);
+        return;
+      }
+      if (!silent) setLoading(true);
+
+      try {
+        const res = await listMyDeliveryOrdersApi(token);
+        if (res.ok && Array.isArray(res.data)) {
+          const list = res.data;
+          setOrders(list);
+
+          const shipmentEntries = await Promise.all(
+            list.map(async (o) => {
+              const sRes = await getShipmentByIdApi(o.shipmentId, token);
+              return sRes.ok && sRes.data ? ([o.shipmentId, sRes.data] as const) : null;
+            })
+          );
+          const nextShipments: Record<string, ShipmentDetailDto> = {};
+          for (const entry of shipmentEntries) {
+            if (entry) nextShipments[entry[0]] = entry[1];
+          }
+          setShipmentsById(nextShipments);
+
+          const senderOrders = list.filter((o) => o.senderId === user.userId);
+          const codeEntries = await Promise.all(
+            senderOrders.map(async (o) => {
+              const cRes = await getOrderCodesApi(o.id, token);
+              return cRes.ok && cRes.data ? ([o.id, cRes.data] as const) : null;
+            })
+          );
+          const nextCodes: Record<string, OrderCodesDto> = {};
+          for (const entry of codeEntries) {
+            if (entry) nextCodes[entry[0]] = entry[1];
+          }
+          setCodesByOrderId(nextCodes);
+        }
+      } catch {
+        if (!silent) {
+          setBanner({ type: "error", text: "Não foi possível carregar suas entregas no momento." });
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token, user?.userId]
+  );
+
   useEffect(() => {
-    if (!isAuthenticated || !user) {
-      setShipments([]);
-      setTrackingStates({});
+    if (isAuthenticated && token) {
+      void loadActivities();
+    } else if (!authLoading) {
+      setLoading(false);
+    }
+  }, [isAuthenticated, token, authLoading, loadActivities]);
+
+  // Atualização contínua para acompanhar deslocamento no mapa e mudanças de status em tempo real
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    const timer = window.setInterval(() => {
+      void loadActivities(true);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated, token, loadActivities]);
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  const handleConfirmPickup = async (order: DeliveryOrderDto) => {
+    if (!token) return;
+    const code = (pickupCodeInputs[order.id] || "").trim();
+    if (!/^\d{4}$/.test(code)) {
+      setBanner({ type: "error", text: "Digite o código de coleta de 4 dígitos informado pelo remetente." });
       return;
     }
-    const list = getDemoShipments();
-    setShipments(list);
 
-    // Inicializa estados de rastreamento e distâncias para cada encomenda
-    const states: Record<string, ShipmentTrackingState> = {};
-    list.forEach((s, idx) => {
-      // Determina códigos de coleta (início) e entrega
-      const pickupNum = s.pickupCode || String((Math.abs(s.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 1000) * 31) % 9000) + 1000);
-      const deliveryNum = s.deliveryCode || String((Math.abs(s.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 2000) * 17) % 9000) + 1000);
+    setSubmittingId(order.id);
+    setBanner(null);
+    const res = await confirmPickupApi(
+      order.id,
+      {
+        pickupCode: code,
+        handoverNotes: "Coleta validada presencialmente com o remetente via código de 4 dígitos."
+      },
+      token
+    );
 
-      // Determina distância aproximada entre cidades
-      const origCoords = resolveShipmentCoordinates(s.originCity, s.originNeighborhood, false);
-      const destCoords = resolveShipmentCoordinates(s.destinationCity, s.destinationNeighborhood, true, origCoords.lat, origCoords.lon);
-
-      const R = 6371;
-      const dLat = ((destCoords.lat - origCoords.lat) * Math.PI) / 180;
-      const dLon = ((destCoords.lon - origCoords.lon) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((origCoords.lat * Math.PI) / 180) *
-          Math.cos((destCoords.lat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const dist = Math.max(5, Math.round(R * c * 1.25));
-      const duration = Math.max(15, Math.round((dist / 50) * 60));
-
-      // Status padrão da esteira
-      let status: ShipmentTrackingState["status"] = "PUBLICADA";
-      if (s.status === "DELIVERED") status = "ENTREGUE";
-      else if (s.status === "IN_TRANSIT") status = "EM_TRANSITO";
-      else if (s.status === "IN_NEGOTIATION") status = "NEGOCIANDO";
-      else if (idx === 0) status = "PUBLICADA";
-
-      states[s.id] = {
-        status,
-        pickupCode: pickupNum,
-        deliveryCode: deliveryNum,
-        distanceKm: dist,
-        durationMins: duration,
-        expandedMap: idx === 0, // expande o mapa da primeira encomenda por padrão
-        tripStartedAt: s.tripStartedAt,
-        estimatedDeliveryAt: s.estimatedDeliveryAt,
-        deliveredAt: s.deliveredAt
-      };
-    });
-
-    setTrackingStates(states);
-  }, [isAuthenticated, user]);
-
-  const toggleMap = (id: string) => {
-    setTrackingStates((prev) => {
-      const current = prev[id];
-      if (!current) return prev;
-      return {
-        ...prev,
-        [id]: {
-          ...current,
-          expandedMap: !current.expandedMap
-        }
-      };
-    });
-  };
-
-  const handleCopyCode = (shipmentId: string, code: string) => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(code);
-      setCopiedPinId(shipmentId);
-      setTimeout(() => setCopiedPinId(null), 2000);
-    }
-  };
-
-  const handleCarrierStartTrip = (shipmentId: string, durationMins: number) => {
-    const inputCode = carrierPickupInput[shipmentId] || "";
-    const res = startTripWithPickupCode(shipmentId, inputCode, durationMins);
-    setActionFeedback((prev) => ({
-      ...prev,
-      [shipmentId]: { success: res.success, message: res.message }
-    }));
-
-    if (res.success) {
-      setTrackingStates((prev) => {
-        const cur = prev[shipmentId];
-        if (!cur) return prev;
-        return {
-          ...prev,
-          [shipmentId]: {
-            ...cur,
-            status: "EM_TRANSITO",
-            tripStartedAt: res.startedAt,
-            estimatedDeliveryAt: res.estimatedDeliveryAt
-          }
-        };
+    if (res.ok) {
+      setBanner({
+        type: "success",
+        text: "🚚 Coleta confirmada! A viagem foi colocada no status INICIADA e o deslocamento no mapa já está ativo."
       });
-      setShipments(getDemoShipments());
-    }
-  };
-
-  const handleCarrierCompleteTrip = (shipmentId: string) => {
-    const inputCode = carrierDeliveryInput[shipmentId] || "";
-    const res = completeTripWithDeliveryCode(shipmentId, inputCode);
-    setActionFeedback((prev) => ({
-      ...prev,
-      [shipmentId]: { success: res.success, message: res.message }
-    }));
-
-    if (res.success) {
-      setTrackingStates((prev) => {
-        const cur = prev[shipmentId];
-        if (!cur) return prev;
-        return {
-          ...prev,
-          [shipmentId]: {
-            ...cur,
-            status: "ENTREGUE",
-            deliveredAt: res.deliveredAt
-          }
-        };
+      await loadActivities(true);
+    } else {
+      setBanner({
+        type: "error",
+        text: res.problem?.detail || "Código de início de viagem inválido. Confira o código com o remetente."
       });
-      setShipments(getDemoShipments());
+    }
+    setSubmittingId(null);
+  };
+
+  const handleConfirmDelivery = async (order: DeliveryOrderDto) => {
+    if (!token) return;
+    const code = (deliveryCodeInputs[order.id] || "").trim();
+    if (!/^\d{4}$/.test(code)) {
+      setBanner({ type: "error", text: "Peça ao destinatário o código de entrega de 4 dígitos antes de encerrar." });
+      return;
+    }
+
+    setSubmittingId(order.id);
+    setBanner(null);
+    const res = await confirmDeliveryApi(
+      order.id,
+      {
+        deliveryCode: code,
+        recipientSignatureOrNotes: "Entrega validada no destino via código de 4 dígitos do destinatário."
+      },
+      token
+    );
+
+    if (res.ok) {
+      if (gpsWatchingOrderId === order.id && watchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setGpsWatchingOrderId(null);
+      }
+      setBanner({
+        type: "success",
+        text: "✅ Entrega confirmada e viagem encerrada! O remetente recebeu o alerta de conclusão."
+      });
+      await loadActivities(true);
+    } else {
+      setBanner({
+        type: "error",
+        text: res.problem?.detail || "Código de entrega inválido. Confirme o número de 4 dígitos com quem está recebendo."
+      });
+    }
+    setSubmittingId(null);
+  };
+
+  const pushSimulatedOrGpsLocation = async (
+    order: DeliveryOrderDto,
+    orig: { lat: number; lon: number },
+    dest: { lat: number; lon: number }
+  ) => {
+    if (!token) return;
+    const stepForward = async (lat: number, lon: number) => {
+      const res = await updateDeliveryLocationApi(order.id, lat, lon, token);
+      if (res.ok) {
+        setBanner({ type: "success", text: "📍 Posição do deslocamento atualizada no mapa para você e para o remetente." });
+        await loadActivities(true);
+      }
+    };
+
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          void stepForward(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          // Caso navegador bloqueie GPS no desktop, avança um passo interpolado ao longo da rota
+          const curLat = order.currentLatitude ?? orig.lat;
+          const curLon = order.currentLongitude ?? orig.lon;
+          const nextLat = curLat + (dest.lat - curLat) * 0.35;
+          const nextLon = curLon + (dest.lon - curLon) * 0.35;
+          void stepForward(nextLat, nextLon);
+        },
+        { enableHighAccuracy: true, timeout: 4000 }
+      );
+    } else {
+      const curLat = order.currentLatitude ?? orig.lat;
+      const curLon = order.currentLongitude ?? orig.lon;
+      void stepForward(curLat + (dest.lat - curLat) * 0.35, curLon + (dest.lon - curLon) * 0.35);
     }
   };
 
-  const getStatusStepIndex = (status: ShipmentTrackingState["status"]) => {
-    switch (status) {
-      case "PUBLICADA":
-        return 1;
-      case "NEGOCIANDO":
-        return 2;
-      case "COLETA_AGENDADA":
-        return 3;
-      case "EM_TRANSITO":
-        return 4;
-      case "ENTREGUE":
-        return 5;
-      default:
-        return 1;
+  const toggleLiveGps = (orderId: string) => {
+    if (!token) return;
+    if (gpsWatchingOrderId === orderId) {
+      if (watchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      setGpsWatchingOrderId(null);
+      return;
     }
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setBanner({ type: "error", text: "Seu navegador não suporta geolocalização contínua. Use o botão 'Atualizar Posição no Mapa'." });
+      return;
+    }
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+
+    setGpsWatchingOrderId(orderId);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        void updateDeliveryLocationApi(orderId, pos.coords.latitude, pos.coords.longitude, token);
+      },
+      () => {
+        setGpsWatchingOrderId(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
   };
 
-  if (!authLoading && (!isAuthenticated || !user)) {
+  if (authLoading) {
+    return (
+      <main className="container" style={{ paddingTop: "40px", textAlign: "center" }}>
+        <p style={{ color: "#64748B" }}>Carregando suas atividades...</p>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
     return (
       <AuthRequiredGate
-        title="Acesse sua conta para acompanhar suas encomendas"
-        description="O rastreamento e os códigos de coleta/entrega ficam disponíveis apenas para usuários autenticados na plataforma."
+        title="Acesse sua conta para acompanhar viagens e códigos"
+        description="Faça login para visualizar seus códigos de coleta/entrega, endereços liberados e o mapa de deslocamento em tempo real."
       />
     );
   }
 
   return (
-    <main className="container" style={{ paddingTop: "24px", paddingBottom: "64px", maxWidth: "900px" }}>
-      {/* Cabeçalho da Página */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
+    <main id="main-content" className="container" style={{ paddingTop: "28px", paddingBottom: "64px", maxWidth: "960px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "20px" }}>
         <div>
-          <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-primary, #2563EB)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Controle de Viagens & Entregas (Rastreamento Bilateral)
-          </span>
-          <h1 style={{ fontSize: "28px", fontWeight: 800, margin: "4px 0 6px 0", color: "var(--color-brand-deep-navy, #0F172A)" }}>
-            📍 Rastreamento & Códigos de Viagem
+          <h1 style={{ fontSize: "26px", fontWeight: 800, margin: "0 0 6px 0", color: "#0F172A" }}>
+            Minhas Atividades & Acompanhamento no Mapa
           </h1>
-          <p style={{ margin: 0, fontSize: "14px", color: "var(--color-muted, #64748B)" }}>
-            Controle o início da viagem na coleta e a conclusão na entrega através dos códigos gerados pela plataforma.
+          <p style={{ margin: 0, fontSize: "14px", color: "#64748B" }}>
+            Códigos de segurança, endereços liberados após o pagamento e rastreamento ao vivo da viagem.
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-          <Link
-            href="/encomendas/publicar"
-            className="btn btn--primary"
-            style={{
-              padding: "10px 20px",
-              fontSize: "14px",
-              fontWeight: 700,
-              borderRadius: "8px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <span>➕</span> Publicar Nova Encomenda
-          </Link>
-        </div>
+        <button
+          type="button"
+          className="btn btn--outline"
+          onClick={() => void loadActivities()}
+          style={{ padding: "8px 14px", fontSize: "13px", fontWeight: 700 }}
+        >
+          🔄 Atualizar Status
+        </button>
       </div>
 
-      {/* Seletor de Modo de Visualização (Simulador Bilateral Remetente / Transportador) */}
-      <div
-        style={{
-          backgroundColor: "#F8FAFC",
-          border: "1.5px solid #E2E8F0",
-          borderRadius: "12px",
-          padding: "12px 16px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "12px",
-          marginBottom: "24px"
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "13px", fontWeight: 700, color: "#334155" }}>
-            👤 Alternar Visão no Marketplace:
-          </span>
-          <div style={{ display: "flex", gap: "6px" }}>
-            <button
-              type="button"
-              onClick={() => setActiveRoleView("REMETENTE")}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 700,
-                border: activeRoleView === "REMETENTE" ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
-                backgroundColor: activeRoleView === "REMETENTE" ? "#EFF6FF" : "#FFFFFF",
-                color: activeRoleView === "REMETENTE" ? "#1D4ED8" : "#64748B",
-                cursor: "pointer"
-              }}
-            >
-              📦 Sou Remetente (Ver Códigos & Notificações)
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveRoleView("TRANSPORTADOR")}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 700,
-                border: activeRoleView === "TRANSPORTADOR" ? "1.5px solid #059669" : "1px solid #CBD5E1",
-                backgroundColor: activeRoleView === "TRANSPORTADOR" ? "#ECFDF5" : "#FFFFFF",
-                color: activeRoleView === "TRANSPORTADOR" ? "#047857" : "#64748B",
-                cursor: "pointer"
-              }}
-            >
-              🚚 Sou Transportador (Digitar Códigos & Disparar Viagem)
-            </button>
-          </div>
-        </div>
-
-        <span style={{ fontSize: "11px", color: "#64748B" }}>
-          💡 Teste a experiência completa de entrega e liberação de valores
-        </span>
-      </div>
-
-      {/* Caso não haja encomendas cadastradas */}
-      {shipments.length === 0 ? (
+      {banner && (
         <div
+          role="status"
           style={{
-            backgroundColor: "#FFFFFF",
-            border: "1.5px dashed #CBD5E1",
-            borderRadius: "16px",
-            padding: "48px 24px",
-            textAlign: "center",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+            padding: "14px 18px",
+            borderRadius: "10px",
+            marginBottom: "20px",
+            fontSize: "14px",
+            fontWeight: 600,
+            backgroundColor: banner.type === "success" ? "#ECFDF5" : "#FEF2F2",
+            color: banner.type === "success" ? "#065F46" : "#991B1B",
+            border: banner.type === "success" ? "1px solid #A7F3D0" : "1px solid #FECACA"
           }}
         >
-          <div style={{ fontSize: "54px", marginBottom: "12px" }}>📦</div>
+          {banner.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="card" style={{ padding: "40px", textAlign: "center" }}>
+          <p style={{ color: "#64748B", margin: 0 }}>Carregando contratos e ordens de entrega...</p>
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="card" style={{ padding: "40px 24px", textAlign: "center", borderRadius: "14px" }}>
+          <div style={{ fontSize: "44px", marginBottom: "10px" }}>🗺️</div>
           <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: "0 0 8px 0" }}>
-            Você não possui encomendas ativas
+            Nenhuma viagem ou entrega contratada ainda
           </h2>
-          <p style={{ fontSize: "14px", color: "#64748B", maxWidth: "480px", margin: "0 auto 24px auto", lineHeight: 1.5 }}>
-            Publique sua primeira encomenda informando o endereço de retirada, o destino e o valor que deseja pagar. Os transportadores cadastrados verão sua postagem imediatamente.
+          <p style={{ fontSize: "14px", color: "#64748B", maxWidth: "480px", margin: "0 auto 20px auto" }}>
+            Assim que uma proposta for aceita e o pagamento Pix for confirmado pelo remetente, os endereços completos, os códigos de 4 dígitos e o mapa em tempo real aparecerão aqui.
           </p>
-          <Link
-            href="/encomendas/publicar"
-            className="btn btn--primary"
-            style={{ padding: "12px 28px", fontSize: "15px", fontWeight: 700, borderRadius: "8px" }}
-          >
-            Publicar Encomenda Agora ➔
-          </Link>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/propostas" className="btn btn--primary" style={{ padding: "10px 18px", textDecoration: "none", fontWeight: 700 }}>
+              Ver Negociações & Propostas
+            </Link>
+            <Link href="/feed" className="btn btn--outline" style={{ padding: "10px 18px", textDecoration: "none", fontWeight: 700 }}>
+              Ir ao Mural
+            </Link>
+          </div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {shipments.map((item) => {
-            const tr: ShipmentTrackingState = trackingStates[item.id] || {
-              status: "PUBLICADA",
-              pickupCode: "4826",
-              deliveryCode: "7391",
-              distanceKm: 32,
-              durationMins: 40,
-              expandedMap: false
-            };
+          {orders.map((order) => {
+            const shipment = shipmentsById[order.shipmentId];
+            const codes = codesByOrderId[order.id];
+            const isSender = order.senderId === user?.userId;
+            const isCarrier = order.carrierId === user?.userId;
+            const badge = getStatusBadge(order.status);
 
-            const step = getStatusStepIndex(tr.status);
+            const isAwaitingPickup =
+              order.status !== "IN_TRANSIT" &&
+              order.status !== "OUT_FOR_DELIVERY" &&
+              order.status !== "DELIVERED_VERIFIED";
+            const isInTransit =
+              order.status === "IN_TRANSIT" || order.status === "OUT_FOR_DELIVERY";
+            const isDelivered = order.status === "DELIVERED_VERIFIED";
 
-            const origCoords = resolveShipmentCoordinates(item.originCity, item.originNeighborhood, false);
-            const destCoords = resolveShipmentCoordinates(item.destinationCity, item.destinationNeighborhood, true, origCoords.lat, origCoords.lon);
+            const origCoords =
+              order.originLatitude != null && order.originLongitude != null
+                ? { lat: order.originLatitude, lon: order.originLongitude }
+                : shipment?.origin
+                  ? {
+                      lat: shipment.origin.approximateLatitude,
+                      lon: shipment.origin.approximateLongitude
+                    }
+                  : resolveFallbackCoords(shipment?.origin?.city, false);
+
+            const destCoords =
+              order.destinationLatitude != null && order.destinationLongitude != null
+                ? { lat: order.destinationLatitude, lon: order.destinationLongitude }
+                : shipment?.destination
+                  ? {
+                      lat: shipment.destination.approximateLatitude,
+                      lon: shipment.destination.approximateLongitude
+                    }
+                  : resolveFallbackCoords(shipment?.destination?.city, true, origCoords.lat, origCoords.lon);
+
+            const carrierLocation =
+              order.currentLatitude != null && order.currentLongitude != null
+                ? {
+                    lat: order.currentLatitude,
+                    lon: order.currentLongitude,
+                    updatedAtUtc: order.lastLocationUpdatedAtUtc
+                  }
+                : null;
+
+            const originFullAddress =
+              order.originAddressSummary ||
+              (shipment?.origin
+                ? `${shipment.origin.streetAndNumber || shipment.origin.neighborhood}, ${shipment.origin.city}/${shipment.origin.stateUf}`
+                : "Endereço de retirada");
+
+            const destFullAddress =
+              order.destinationAddressSummary ||
+              (shipment?.destination
+                ? `${shipment.destination.streetAndNumber || shipment.destination.neighborhood}, ${shipment.destination.city}/${shipment.destination.stateUf}`
+                : "Endereço de entrega");
+
+            const valueReais = ((order.agreedAmountCents ?? order.amountCents ?? 0) / 100)
+              .toFixed(2)
+              .replace(".", ",");
 
             return (
               <article
-                key={item.id}
+                key={order.id}
+                className="card"
                 style={{
-                  backgroundColor: "#FFFFFF",
-                  border: "1.5px solid #E2E8F0",
+                  padding: "22px",
                   borderRadius: "16px",
-                  padding: "24px",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
+                  border: "1.5px solid #E2E8F0",
+                  backgroundColor: "#FFFFFF",
+                  boxShadow: "0 4px 12px rgba(15, 23, 42, 0.05)"
                 }}
               >
-                {/* Linha Superior: Data, Título e Valor do Frete */}
+                {/* Topo */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
                   <div>
-                    <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
-                      Postada em {item.createdAt} • ID #{item.id}
-                    </span>
-                    <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: "4px 0 0 0" }}>
-                      {item.title}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          backgroundColor: badge.bg,
+                          color: badge.color,
+                          border: `1px solid ${badge.border}`
+                        }}
+                      >
+                        {badge.label}
+                      </span>
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", backgroundColor: "#F1F5F9", padding: "4px 10px", borderRadius: "999px" }}>
+                        {isSender ? "📦 Você é o Remetente" : "🚚 Você é o Transportador"}
+                      </span>
+                    </div>
+                    <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: "4px 0" }}>
+                      {shipment?.title || `Encomenda #${order.shipmentId.slice(0, 8)}`}
                     </h2>
+                    <div style={{ fontSize: "13px", color: "#64748B" }}>
+                      {isSender
+                        ? `Transportador contratado: ${order.carrierName || "Parceiro TopicLog"}`
+                        : `Remetente: ${order.senderName || "Remetente TopicLog"}`}
+                      {order.recipientName ? ` • Destinatário: ${order.recipientName}` : ""}
+                    </div>
                   </div>
 
                   <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: "11px", color: "#64748B", display: "block", fontWeight: 600 }}>
-                      Valor Sugerido para o Frete
-                    </span>
-                    <strong style={{ fontSize: "20px", color: "#2563EB", fontWeight: 800 }}>
-                      R$ {(item.suggestedPriceCents / 100).toFixed(2).replace(".", ",")}
-                    </strong>
+                    <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Valor Contratado (Pago)</span>
+                    <strong style={{ fontSize: "22px", color: "#059669" }}>R$ {valueReais}</strong>
                   </div>
                 </div>
 
-                {/* Trajeto com Distância em Quilômetros e Tempo */}
-                <div
-                  style={{
-                    backgroundColor: "#F8FAFC",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "10px",
-                    padding: "12px 16px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "12px",
-                    marginBottom: "20px"
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: "240px" }}>
-                    <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#059669" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#065F46" }}>
-                      {item.originCity} ({item.originNeighborhood})
-                    </span>
-                    <span style={{ color: "#94A3B8" }}>➔</span>
-                    <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#DC2626" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#991B1B" }}>
-                      {item.destinationCity} ({item.destinationNeighborhood})
-                    </span>
+                {/* Endereços Completos Liberados */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                  <div style={{ padding: "12px 14px", borderRadius: "10px", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#166534", textTransform: "uppercase", marginBottom: "4px" }}>
+                      📍 Ponto A — Endereço Completo de Retirada
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#0F172A" }}>
+                      {originFullAddress}
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        backgroundColor: "#EFF6FF",
-                        color: "#1D4ED8",
-                        padding: "4px 10px",
-                        borderRadius: "6px",
-                        border: "1px solid #BFDBFE"
-                      }}
-                    >
-                      🚗 ~{tr.distanceKm} km • ~{tr.durationMins >= 60 ? `${Math.floor(tr.durationMins / 60)}h ${tr.durationMins % 60}min` : `${tr.durationMins} min`}
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => toggleMap(item.id)}
-                      style={{
-                        background: tr.expandedMap ? "#0F172A" : "#FFFFFF",
-                        color: tr.expandedMap ? "#FFFFFF" : "#334155",
-                        border: "1px solid #CBD5E1",
-                        borderRadius: "6px",
-                        padding: "4px 10px",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      {tr.expandedMap ? "▲ Ocultar Mapa" : "▼ Ver no Mapa"}
-                    </button>
+                  <div style={{ padding: "12px 14px", borderRadius: "10px", backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#991B1B", textTransform: "uppercase", marginBottom: "4px" }}>
+                      🏁 Ponto B — Endereço Completo de Entrega
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#0F172A" }}>
+                      {destFullAddress}
+                    </div>
                   </div>
                 </div>
 
-                {/* Mapa Interativo Expansível */}
-                {tr.expandedMap && (
-                  <div style={{ marginBottom: "20px" }}>
-                    <TopicLogRouteMap
-                      origin={{ lat: origCoords.lat, lon: origCoords.lon, address: `${item.originCity} - ${item.originNeighborhood}` }}
-                      destination={{ lat: destCoords.lat, lon: destCoords.lon, address: `${item.destinationCity} - ${item.destinationNeighborhood}` }}
-                      height="260px"
-                    />
-                  </div>
-                )}
-
-                {/* Esteira Visual de Status (5 Etapas do Remetente) */}
-                <div style={{ marginBottom: "24px" }}>
-                  <div style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", color: "#64748B", marginBottom: "8px" }}>
-                    Status da Encomenda
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "6px" }}>
-                    {[
-                      { num: 1, title: "Publicada", icon: "📝" },
-                      { num: 2, title: "Negociando", icon: "🤝" },
-                      { num: 3, title: "Coleta Agendada", icon: "📦" },
-                      { num: 4, title: "A Caminho", icon: "🚗" },
-                      { num: 5, title: "Entregue", icon: "✅" }
-                    ].map((s) => {
-                      const isPast = step >= s.num;
-                      const isCurrent = step === s.num;
-                      return (
-                        <div
-                          key={s.num}
-                          style={{
-                            textAlign: "center",
-                            padding: "8px 4px",
-                            borderRadius: "8px",
-                            backgroundColor: isCurrent ? "#EFF6FF" : isPast ? "#F0FDF4" : "#F8FAFC",
-                            border: `1.5px solid ${isCurrent ? "#3B82F6" : isPast ? "#86EFAC" : "#E2E8F0"}`
-                          }}
-                        >
-                          <div style={{ fontSize: "16px", marginBottom: "2px" }}>{s.icon}</div>
-                          <div style={{ fontSize: "11px", fontWeight: isCurrent ? 800 : 600, color: isCurrent ? "#1D4ED8" : isPast ? "#166534" : "#94A3B8" }}>
-                            {s.title}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Mensagem em Destaque: Viagem Iniciada com Previsão de Entrega */}
-                {tr.status === "EM_TRANSITO" && (
+                {/* Bloco exclusivo do Remetente: 2 códigos de segurança */}
+                {isSender && codes && (
                   <div
                     style={{
-                      backgroundColor: "#DCFCE7",
-                      border: "2px solid #22C55E",
-                      borderRadius: "12px",
-                      padding: "16px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "16px",
-                      marginBottom: "20px",
-                      boxShadow: "0 4px 12px rgba(34, 197, 94, 0.18)"
-                    }}
-                  >
-                    <div style={{ fontSize: "36px" }}>🚀</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: "17px", fontWeight: 900, color: "#15803D" }}>
-                        VIAGEM INICIADA!
-                      </div>
-                      <div style={{ fontSize: "13px", color: "#166534", marginTop: "2px" }}>
-                        O transportador realizou a coleta presencial e iniciou o deslocamento às <strong>{tr.tripStartedAt || "15:00"}</strong>.
-                      </div>
-                      <div style={{ display: "flex", gap: "16px", marginTop: "8px", flexWrap: "wrap", fontSize: "12px", color: "#14532D" }}>
-                        <span>⏱️ <strong>Duração estimada do percurso:</strong> ~{tr.durationMins} minutos</span>
-                        <span>🏁 <strong>Previsão de entrega no destino:</strong> ~{tr.estimatedDeliveryAt || "15:40"}</span>
-                        <span>🛡️ <strong>Rastreamento ativo com controle de início e fim</strong></span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Mensagem em Destaque: Entrega Concluída com Sucesso */}
-                {tr.status === "ENTREGUE" && (
-                  <div
-                    style={{
-                      backgroundColor: "#F0FDF4",
-                      border: "2px solid #16A34A",
-                      borderRadius: "12px",
-                      padding: "16px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "16px",
-                      marginBottom: "20px"
-                    }}
-                  >
-                    <div style={{ fontSize: "36px" }}>✅</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: "17px", fontWeight: 900, color: "#15803D" }}>
-                        ENCOMENDA ENTREGUE COM SUCESSO!
-                      </div>
-                      <div style={{ fontSize: "13px", color: "#166534", marginTop: "2px" }}>
-                        A viagem foi finalizada com êxito às <strong>{tr.deliveredAt || "15:45"}</strong> mediante conferência do código de entrega.
-                      </div>
-                      <div style={{ fontSize: "12px", color: "#047857", marginTop: "6px" }}>
-                        💳 <strong>Split Financeiro Concluído:</strong> Repasse líquido de 80% liberado na subconta Mercado Pago do transportador.
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* PAINEL DO REMETENTE: Códigos Gerados pela Plataforma */}
-                {(activeRoleView === "REMETENTE" || tr.status !== "ENTREGUE") && (
-                  <div style={{ marginBottom: "20px" }}>
-                    {/* Código de Início da Viagem (Coleta) */}
-                    {tr.status !== "EM_TRANSITO" && tr.status !== "ENTREGUE" && (
-                      <div
-                        style={{
-                          backgroundColor: "#FEFCE8",
-                          border: "1.5px solid #FACC15",
-                          borderRadius: "10px",
-                          padding: "16px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                          gap: "12px"
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", color: "#854D0E", display: "block" }}>
-                            🚀 Código de Início da Viagem (Coleta)
-                          </span>
-                          <span style={{ fontSize: "13px", color: "#713F12" }}>
-                            Informe este código gerado pela plataforma ao motorista <strong>no momento da entrega física do pacote</strong> para que ele dispare a viagem.
-                          </span>
-                        </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span
-                            style={{
-                              fontSize: "24px",
-                              fontWeight: 900,
-                              letterSpacing: "4px",
-                              backgroundColor: "#FFFFFF",
-                              border: "2px solid #EAB308",
-                              padding: "4px 16px",
-                              borderRadius: "8px",
-                              color: "#0F172A"
-                            }}
-                          >
-                            {tr.pickupCode}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyCode(item.id, tr.pickupCode)}
-                            style={{
-                              background: "#FFFFFF",
-                              border: "1px solid #CBD5E1",
-                              borderRadius: "6px",
-                              padding: "8px 12px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              color: "#334155",
-                              cursor: "pointer"
-                            }}
-                          >
-                            {copiedPinId === item.id ? "✓ Copiado!" : "Copiar Código"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Código de Conclusão da Entrega */}
-                    {tr.status === "EM_TRANSITO" && (
-                      <div
-                        style={{
-                          backgroundColor: "#EFF6FF",
-                          border: "1.5px solid #60A5FA",
-                          borderRadius: "10px",
-                          padding: "16px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                          gap: "12px"
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", color: "#1E40AF", display: "block" }}>
-                            🔑 Código de Conclusão da Entrega (PIN Final)
-                          </span>
-                          <span style={{ fontSize: "13px", color: "#1E3A8A" }}>
-                            Forneça este código ao destinatário. O transportador precisará dele para finalizar a entrega e receber o frete.
-                          </span>
-                        </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span
-                            style={{
-                              fontSize: "24px",
-                              fontWeight: 900,
-                              letterSpacing: "4px",
-                              backgroundColor: "#FFFFFF",
-                              border: "2px solid #3B82F6",
-                              padding: "4px 16px",
-                              borderRadius: "8px",
-                              color: "#0F172A"
-                            }}
-                          >
-                            {tr.deliveryCode}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyCode(item.id, tr.deliveryCode)}
-                            style={{
-                              background: "#FFFFFF",
-                              border: "1px solid #CBD5E1",
-                              borderRadius: "6px",
-                              padding: "8px 12px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              color: "#334155",
-                              cursor: "pointer"
-                            }}
-                          >
-                            {copiedPinId === item.id ? "✓ Copiado!" : "Copiar PIN"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* PAINEL DE AÇÃO DO TRANSPORTADOR: Campo Apropriado para Digitar Códigos */}
-                <div
-                  style={{
-                    backgroundColor: "#F8FAFC",
-                    border: "1.5px solid #CBD5E1",
-                    borderRadius: "10px",
-                    padding: "16px",
-                    marginBottom: "20px"
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "18px" }}>🚚</span>
-                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>
-                        Painel do Transportador — Validação de Viagem Presencial
-                      </strong>
-                    </div>
-                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", backgroundColor: "#E2E8F0", padding: "2px 8px", borderRadius: "4px" }}>
-                      Split Mercado Pago Obrigatório (Banco 323)
-                    </span>
-                  </div>
-
-                  {/* Feedback de ação do transportador */}
-                  {Boolean(actionFeedback[item.id]) && (
-                    <div
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "12px",
-                        backgroundColor: actionFeedback[item.id]?.success ? "#DCFCE7" : "#FEE2E2",
-                        color: actionFeedback[item.id]?.success ? "#166534" : "#991B1B",
-                        border: `1px solid ${actionFeedback[item.id]?.success ? "#86EFAC" : "#FCA5A5"}`
-                      }}
-                    >
-                      {actionFeedback[item.id]?.success ? "✓ " : "⚠️ "}
-                      {actionFeedback[item.id]?.message}
-                    </div>
-                  )}
-
-                  {/* Etapa 1: Iniciar Viagem na Coleta */}
-                  {tr.status !== "EM_TRANSITO" && tr.status !== "ENTREGUE" && (
-                    <div>
-                      <p style={{ fontSize: "13px", color: "#475569", margin: "0 0 10px 0" }}>
-                        Recebeu a encomenda das mãos do remetente? Solicite o <strong>Código de Início de 4 dígitos</strong> informado por ele e digite no campo abaixo para disparar a viagem:
-                      </p>
-                      <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                        <input
-                          type="text"
-                          maxLength={4}
-                          placeholder="Digite o código (ex: 4826)"
-                          value={carrierPickupInput[item.id] || ""}
-                          onChange={(e) =>
-                            setCarrierPickupInput((prev) => ({
-                              ...prev,
-                              [item.id]: e.target.value.replace(/\D/g, "")
-                            }))
-                          }
-                          style={{
-                            fontSize: "16px",
-                            fontWeight: 800,
-                            letterSpacing: "3px",
-                            textAlign: "center",
-                            width: "160px",
-                            padding: "8px 12px",
-                            borderRadius: "8px",
-                            border: "1.5px solid #94A3B8"
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleCarrierStartTrip(item.id, tr.durationMins)}
-                          style={{
-                            padding: "10px 18px",
-                            backgroundColor: "#2563EB",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: "8px",
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px"
-                          }}
-                        >
-                          ▶️ Confirmar Coleta & Disparar Viagem
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Etapa 2: Finalizar Entrega no Destino */}
-                  {tr.status === "EM_TRANSITO" && (
-                    <div>
-                      <p style={{ fontSize: "13px", color: "#475569", margin: "0 0 10px 0" }}>
-                        Chegou ao destino da entrega? Solicite o <strong>Código de Entrega de 4 dígitos</strong> ao destinatário e digite no campo abaixo para concluir e liberar o repasse financeiro:
-                      </p>
-                      <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                        <input
-                          type="text"
-                          maxLength={4}
-                          placeholder="Digite o código (ex: 7391)"
-                          value={carrierDeliveryInput[item.id] || ""}
-                          onChange={(e) =>
-                            setCarrierDeliveryInput((prev) => ({
-                              ...prev,
-                              [item.id]: e.target.value.replace(/\D/g, "")
-                            }))
-                          }
-                          style={{
-                            fontSize: "16px",
-                            fontWeight: 800,
-                            letterSpacing: "3px",
-                            textAlign: "center",
-                            width: "160px",
-                            padding: "8px 12px",
-                            borderRadius: "8px",
-                            border: "1.5px solid #94A3B8"
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleCarrierCompleteTrip(item.id)}
-                          style={{
-                            padding: "10px 18px",
-                            backgroundColor: "#059669",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: "8px",
-                            fontSize: "13px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px"
-                          }}
-                        >
-                          ✓ Confirmar Entrega & Liberar Split Mercado Pago
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Etapa 3: Viagem Concluída */}
-                  {tr.status === "ENTREGUE" && (
-                    <div style={{ fontSize: "13px", color: "#166534", fontWeight: 600 }}>
-                      ✓ Esta viagem foi concluída com sucesso. O repasse líquido conforme política vigente foi creditado na conta Mercado Pago do transportador.
-                    </div>
-                  )}
-                </div>
-
-                {/* Avaliação Pública em Estrelas (liberada somente após entrega concluída) */}
-                {tr.status === "ENTREGUE" && (
-                  <div
-                    style={{
-                      backgroundColor: "#F8FAFC",
-                      border: "1px dashed #CBD5E1",
-                      borderRadius: "10px",
-                      padding: "10px 14px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "10px",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                      gap: "12px",
                       marginBottom: "16px"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#334155" }}>
-                        ⭐ Avaliação do Transportador Parceiro:
-                      </span>
-                      <StarRatingDisplay
-                        size="sm"
-                        interactive={true}
-                        showBadgeWhenEmpty={true}
-                        onRate={(stars) => {
-                          addDemoRating({
-                            roleTarget: "CARRIER",
-                            stars
-                          });
-                        }}
-                      />
+                    <div
+                      style={{
+                        padding: "14px",
+                        borderRadius: "12px",
+                        backgroundColor: codes.pickupConfirmed ? "#F8FAFC" : "#EFF6FF",
+                        border: codes.pickupConfirmed ? "1px solid #CBD5E1" : "1.5px solid #93C5FD"
+                      }}
+                    >
+                      <div style={{ fontSize: "11px", fontWeight: 800, color: "#1E40AF", textTransform: "uppercase" }}>
+                        🔑 Código 1 — Início de Viagem (Coleta)
+                      </div>
+                      <div style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "6px", color: "#0F172A", margin: "6px 0" }}>
+                        {codes.pickupCode}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                        {codes.pickupConfirmed
+                          ? "✓ Coleta confirmada! A viagem já foi iniciada."
+                          : "Informe este código ao transportador no ato da retirada para iniciar a viagem."}
+                      </div>
                     </div>
-                    <span style={{ fontSize: "11px", color: "#64748B", fontStyle: "italic" }}>
-                      (Avaliação bilateral pública em estrelas • 1 a 5)
-                    </span>
+
+                    <div
+                      style={{
+                        padding: "14px",
+                        borderRadius: "12px",
+                        backgroundColor: codes.deliveryVerified ? "#F8FAFC" : "#ECFDF5",
+                        border: codes.deliveryVerified ? "1px solid #CBD5E1" : "1.5px solid #6EE7B7"
+                      }}
+                    >
+                      <div style={{ fontSize: "11px", fontWeight: 800, color: "#065F46", textTransform: "uppercase" }}>
+                        🏁 Código 2 — Entrega no Destino
+                      </div>
+                      <div style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "6px", color: "#0F172A", margin: "6px 0" }}>
+                        {codes.deliveryCode}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
+                        {codes.deliveryVerified
+                          ? "✓ Entrega confirmada no destino!"
+                          : "Passe este código para quem receberá a encomenda informar ao transportador na chegada."}
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Ações Rápidas: Pagamento Pix, Propostas e Mensagens */}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #F1F5F9", paddingTop: "14px", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => setPayingShipment(item)}
+                {/* Controles do Transportador */}
+                {isCarrier && isAwaitingPickup && (
+                  <div
                     style={{
-                      padding: "8px 16px",
-                      backgroundColor: paidShipmentIds.has(item.id) ? "#10B981" : "#059669",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px"
+                      padding: "16px",
+                      borderRadius: "12px",
+                      backgroundColor: "#EFF6FF",
+                      border: "1.5px solid #93C5FD",
+                      marginBottom: "16px"
                     }}
                   >
-                    {paidShipmentIds.has(item.id) ? "✓ Frete Pago (Custódia)" : "⚡ Pagar Frete via Pix"}
-                  </button>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#1E40AF", marginBottom: "6px" }}>
+                      🔑 Iniciar Viagem — Validação da Retirada
+                    </div>
+                    <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#334155" }}>
+                      No momento de retirar a encomenda, peça ao remetente o <strong>Código de Início de Viagem (4 dígitos)</strong> e digite abaixo:
+                    </p>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="0000"
+                        value={pickupCodeInputs[order.id] || ""}
+                        onChange={(e) =>
+                          setPickupCodeInputs((prev) => ({
+                            ...prev,
+                            [order.id]: e.target.value.replace(/\D/g, "").slice(0, 4)
+                          }))
+                        }
+                        style={{
+                          width: "120px",
+                          padding: "10px 14px",
+                          borderRadius: "8px",
+                          border: "1.5px solid #2563EB",
+                          fontSize: "18px",
+                          fontWeight: 800,
+                          textAlign: "center",
+                          letterSpacing: "4px"
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={submittingId === order.id}
+                        onClick={() => void handleConfirmPickup(order)}
+                        className="btn btn--primary"
+                        style={{ padding: "10px 18px", fontSize: "14px", fontWeight: 700 }}
+                      >
+                        {submittingId === order.id ? "Validando..." : "🚚 Confirmar Coleta & Iniciar Viagem"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                  <Link
-                    href="/propostas"
-                    className="btn btn--outline"
-                    style={{ fontSize: "13px", fontWeight: 700, padding: "8px 16px" }}
+                {isCarrier && isInTransit && (
+                  <div
+                    style={{
+                      padding: "16px",
+                      borderRadius: "12px",
+                      backgroundColor: "#ECFDF5",
+                      border: "1.5px solid #6EE7B7",
+                      marginBottom: "16px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "14px"
+                    }}
                   >
-                    🤝 Ver Propostas
-                  </Link>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                      <div>
+                        <strong style={{ fontSize: "14px", color: "#065F46", display: "block" }}>
+                          📡 Deslocamento no Mapa (Viagem Iniciada)
+                        </strong>
+                        <span style={{ fontSize: "12px", color: "#047857" }}>
+                          Você e o remetente acompanham sua movimentação em tempo real no mapa abaixo.
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleLiveGps(order.id)}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            border: "1px solid #059669",
+                            backgroundColor: gpsWatchingOrderId === order.id ? "#059669" : "#FFFFFF",
+                            color: gpsWatchingOrderId === order.id ? "#FFFFFF" : "#059669",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          {gpsWatchingOrderId === order.id ? "🟢 GPS Automático Ligado" : "📡 Ativar GPS Contínuo"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void pushSimulatedOrGpsLocation(order, origCoords, destCoords)}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            border: "1px solid #0284C7",
+                            backgroundColor: "#E0F2FE",
+                            color: "#0369A1",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          📍 Atualizar Minha Posição Agora
+                        </button>
+                      </div>
+                    </div>
 
-                  <Link
-                    href="/mensagens"
-                    className="btn btn--primary"
-                    style={{ fontSize: "13px", fontWeight: 700, padding: "8px 16px" }}
+                    <div style={{ borderTop: "1px solid #A7F3D0", paddingTop: "12px" }}>
+                      <div style={{ fontSize: "14px", fontWeight: 800, color: "#065F46", marginBottom: "6px" }}>
+                        🏁 Chegou ao Destino? Encerre a Viagem
+                      </div>
+                      <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#334155" }}>
+                        Peça ao destinatário que está recebendo a encomenda o <strong>Código de Entrega (4 dígitos)</strong>:
+                      </p>
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="0000"
+                          value={deliveryCodeInputs[order.id] || ""}
+                          onChange={(e) =>
+                            setDeliveryCodeInputs((prev) => ({
+                              ...prev,
+                              [order.id]: e.target.value.replace(/\D/g, "").slice(0, 4)
+                            }))
+                          }
+                          style={{
+                            width: "120px",
+                            padding: "10px 14px",
+                            borderRadius: "8px",
+                            border: "1.5px solid #059669",
+                            fontSize: "18px",
+                            fontWeight: 800,
+                            textAlign: "center",
+                            letterSpacing: "4px"
+                          }}
+                        />
+                        <button
+                          type="button"
+                          disabled={submittingId === order.id}
+                          onClick={() => void handleConfirmDelivery(order)}
+                          style={{
+                            padding: "10px 18px",
+                            borderRadius: "8px",
+                            border: "none",
+                            backgroundColor: "#059669",
+                            color: "#FFFFFF",
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          {submittingId === order.id ? "Encerrando..." : "✅ Confirmar Entrega & Encerrar Viagem"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isDelivered && (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      backgroundColor: "#DCFCE7",
+                      border: "1px solid #86EFAC",
+                      color: "#166534",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      marginBottom: "16px"
+                    }}
                   >
-                    💬 Falar com o Transportador
-                  </Link>
+                    ✅ Viagem concluída e verificada com sucesso!
+                    {order.deliveredAtUtc ? ` Entregue em ${new Date(order.deliveredAtUtc).toLocaleString("pt-BR")}.` : ""}
+                  </div>
+                )}
+
+                {/* Mapa de Rota e Deslocamento */}
+                <div style={{ marginBottom: "14px" }}>
+                  <TopicLogRouteMap
+                    origin={{
+                      lat: origCoords.lat,
+                      lon: origCoords.lon,
+                      label: "Retirada",
+                      address: originFullAddress
+                    }}
+                    destination={{
+                      lat: destCoords.lat,
+                      lon: destCoords.lon,
+                      label: "Entrega",
+                      address: destFullAddress
+                    }}
+                    carrierLocation={carrierLocation}
+                    height="290px"
+                  />
+                </div>
+
+                {/* Rodapé com atalho do chat privado */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                  <span style={{ fontSize: "12px", color: "#64748B" }}>
+                    {carrierLocation?.updatedAtUtc
+                      ? `Última posição registrada: ${new Date(carrierLocation.updatedAtUtc).toLocaleTimeString("pt-BR")}`
+                      : "O marcador do transportador aparece no mapa assim que a viagem for iniciada."}
+                  </span>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <Link
+                      href="/mensagens"
+                      className="btn btn--outline"
+                      style={{ padding: "7px 14px", fontSize: "13px", fontWeight: 700, textDecoration: "none" }}
+                    >
+                      💬 Abrir Chat Privado
+                    </Link>
+                  </div>
                 </div>
               </article>
             );
           })}
         </div>
-      )}
-
-      {payingShipment && (
-        <MercadoPagoPixModal
-          isOpen={Boolean(payingShipment)}
-          onClose={() => setPayingShipment(null)}
-          amountReais={payingShipment.suggestedPriceCents / 100}
-          description={`Frete TopicLog #${payingShipment.id}`}
-          orderId={payingShipment.id}
-          onPaymentSuccess={() => {
-            setPaidShipmentIds((prev) => new Set([...prev, payingShipment.id]));
-          }}
-        />
       )}
     </main>
   );

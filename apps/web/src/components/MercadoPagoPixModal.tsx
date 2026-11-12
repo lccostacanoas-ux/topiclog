@@ -16,6 +16,8 @@ interface MercadoPagoPixModalProps {
   payerName?: string;
   payerCpf?: string;
   orderId?: string;
+  expiresAtUtc?: string | null;
+  onExpired?: () => void;
   onPaymentSuccess: (paymentData: MercadoPagoPixData) => void;
 }
 
@@ -28,6 +30,8 @@ export function MercadoPagoPixModal({
   payerName,
   payerCpf,
   orderId,
+  expiresAtUtc,
+  onExpired,
   onPaymentSuccess
 }: MercadoPagoPixModalProps): React.JSX.Element | null {
   const [selectedAmount, setSelectedAmount] = useState<number>(amountReais);
@@ -37,7 +41,51 @@ export function MercadoPagoPixModal({
   const [copied, setCopied] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState<boolean>(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(15 * 60);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      return;
+    }
+
+    const computeRemaining = () => {
+      if (expiresAtUtc) {
+        const diff = Math.floor((new Date(expiresAtUtc).getTime() - Date.now()) / 1000);
+        return Math.max(0, diff);
+      }
+      return 15 * 60;
+    };
+
+    setRemainingSeconds(computeRemaining());
+    countdownTimerRef.current = setInterval(() => {
+      const next = expiresAtUtc
+        ? Math.max(0, Math.floor((new Date(expiresAtUtc).getTime() - Date.now()) / 1000))
+        : undefined;
+      setRemainingSeconds((prev) => {
+        const val = next !== undefined ? next : Math.max(0, prev - 1);
+        if (val <= 0 && !isApproved) {
+          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          setErrorMsg("O prazo de 15 minutos para pagamento Pix expirou e a reserva foi devolvida ao mural.");
+          if (onExpired) onExpired();
+        }
+        return val;
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, [isOpen, expiresAtUtc, isApproved, onExpired]);
+
+  const formatCountdown = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -247,10 +295,24 @@ export function MercadoPagoPixModal({
           <div>
             {/* Cabeçalho */}
             <div style={{ marginBottom: "18px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                <span style={{ fontSize: "20px" }}>⚡</span>
-                <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", backgroundColor: "#E0F2FE", padding: "2px 8px", borderRadius: "10px" }}>
-                  Pix Mercado Pago Oficial
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "6px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "20px" }}>⚡</span>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", backgroundColor: "#E0F2FE", padding: "2px 8px", borderRadius: "10px" }}>
+                    Pix Mercado Pago Oficial
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    color: remainingSeconds <= 120 ? "#B91C1C" : "#92400E",
+                    backgroundColor: remainingSeconds <= 120 ? "#FEE2E2" : "#FEF3C7",
+                    padding: "3px 10px",
+                    borderRadius: "999px"
+                  }}
+                >
+                  ⏳ Prazo: {formatCountdown(remainingSeconds)}
                 </span>
               </div>
               <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0F172A", margin: 0 }}>

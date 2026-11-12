@@ -1,15 +1,65 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import React, { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  getNotificationsApi,
+  markAllNotificationsReadApi,
+  markNotificationReadApi
+} from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
+import type { UserNotificationDto } from "../lib/types";
 
 export function NavigationHeader(): React.JSX.Element {
   const pathname = usePathname();
-  const { user, isAuthenticated, logout } = useAuth();
+  const router = useRouter();
+  const { user, token, isAuthenticated, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<readonly UserNotificationDto[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadNotifications = useCallback(async () => {
+    if (!isAuthenticated || !token) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+    const res = await getNotificationsApi(token);
+    if (res.ok && res.data) {
+      setNotifications(res.data.items);
+      setUnreadCount(res.data.unreadCount);
+    }
+  }, [isAuthenticated, token]);
+
+  useEffect(() => {
+    void loadNotifications();
+    if (!isAuthenticated || !token) return;
+    const timer = setInterval(() => {
+      void loadNotifications();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [loadNotifications, isAuthenticated, token]);
+
+  const handleOpenNotification = async (item: UserNotificationDto) => {
+    if (!item.isRead && token) {
+      await markNotificationReadApi(item.id, token);
+      void loadNotifications();
+    }
+    setNotificationsOpen(false);
+    if (item.href) {
+      router.push(item.href);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (token) {
+      await markAllNotificationsReadApi(token);
+      void loadNotifications();
+    }
+    setNotificationsOpen(false);
+  };
   const displayName: string = user?.displayName?.split(" ")[0] || "Topic Log";
   const isCarrier = Boolean(user?.roles?.includes("CARRIER"));
   const isSender = Boolean(user?.roles?.includes("SENDER"));
@@ -99,6 +149,28 @@ export function NavigationHeader(): React.JSX.Element {
                   aria-label="Ver notificações"
                 >
                   <span style={{ fontSize: "22px" }}>🔔</span>
+                  {unreadCount > 0 && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "2px",
+                        right: "2px",
+                        backgroundColor: "#EF4444",
+                        color: "#FFFFFF",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        borderRadius: "999px",
+                        minWidth: "16px",
+                        height: "16px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0 4px"
+                      }}
+                    >
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
                 </button>
 
                 <Link
@@ -454,6 +526,47 @@ export function NavigationHeader(): React.JSX.Element {
 
           {isAuthenticated && user ? (
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen(true)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "999px",
+                  cursor: "pointer",
+                  position: "relative",
+                  padding: "6px 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "#FFFFFF"
+                }}
+                aria-label="Notificações"
+                title="Notificações"
+              >
+                <span style={{ fontSize: "16px" }}>🔔</span>
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "-4px",
+                      right: "-4px",
+                      backgroundColor: "#EF4444",
+                      color: "#FFFFFF",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      borderRadius: "999px",
+                      minWidth: "18px",
+                      height: "18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0 4px"
+                    }}
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
               <Link
                 href="/minha-conta"
                 style={{
@@ -613,28 +726,58 @@ export function NavigationHeader(): React.JSX.Element {
               </button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "320px", overflowY: "auto" }}>
-              <div
-                style={{
-                  backgroundColor: "#0F172A",
-                  padding: "18px 14px",
-                  borderRadius: "12px",
-                  border: "1px solid #334155",
-                  textAlign: "center"
-                }}
-              >
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "#E2E8F0", marginBottom: "4px" }}>
-                  Nenhuma notificação no momento
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" }}>
+              {notifications.length === 0 ? (
+                <div
+                  style={{
+                    backgroundColor: "#0F172A",
+                    padding: "18px 14px",
+                    borderRadius: "12px",
+                    border: "1px solid #334155",
+                    textAlign: "center"
+                  }}
+                >
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#E2E8F0", marginBottom: "4px" }}>
+                    Nenhuma notificação no momento
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#94A3B8" }}>
+                    Novas propostas, pagamentos Pix e atualizações de entregas aparecerão aqui.
+                  </div>
                 </div>
-                <div style={{ fontSize: "12px", color: "#94A3B8" }}>
-                  Novas propostas, pagamentos e atualizações de entregas reais aparecerão aqui.
-                </div>
-              </div>
+              ) : (
+                notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => void handleOpenNotification(n)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      backgroundColor: n.isRead ? "#0F172A" : "#172554",
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      border: `1px solid ${n.isRead ? "#334155" : "#3B82F6"}`,
+                      cursor: "pointer",
+                      color: "#F8FAFC"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "#FFFFFF" }}>
+                        {!n.isRead ? "● " : ""}{n.title}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap" }}>
+                        {new Date(n.createdAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#CBD5E1", lineHeight: 1.4 }}>{n.message}</div>
+                  </button>
+                ))
+              )}
             </div>
 
             <button
               type="button"
-              onClick={() => setNotificationsOpen(false)}
+              onClick={() => void handleMarkAllRead()}
               style={{
                 width: "100%",
                 marginTop: "16px",

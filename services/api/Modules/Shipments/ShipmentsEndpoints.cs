@@ -85,6 +85,21 @@ public static class ShipmentsEndpoints
             return Results.Ok(shipments);
         });
 
+        // GET /api/v1/shipments/mine — Encomendas do remetente autenticado (inclui contratadas, em trânsito e entregues)
+        app.MapGet("/api/v1/shipments/mine", async (
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IShipmentsApplicationService shipmentsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var shipments = await shipmentsService.ListMyShipmentsAsync(
+                actor.UserId,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(shipments);
+        });
+
         // GET /api/v1/shipments/{id:guid} — Detalhes da encomenda (revela endereço exato apenas ao remetente)
         app.MapGet("/api/v1/shipments/{id:guid}", async (
             Guid id,

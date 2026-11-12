@@ -167,6 +167,48 @@ public static class FulfillmentEndpoints
             return Results.Ok(result);
         });
 
+        // GET /api/v1/deliveries/{orderId}/codes (Somente remetente: retorna código de coleta + código de entrega)
+        group.MapGet("/{orderId:guid}/codes", async (
+            Guid orderId,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IFulfillmentApplicationService fulfillmentService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+
+            var result = await fulfillmentService.GetOrderCodesAsync(
+                actor.UserId,
+                actorRole,
+                orderId,
+                cancellationToken);
+
+            return Results.Ok(result);
+        });
+
+        // POST /api/v1/deliveries/{orderId}/location (Transportador atualiza posição em tempo real no mapa)
+        group.MapPost("/{orderId:guid}/location", async (
+            Guid orderId,
+            [FromBody] UpdateDeliveryLocationRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IFulfillmentApplicationService fulfillmentService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+
+            var result = await fulfillmentService.UpdateCarrierLocationAsync(
+                actor.UserId,
+                actorRole,
+                orderId,
+                request,
+                cancellationToken);
+
+            return Results.Ok(result);
+        });
+
         // POST /api/v1/deliveries/{orderId}/regenerate-code
         group.MapPost("/{orderId:guid}/regenerate-code", async (
             Guid orderId,

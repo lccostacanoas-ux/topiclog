@@ -6,21 +6,109 @@ namespace TopicLog.Api.Modules.Fulfillment;
 
 public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("fulfillment_store.json");
+
+    private sealed class FulfillmentSnapshot
+    {
+        public List<DeliveryOrder> Orders { get; set; } = [];
+        public List<DeliveryChallenge> Challenges { get; set; } = [];
+        public List<DeliveryProof> Proofs { get; set; } = [];
+        public List<DeliveryEvent> Events { get; set; } = [];
+        public List<DeliveryException> Exceptions { get; set; } = [];
+    }
+
     private readonly ConcurrentDictionary<Guid, DeliveryOrder> _orders = new();
     private readonly ConcurrentDictionary<Guid, DeliveryChallenge> _challenges = new();
     private readonly ConcurrentDictionary<Guid, DeliveryProof> _proofs = new();
     private readonly List<DeliveryEvent> _events = [];
     private readonly ConcurrentDictionary<Guid, DeliveryException> _exceptions = new();
     private readonly Lock _syncLock = new();
+    private readonly object _diskLock = new();
 
     public InMemoryFulfillmentRepository()
     {
-        // Repositório limpo sem ordens de entrega fictícias
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!isTest)
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var snapshot = System.Text.Json.JsonSerializer.Deserialize<FulfillmentSnapshot>(json);
+            if (snapshot is null) return;
+
+            foreach (var o in snapshot.Orders.Where(x => x is not null))
+                _orders[o.Id] = o;
+            foreach (var c in snapshot.Challenges.Where(x => x is not null))
+            {
+                if (string.IsNullOrWhiteSpace(c.PlainCode) && _orders.TryGetValue(c.DeliveryOrderId, out var ord))
+                {
+                    c.PlainCode = ord.DeliveryPlainCodeProtected;
+                }
+                _challenges[c.Id] = c;
+            }
+            foreach (var p in snapshot.Proofs.Where(x => x is not null))
+                _proofs[p.DeliveryOrderId] = p;
+            lock (_syncLock)
+            {
+                _events.AddRange(snapshot.Events.Where(x => x is not null));
+            }
+            foreach (var ex in snapshot.Exceptions.Where(x => x is not null))
+                _exceptions[ex.DeliveryOrderId] = ex;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar fulfillment em disco: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        lock (_diskLock)
+        {
+            try
+            {
+                List<DeliveryEvent> eventsCopy;
+                lock (_syncLock)
+                {
+                    eventsCopy = [.. _events];
+                }
+
+                var snapshot = new FulfillmentSnapshot
+                {
+                    Orders = _orders.Values.ToList(),
+                    Challenges = _challenges.Values.ToList(),
+                    Proofs = _proofs.Values.ToList(),
+                    Events = eventsCopy,
+                    Exceptions = _exceptions.Values.ToList()
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(snapshot, JsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Storage] Erro ao persistir fulfillment em disco: {ex.Message}");
+            }
+        }
     }
 
     public Task<DeliveryOrder> CreateOrderAsync(DeliveryOrder order, CancellationToken cancellationToken = default)
     {
         _orders[order.Id] = order;
+        SaveToDisk();
         return Task.FromResult(order);
     }
 
@@ -63,6 +151,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
     public Task<DeliveryOrder> UpdateOrderAsync(DeliveryOrder order, CancellationToken cancellationToken = default)
     {
         _orders[order.Id] = order;
+        SaveToDisk();
         return Task.FromResult(order);
     }
 
@@ -75,6 +164,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
         }
 
         _challenges[challenge.Id] = challenge;
+        SaveToDisk();
         return Task.FromResult(challenge);
     }
 
@@ -90,12 +180,14 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
     public Task<DeliveryChallenge> UpdateChallengeAsync(DeliveryChallenge challenge, CancellationToken cancellationToken = default)
     {
         _challenges[challenge.Id] = challenge;
+        SaveToDisk();
         return Task.FromResult(challenge);
     }
 
     public Task<DeliveryProof> CreateProofAsync(DeliveryProof proof, CancellationToken cancellationToken = default)
     {
         _proofs[proof.DeliveryOrderId] = proof;
+        SaveToDisk();
         return Task.FromResult(proof);
     }
 
@@ -111,6 +203,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
         {
             _events.Add(evt);
         }
+        SaveToDisk();
         return Task.FromResult(evt);
     }
 
@@ -129,6 +222,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
     public Task<DeliveryException> CreateExceptionAsync(DeliveryException exc, CancellationToken cancellationToken = default)
     {
         _exceptions[exc.DeliveryOrderId] = exc;
+        SaveToDisk();
         return Task.FromResult(exc);
     }
 
@@ -141,6 +235,7 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
     public Task<DeliveryException> UpdateExceptionAsync(DeliveryException exc, CancellationToken cancellationToken = default)
     {
         _exceptions[exc.DeliveryOrderId] = exc;
+        SaveToDisk();
         return Task.FromResult(exc);
     }
 

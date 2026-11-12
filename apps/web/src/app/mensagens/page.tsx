@@ -3,8 +3,125 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "../../lib/auth-context";
-import { listProposalsForSenderApi, listProposalsByCarrierApi } from "../../lib/api-client";
-import type { ProposalDto } from "../../lib/types";
+import {
+  listMyContractsApi,
+  listContractMessagesApi,
+  sendContractMessageApi
+} from "../../lib/api-client";
+import type { ContractDto, ContractMessageDto } from "../../lib/types";
+
+function ContractChatCard({
+  contract,
+  token,
+  currentUserId
+}: {
+  contract: ContractDto;
+  token: string;
+  currentUserId: string;
+}): React.JSX.Element {
+  const [messages, setMessages] = useState<ContractMessageDto[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const loadMsgs = React.useCallback(async () => {
+    const res = await listContractMessagesApi(contract.id, token);
+    if (res.ok && res.data) {
+      setMessages(res.data);
+    }
+  }, [contract.id, token]);
+
+  useEffect(() => {
+    void loadMsgs();
+    const timer = window.setInterval(() => void loadMsgs(), 5000);
+    return () => window.clearInterval(timer);
+  }, [loadMsgs]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    const res = await sendContractMessageApi(contract.id, trimmed, token);
+    if (res.ok && res.data) {
+      setMessages((prev) => [...prev, res.data!]);
+      setText("");
+    }
+    setSending(false);
+  };
+
+  return (
+    <div
+      style={{
+        padding: "16px",
+        borderRadius: "10px",
+        border: "1px solid #BFDBFE",
+        backgroundColor: "#F8FAFC"
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+        <div>
+          <strong style={{ fontSize: "14px", color: "#0F172A", display: "block" }}>
+            Encomenda #{contract.shipmentId.slice(0, 8)} • R$ {(contract.amountCents / 100).toFixed(2).replace(".", ",")}
+          </strong>
+          <span style={{ fontSize: "12px", color: "#475569" }}>
+            Chat Privado ({contract.senderName} ↔ {contract.carrierName})
+          </span>
+        </div>
+        <Link
+          href="/minhas-atividades"
+          className="btn btn--outline"
+          style={{ padding: "5px 12px", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}
+        >
+          🗺️ Ver Entrega & Códigos
+        </Link>
+      </div>
+
+      <div style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "10px", padding: "8px", backgroundColor: "#FFFFFF", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+        {messages.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "12px", color: "#94A3B8", textAlign: "center" }}>
+            Nenhuma mensagem trocada ainda. Combine detalhes de retirada ou entrega aqui.
+          </p>
+        ) : (
+          messages.map((m) => {
+            const isMine = m.senderUserId === currentUserId;
+            return (
+              <div
+                key={m.id}
+                style={{
+                  alignSelf: isMine ? "flex-end" : "flex-start",
+                  maxWidth: "80%",
+                  backgroundColor: isMine ? "#2563EB" : "#F1F5F9",
+                  color: isMine ? "#FFFFFF" : "#1E293B",
+                  borderRadius: "8px",
+                  padding: "7px 11px",
+                  fontSize: "13px"
+                }}
+              >
+                <div style={{ fontSize: "10px", fontWeight: 700, opacity: 0.85, marginBottom: "2px" }}>
+                  {isMine ? "Você" : m.senderName} • {new Date(m.sentAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </div>
+                <div>{m.body}</div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <form onSubmit={(e) => void handleSend(e)} style={{ display: "flex", gap: "8px" }}>
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Enviar mensagem privada..."
+          style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "13px" }}
+        />
+        <button type="submit" disabled={sending || !text.trim()} className="btn btn--primary" style={{ padding: "8px 16px", fontSize: "13px", fontWeight: 700 }}>
+          {sending ? "Enviando..." : "Enviar"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
 export default function MensagensPage(): React.JSX.Element {
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -15,54 +132,39 @@ export default function MensagensPage(): React.JSX.Element {
   const [protocol, setProtocol] = useState<string | null>(null);
   const [sentSuccess, setSentSuccess] = useState(false);
 
-  // Somente negociações reais fechadas (ACCEPTED) vindas da API oficial
-  const [closedPaidProposals, setClosedPaidProposals] = useState<ProposalDto[]>([]);
-  const [loadingProposals, setLoadingProposals] = useState(false);
+  // Somente contratos com pagamento confirmado (ACTIVE / COMPLETED)
+  const [paidContracts, setPaidContracts] = useState<ContractDto[]>([]);
+  const [loadingContracts, setLoadingContracts] = useState(false);
 
   useEffect(() => {
     if (!token || !user?.userId) {
-      setClosedPaidProposals([]);
+      setPaidContracts([]);
       return;
     }
 
     let cancelled = false;
-    setLoadingProposals(true);
+    setLoadingContracts(true);
 
-    const loadAccepted = async () => {
+    const loadPaidContracts = async () => {
       try {
-        const requests: Promise<Awaited<ReturnType<typeof listProposalsForSenderApi>>>[] = [
-          listProposalsForSenderApi(user.userId, token)
-        ];
-        if (user.roles?.includes("CARRIER")) {
-          requests.push(listProposalsByCarrierApi(user.userId, token));
-        }
-
-        const results = await Promise.all(requests);
-        const byId = new Map<string, ProposalDto>();
-        for (const res of results) {
-          if (res.ok && !res.isFallback && Array.isArray(res.data)) {
-            for (const p of res.data) {
-              if (p.status === "ACCEPTED") {
-                byId.set(p.id, p);
-              }
-            }
-          }
-        }
-        if (!cancelled) {
-          setClosedPaidProposals(Array.from(byId.values()));
+        const res = await listMyContractsApi(token);
+        if (!cancelled && res.ok && Array.isArray(res.data)) {
+          setPaidContracts(
+            res.data.filter(
+              (c) =>
+                (c.status === "ACTIVE" || c.status === "COMPLETED") &&
+                (c.senderId === user.userId || c.carrierId === user.userId)
+            )
+          );
         }
       } catch {
-        if (!cancelled) {
-          setClosedPaidProposals([]);
-        }
+        if (!cancelled) setPaidContracts([]);
       } finally {
-        if (!cancelled) {
-          setLoadingProposals(false);
-        }
+        if (!cancelled) setLoadingContracts(false);
       }
     };
 
-    void loadAccepted();
+    void loadPaidContracts();
     return () => {
       cancelled = true;
     };
@@ -359,50 +461,26 @@ export default function MensagensPage(): React.JSX.Element {
       {/* Seção das Negociações Fechadas e Pagas */}
       <div className="card" style={{ padding: "24px", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
         <h3 style={{ fontSize: "16px", fontWeight: 800, margin: "0 0 12px 0", color: "#0F172A" }}>
-          Suas Negociações com Pagamento Confirmado
+          Chats Privados com Pagamento Confirmado
         </h3>
-        {loadingProposals ? (
+        {loadingContracts ? (
           <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-            Verificando negociações fechadas...
+            Carregando chats dos contratos ativos...
           </p>
-        ) : closedPaidProposals.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {closedPaidProposals.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: "8px",
-                  border: "1px solid #CBD5E1",
-                  backgroundColor: "#F8FAFC",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "10px"
-                }}
-              >
-                <div>
-                  <strong style={{ fontSize: "14px", color: "#1E293B", display: "block" }}>
-                    Encomenda #{p.shipmentId.slice(0, 8)} • R$ {(p.amountCents / 100).toFixed(2).replace(".", ",")}
-                  </strong>
-                  <span style={{ fontSize: "12px", color: "#64748B" }}>
-                    Participantes: {p.senderName} e {p.carrierName}
-                  </span>
-                </div>
-                <Link
-                  href="/propostas"
-                  className="btn btn--outline"
-                  style={{ padding: "6px 14px", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}
-                >
-                  Abrir Chat na Aba de Negociação →
-                </Link>
-              </div>
+        ) : paidContracts.length > 0 && token && user?.userId ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {paidContracts.map((contract) => (
+              <ContractChatCard
+                key={contract.id}
+                contract={contract}
+                token={token}
+                currentUserId={user.userId}
+              />
             ))}
           </div>
         ) : (
           <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
-            Nenhuma negociação fechada com pagamento confirmado no momento. Quando o remetente efetuar o pagamento via Mercado Pago, o canal de chat direto será automaticamente aberto na aba de propostas.
+            Nenhuma negociação fechada com pagamento confirmado no momento. Quando o remetente efetuar o pagamento via Pix, o canal de chat direto exclusivo entre vocês será aberto aqui e na aba Propostas.
           </p>
         )}
       </div>

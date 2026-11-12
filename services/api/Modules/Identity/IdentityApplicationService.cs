@@ -209,6 +209,8 @@ public sealed class IdentityApplicationService
             UpdatedAtUtc = nowUtc
         };
 
+        ApplyAutoVerificationIfComplete(user, profile);
+
         await _userRepository.CreateAsync(user, profile, cancellationToken).ConfigureAwait(false);
 
         await _auditRepository.AppendAsync(
@@ -646,6 +648,7 @@ public sealed class IdentityApplicationService
 
         user.UpdatedAtUtc = nowUtc;
         profile.UpdatedAtUtc = nowUtc;
+        ApplyAutoVerificationIfComplete(user, profile);
         await _userRepository.UpdateAsync(user, profile, cancellationToken).ConfigureAwait(false);
 
         await _auditRepository.AppendAsync(
@@ -722,6 +725,66 @@ public sealed class IdentityApplicationService
             ExpiresInSeconds: expiresInSeconds,
             TokenType: "Bearer",
             Profile: MapPrivateProfile(user, profile));
+    }
+
+    public static bool HasAllRequiredVerificationData(UserEntity user, UserProfileEntity profile)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        bool hasBasicIdentity =
+            !string.IsNullOrWhiteSpace(profile.DisplayName)
+            && profile.DisplayName.Trim().Length >= 3
+            && !string.IsNullOrWhiteSpace(user.Email)
+            && !string.IsNullOrWhiteSpace(user.PhoneEncrypted)
+            && !string.IsNullOrWhiteSpace(profile.CpfHash);
+
+        bool hasCompleteAddress =
+            !string.IsNullOrWhiteSpace(profile.City)
+            && !string.IsNullOrWhiteSpace(profile.StateUf)
+            && !string.IsNullOrWhiteSpace(profile.PostalCode)
+            && !string.IsNullOrWhiteSpace(profile.Street)
+            && !string.IsNullOrWhiteSpace(profile.Number)
+            && !string.IsNullOrWhiteSpace(profile.Neighborhood);
+
+        if (!hasBasicIdentity || !hasCompleteAddress)
+        {
+            return false;
+        }
+
+        if (profile.Roles.Contains(UserRole.CARRIER))
+        {
+            bool hasCarrierData =
+                !string.IsNullOrWhiteSpace(profile.VehicleType)
+                && !string.IsNullOrWhiteSpace(profile.VehicleModel)
+                && !string.IsNullOrWhiteSpace(profile.VehiclePlate)
+                && !string.IsNullOrWhiteSpace(profile.Renavam)
+                && !string.IsNullOrWhiteSpace(profile.CnhNumber)
+                && profile.CarrierTermsAccepted;
+
+            if (!hasCarrierData)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool ApplyAutoVerificationIfComplete(UserEntity user, UserProfileEntity profile)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        if (profile.KycStatus != KycStatus.REJECTED
+            && profile.KycStatus != KycStatus.VERIFIED
+            && HasAllRequiredVerificationData(user, profile))
+        {
+            profile.KycStatus = KycStatus.VERIFIED;
+            return true;
+        }
+
+        return false;
     }
 
     public static PrivateUserProfileResponse MapPrivateProfile(UserEntity user, UserProfileEntity profile)

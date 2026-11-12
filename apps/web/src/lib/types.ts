@@ -648,7 +648,9 @@ export type ContractStatusCode =
   | "ACTIVE"
   | "CANCELLED_PRE_PICKUP"
   | "CANCELLED_POST_PICKUP"
-  | "COMPLETED";
+  | "COMPLETED"
+  | "AWAITING_PAYMENT"
+  | "PAYMENT_EXPIRED";
 
 export type CancellationReasonCode =
   | "MUTUAL_AGREEMENT"
@@ -722,6 +724,11 @@ export interface ContractDto {
   readonly status: ContractStatusCode;
   readonly cancellation?: CancellationRecordDto | null;
   readonly contractedAtUtc: string;
+  readonly paymentExpiresAtUtc?: string | null;
+  readonly paidAtUtc?: string | null;
+  readonly paymentProvider?: string | null;
+  readonly paymentReferenceId?: string | null;
+  readonly pixQrCode?: string | null;
 }
 
 export interface ProposalEventDto {
@@ -790,6 +797,7 @@ export interface SandboxTokenResponse {
    -------------------------------------------------------------------------- */
 
 export type DeliveryOrderStatus =
+  | "AWAITING_PICKUP"
   | "CREATED"
   | "ASSIGNED"
   | "PICKUP_CHECKIN"
@@ -835,29 +843,49 @@ export type DeliveryExceptionReasonCode =
 
 export interface DeliveryOrderDto {
   readonly id: string;
-  readonly proposalId: string;
+  readonly contractId?: string;
+  readonly proposalId?: string;
   readonly shipmentId: string;
   readonly tripId?: string | null;
   readonly senderId: string;
+  readonly senderName?: string;
   readonly carrierId: string;
+  readonly carrierName?: string;
+  readonly recipientName?: string;
+  readonly recipientPhone?: string | null;
+  readonly recipientDocumentMasked?: string | null;
   readonly status: DeliveryOrderStatus;
-  readonly pickupCityIbge: string;
-  readonly deliveryCityIbge: string;
-  readonly agreedAmountCents: number;
-  readonly platformFeeCents: number;
-  readonly carrierNetCents: number;
-  readonly requiresPhotoProof: boolean;
-  readonly requiresCodeVerification: boolean;
-  readonly hasValidPhotoProof: boolean;
-  readonly hasValidCodeVerification: boolean;
-  readonly remainingChallengeAttempts: number;
-  readonly isChallengeLocked: boolean;
+  readonly pickedUpAtUtc?: string | null;
+  readonly deliveredAtUtc?: string | null;
+  readonly createdAtUtc: string;
+  readonly pickupConfirmed?: boolean;
+  readonly pickupCodeRequired?: boolean;
+  readonly originAddressSummary?: string | null;
+  readonly destinationAddressSummary?: string | null;
+  readonly originLatitude?: number | null;
+  readonly originLongitude?: number | null;
+  readonly destinationLatitude?: number | null;
+  readonly destinationLongitude?: number | null;
+  readonly currentLatitude?: number | null;
+  readonly currentLongitude?: number | null;
+  readonly lastLocationUpdatedAtUtc?: string | null;
+  readonly amountCents?: number;
+  readonly pickupCityIbge?: string;
+  readonly deliveryCityIbge?: string;
+  readonly agreedAmountCents?: number;
+  readonly platformFeeCents?: number;
+  readonly carrierNetCents?: number;
+  readonly requiresPhotoProof?: boolean;
+  readonly requiresCodeVerification?: boolean;
+  readonly hasValidPhotoProof?: boolean;
+  readonly hasValidCodeVerification?: boolean;
+  readonly remainingChallengeAttempts?: number;
+  readonly isChallengeLocked?: boolean;
   readonly exceptionReasonCode?: string | null;
   readonly exceptionNotes?: string | null;
   readonly exceptionReportedAtUtc?: string | null;
   readonly scheduledDeliveryWindowStartUtc?: string | null;
   readonly scheduledDeliveryWindowEndUtc?: string | null;
-  readonly createdAtUtc: string;
   readonly inTransitAtUtc?: string | null;
   readonly completedAtUtc?: string | null;
 }
@@ -935,6 +963,8 @@ export interface PickupCheckinRequest {
 }
 
 export interface ConfirmPickupRequest {
+  readonly handoverNotes?: string | null;
+  readonly pickupCode?: string | null;
   readonly notes?: string | null;
   readonly photoUrl?: string | null;
 }
@@ -948,7 +978,9 @@ export interface UploadDeliveryProofRequest {
 }
 
 export interface ConfirmDeliveryRequest {
-  readonly verificationCode: string;
+  readonly deliveryCode?: string;
+  readonly verificationCode?: string;
+  readonly recipientSignatureOrNotes?: string | null;
   readonly photoUrl?: string | null;
   readonly notes?: string | null;
   readonly latitude?: number | null;
@@ -1269,6 +1301,53 @@ export interface CompareLegalVersionsResponseDto {
   readonly totalAdditions: number;
   readonly totalDeletions: number;
 }
+
+/* --------------------------------------------------------------------------
+   MÓDULO NOTIFICAÇÕES, CÓDIGOS E CHAT BILATERAL DO CONTRATO
+   -------------------------------------------------------------------------- */
+
+export interface UserNotificationDto {
+  readonly id: string;
+  readonly userId: string;
+  readonly type: string;
+  readonly title: string;
+  readonly message: string;
+  readonly href: string;
+  readonly relatedShipmentId?: string | null;
+  readonly relatedContractId?: string | null;
+  readonly isRead: boolean;
+  readonly createdAtUtc: string;
+  readonly readAtUtc?: string | null;
+}
+
+export interface NotificationListResponse {
+  readonly items: readonly UserNotificationDto[];
+  readonly unreadCount: number;
+}
+
+export interface OrderCodesDto {
+  readonly orderId: string;
+  readonly pickupCode: string;
+  readonly pickupConfirmed: boolean;
+  readonly deliveryCode: string;
+  readonly deliveryVerified: boolean;
+  readonly remainingAttempts: number;
+  readonly expiresAtUtc: string;
+  readonly isLocked: boolean;
+  readonly disclaimer: string;
+}
+
+export interface ContractMessageDto {
+  readonly id: string;
+  readonly contractId: string;
+  readonly shipmentId: string;
+  readonly senderUserId: string;
+  readonly senderName: string;
+  readonly senderRole: string;
+  readonly body: string;
+  readonly sentAtUtc: string;
+}
+
 
 
 

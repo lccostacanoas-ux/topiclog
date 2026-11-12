@@ -139,6 +139,11 @@ public sealed class InMemoryUserRepository : IUserRepository
                             continue;
                         }
 
+                        if (IdentityApplicationService.ApplyAutoVerificationIfComplete(item.User, item.Profile))
+                        {
+                            migratedAny = true;
+                        }
+
                         _byId[item.User.Id] = (item.User, item.Profile);
                         _idByEmail[item.User.Email.Trim().ToLowerInvariant()] = item.User.Id;
                     }

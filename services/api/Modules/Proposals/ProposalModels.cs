@@ -32,7 +32,9 @@ public enum ProposalEventType
     CONTRACT_CANCELLED_POST_PICKUP = 8,
     PRIORITY_OFFER_ISSUED = 9,
     PRIORITY_OFFER_DECLINED = 10,
-    PRIORITY_OFFER_EXPIRED = 11
+    PRIORITY_OFFER_EXPIRED = 11,
+    PAYMENT_CONFIRMED = 12,
+    PAYMENT_EXPIRED = 13
 }
 
 [SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "Nomenclatura canônica para contratos na Topic Log")]
@@ -41,7 +43,9 @@ public enum ContractStatus
     ACTIVE = 0,
     CANCELLED_PRE_PICKUP = 1,
     CANCELLED_POST_PICKUP = 2,
-    COMPLETED = 3
+    COMPLETED = 3,
+    AWAITING_PAYMENT = 4,
+    PAYMENT_EXPIRED = 5
 }
 
 [SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "Nomenclatura canônica para motivos de cancelamento na Topic Log")]
@@ -140,6 +144,11 @@ public sealed class Contract
     public IReadOnlyList<LegReservation> LegReservations { get; init; } = [];
     public ContractStatus Status { get; set; } = ContractStatus.ACTIVE;
     public CancellationRecord? Cancellation { get; set; }
+    public DateTimeOffset? PaymentExpiresAtUtc { get; set; }
+    public DateTimeOffset? PaidAtUtc { get; set; }
+    public string? PaymentProvider { get; set; }
+    public string? PaymentReferenceId { get; set; }
+    public string? PixQrCode { get; set; }
     public DateTimeOffset ContractedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -268,7 +277,12 @@ public sealed record ContractResponse(
     IReadOnlyList<LegReservation> LegReservations,
     string Status,
     CancellationRecord? Cancellation,
-    DateTimeOffset ContractedAtUtc);
+    DateTimeOffset ContractedAtUtc,
+    DateTimeOffset? PaymentExpiresAtUtc = null,
+    DateTimeOffset? PaidAtUtc = null,
+    string? PaymentProvider = null,
+    string? PaymentReferenceId = null,
+    string? PixQrCode = null);
 
 public sealed record ProposalEventResponse(
     Guid Id,
@@ -294,3 +308,30 @@ public sealed record PriorityOfferResponse(
     bool IsDeclined,
     bool IsAccepted,
     string Notes);
+
+public sealed record ConfirmContractPaymentRequest(
+    string? PaymentProvider = null,
+    string? PaymentReferenceId = null);
+
+public sealed record ContractMessage(
+    Guid Id,
+    Guid ContractId,
+    Guid ShipmentId,
+    Guid SenderUserId,
+    string SenderName,
+    string SenderRole,
+    string Body,
+    DateTimeOffset SentAtUtc);
+
+public sealed record CreateContractMessageRequest(
+    string Body);
+
+public sealed record ContractMessageResponse(
+    Guid Id,
+    Guid ContractId,
+    Guid ShipmentId,
+    Guid SenderUserId,
+    string SenderName,
+    string SenderRole,
+    string Body,
+    DateTimeOffset SentAtUtc);

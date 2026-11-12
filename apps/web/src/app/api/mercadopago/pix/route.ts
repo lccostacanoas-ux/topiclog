@@ -24,10 +24,13 @@ export async function POST(request: Request) {
 
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
 
+    const expirationIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
     const mpPayload = {
       transaction_amount: amount,
       description: body.description || "Frete TopicLog",
       payment_method_id: "pix",
+      date_of_expiration: expirationIso,
       payer: payerPayload
     };
 

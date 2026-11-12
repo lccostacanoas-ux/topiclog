@@ -312,8 +312,12 @@ function FeedContent(): React.JSX.Element {
         const merged: DemoShipment[] = [];
         const seenIds = new Set<string>();
 
-        // 1. Encomendas oficiais do servidor
+        // 1. Encomendas abertas/em negociação do servidor (exclui já contratadas/pagas/entregues)
         for (const s of res.data) {
+          const st = (s.status || "").toUpperCase();
+          if (st === "CONTRACTED" || st === "IN_TRANSIT" || st === "DELIVERED" || st === "CLOSED" || st === "CANCELLED") {
+            continue;
+          }
           seenIds.add(s.id);
           merged.push({
             id: s.id,
@@ -332,7 +336,7 @@ function FeedContent(): React.JSX.Element {
             deadlineDate: s.deliveryWindow || "A combinar",
             senderName: s.senderName || "Remetente",
             senderKycVerified: false,
-            status: s.status === "DELIVERED" ? "DELIVERED" : s.status === "IN_TRANSIT" ? "IN_TRANSIT" : "OPEN",
+            status: st === "DELIVERED" ? "DELIVERED" : st === "IN_TRANSIT" ? "IN_TRANSIT" : "OPEN",
             interestedInInsurance: false,
             photoIcon: "📦",
             createdAt: s.createdAtUtc || new Date().toISOString()

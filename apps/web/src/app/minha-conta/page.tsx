@@ -309,12 +309,12 @@ export default function MyAccountPage(): React.JSX.Element {
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "14px", margin: "0 0 12px 0" }}>
             {user.kycStatus === "VERIFIED"
-              ? "Sua identidade foi validada (CPF, documento oficial e comprovante cadastral), garantindo mais segurança e credibilidade nas negociações."
-              : "O Perfil Verificado indica que você enviou documento oficial (RG/CNH), CPF e comprovante cadastral e foi aprovado na conferência de segurança (KYC), exibindo o selo de confiança para outros usuários."}
+              ? "Sua identidade foi verificada automaticamente após o preenchimento completo de CPF, nome, endereço completo, e-mail e telefone (sem necessidade de envio de documentos)."
+              : "Para passar para o status Verificado automaticamente (sem envio de documentos ou fotos), preencha todos os dados cadastrais: Nome completo, CPF válido, E-mail, Telefone e Endereço completo (CEP, Rua, Número, Bairro, Cidade e UF)."}
           </p>
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill
-              label={user.kycStatus === "VERIFIED" ? "Perfil com Selo Verificado" : "Cadastro Básico Concluído"}
+              label={user.kycStatus === "VERIFIED" ? "Perfil com Selo Verificado" : "Complete seu Cadastro para Verificar"}
               tone={user.kycStatus === "VERIFIED" ? "success" : "neutral"}
             />
             <button
@@ -323,13 +323,8 @@ export default function MyAccountPage(): React.JSX.Element {
               className="btn btn--outline"
               style={{ padding: "4px 12px", fontSize: "12px", borderColor: "#16A34A", color: "#16A34A", fontWeight: 700 }}
             >
-              ✏️ Atualizar Dados / CNH
+              ✏️ {user.kycStatus === "VERIFIED" ? "Atualizar Dados Cadastrais" : "Completar Dados para Verificar"}
             </button>
-            {user.kycStatus !== "VERIFIED" && (
-              <Link href="/verificacao-kyc" className="btn btn--secondary" style={{ padding: "4px 12px", fontSize: "13px" }}>
-                Verificar Documentos
-              </Link>
-            )}
           </div>
         </div>
       </section>

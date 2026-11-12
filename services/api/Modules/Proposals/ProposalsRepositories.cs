@@ -17,14 +17,19 @@ public interface IProposalsRepository
     Task<IReadOnlyList<Proposal>> ListProposalsByShipmentIdAsync(Guid shipmentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Proposal>> ListProposalsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Proposal>> ListProposalsForSenderAsync(Guid senderId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Proposal>> ListAcceptedProposalsAsync(CancellationToken cancellationToken = default);
     Task<bool> UpdateProposalAsync(Proposal proposal, CancellationToken cancellationToken = default);
 
     Task<Contract> CreateContractAsync(Contract contract, CancellationToken cancellationToken = default);
     Task<Contract?> GetContractByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Contract?> GetContractByShipmentIdAsync(Guid shipmentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Contract>> ListContractsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Contract>> ListContractsByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Contract>> ListAllContractsAsync(CancellationToken cancellationToken = default);
     Task<bool> UpdateContractAsync(Contract contract, CancellationToken cancellationToken = default);
+
+    Task AddContractMessageAsync(ContractMessage message, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ContractMessage>> ListContractMessagesAsync(Guid contractId, CancellationToken cancellationToken = default);
 
     Task AddEventAsync(ProposalEvent ev, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProposalEvent>> GetEventsByProposalIdAsync(Guid proposalId, CancellationToken cancellationToken = default);
@@ -46,11 +51,15 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
 {
     private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("proposals_store.json");
+    private static string ContractsStorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("contracts_store.json");
+    private static string EventsStorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("proposal_events_store.json");
+    private static string MessagesStorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("contract_messages_store.json");
     private readonly object _diskLock = new();
 
     private readonly ConcurrentDictionary<Guid, Proposal> _proposals = new();
     private readonly ConcurrentDictionary<Guid, Contract> _contracts = new();
     private readonly ConcurrentBag<ProposalEvent> _events = new();
+    private readonly ConcurrentBag<ContractMessage> _contractMessages = new();
     private readonly ConcurrentDictionary<Guid, PriorityOffer> _priorityOffers = new();
     private readonly object _acceptanceLock = new();
 
@@ -71,21 +80,61 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
     {
         try
         {
-            if (!File.Exists(StorageFilePath)) return;
-            var json = File.ReadAllText(StorageFilePath);
-            var list = System.Text.Json.JsonSerializer.Deserialize<List<Proposal>>(json);
-            if (list is null) return;
-            foreach (var item in list)
+            if (File.Exists(StorageFilePath))
             {
-                if (item is not null)
+                var json = File.ReadAllText(StorageFilePath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<Proposal>>(json);
+                if (list is not null)
                 {
-                    _proposals[item.Id] = item;
+                    foreach (var item in list.Where(i => i is not null))
+                    {
+                        _proposals[item.Id] = item;
+                    }
+                }
+            }
+
+            if (File.Exists(ContractsStorageFilePath))
+            {
+                var json = File.ReadAllText(ContractsStorageFilePath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<Contract>>(json);
+                if (list is not null)
+                {
+                    foreach (var item in list.Where(i => i is not null))
+                    {
+                        _contracts[item.Id] = item;
+                    }
+                }
+            }
+
+            if (File.Exists(EventsStorageFilePath))
+            {
+                var json = File.ReadAllText(EventsStorageFilePath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<ProposalEvent>>(json);
+                if (list is not null)
+                {
+                    foreach (var item in list.Where(i => i is not null))
+                    {
+                        _events.Add(item);
+                    }
+                }
+            }
+
+            if (File.Exists(MessagesStorageFilePath))
+            {
+                var json = File.ReadAllText(MessagesStorageFilePath);
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<ContractMessage>>(json);
+                if (list is not null)
+                {
+                    foreach (var item in list.Where(i => i is not null))
+                    {
+                        _contractMessages.Add(item);
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar propostas: {ex.Message}");
+            Console.WriteLine($"[TopicLog.Storage] Aviso ao carregar propostas/contratos: {ex.Message}");
         }
     }
 
@@ -99,13 +148,22 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         {
             try
             {
-                var list = _proposals.Values.ToList();
-                var json = System.Text.Json.JsonSerializer.Serialize(list, JsonOptions);
-                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(
+                    StorageFilePath,
+                    System.Text.Json.JsonSerializer.Serialize(_proposals.Values.ToList(), JsonOptions));
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(
+                    ContractsStorageFilePath,
+                    System.Text.Json.JsonSerializer.Serialize(_contracts.Values.ToList(), JsonOptions));
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(
+                    EventsStorageFilePath,
+                    System.Text.Json.JsonSerializer.Serialize(_events.OrderBy(e => e.OccurredAtUtc).ToList(), JsonOptions));
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(
+                    MessagesStorageFilePath,
+                    System.Text.Json.JsonSerializer.Serialize(_contractMessages.OrderBy(m => m.SentAtUtc).ToList(), JsonOptions));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TopicLog.Storage] Erro ao persistir propostas em disco: {ex.Message}");
+                Console.WriteLine($"[TopicLog.Storage] Erro ao persistir propostas/contratos em disco: {ex.Message}");
             }
         }
     }
@@ -155,6 +213,16 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         return Task.FromResult<IReadOnlyList<Proposal>>(list);
     }
 
+    public Task<IReadOnlyList<Proposal>> ListAcceptedProposalsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var list = _proposals.Values
+            .Where(p => p.Status == ProposalStatus.ACCEPTED)
+            .OrderByDescending(p => p.UpdatedAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Proposal>>(list);
+    }
+
     public Task<bool> UpdateProposalAsync(Proposal proposal, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -172,6 +240,7 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         _contracts[contract.Id] = contract;
+        SaveToDisk();
         return Task.FromResult(contract);
     }
 
@@ -185,7 +254,14 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
     public Task<Contract?> GetContractByShipmentIdAsync(Guid shipmentId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var contract = _contracts.Values.FirstOrDefault(c => c.ShipmentId == shipmentId && c.Status == ContractStatus.ACTIVE);
+        var now = DateTimeOffset.UtcNow;
+        var contract = _contracts.Values
+            .Where(c => c.ShipmentId == shipmentId &&
+                        (c.Status == ContractStatus.ACTIVE ||
+                         c.Status == ContractStatus.COMPLETED ||
+                         (c.Status == ContractStatus.AWAITING_PAYMENT && (c.PaymentExpiresAtUtc == null || c.PaymentExpiresAtUtc > now))))
+            .OrderByDescending(c => c.ContractedAtUtc)
+            .FirstOrDefault();
         return Task.FromResult(contract);
     }
 
@@ -194,6 +270,16 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         cancellationToken.ThrowIfCancellationRequested();
         var list = _contracts.Values
             .Where(c => c.CarrierId == carrierId)
+            .OrderByDescending(c => c.ContractedAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Contract>>(list);
+    }
+
+    public Task<IReadOnlyList<Contract>> ListContractsByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var list = _contracts.Values
+            .Where(c => c.SenderId == userId || c.CarrierId == userId)
             .OrderByDescending(c => c.ContractedAtUtc)
             .ToList();
         return Task.FromResult<IReadOnlyList<Contract>>(list);
@@ -215,15 +301,35 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
         {
             contract.UpdatedAtUtc = DateTimeOffset.UtcNow;
             _contracts[contract.Id] = contract;
+            SaveToDisk();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
+    }
+
+    public Task AddContractMessageAsync(ContractMessage message, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _contractMessages.Add(message);
+        SaveToDisk();
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<ContractMessage>> ListContractMessagesAsync(Guid contractId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var list = _contractMessages
+            .Where(m => m.ContractId == contractId)
+            .OrderBy(m => m.SentAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<ContractMessage>>(list);
     }
 
     public Task AddEventAsync(ProposalEvent ev, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         _events.Add(ev);
+        SaveToDisk();
         return Task.CompletedTask;
     }
 
@@ -306,7 +412,12 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
                     SupersededProposals: []);
             }
 
-            bool alreadyContracted = _contracts.Values.Any(c => c.ShipmentId == proposal.ShipmentId && c.Status == ContractStatus.ACTIVE);
+            var now = DateTimeOffset.UtcNow;
+            bool alreadyContracted = _contracts.Values.Any(c =>
+                c.ShipmentId == proposal.ShipmentId &&
+                (c.Status == ContractStatus.ACTIVE ||
+                 c.Status == ContractStatus.COMPLETED ||
+                 (c.Status == ContractStatus.AWAITING_PAYMENT && (c.PaymentExpiresAtUtc == null || c.PaymentExpiresAtUtc > now))));
             if (alreadyContracted || proposal.Status == ProposalStatus.SUPERSEDED)
             {
                 proposal.Status = ProposalStatus.SUPERSEDED;

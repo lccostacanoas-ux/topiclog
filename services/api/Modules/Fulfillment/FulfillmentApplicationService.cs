@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using TopicLog.Api.Common.Domain;
+using TopicLog.Api.Modules.Notifications;
 using TopicLog.Api.Modules.Proposals;
 using TopicLog.Api.Modules.Shipments;
+using TopicLog.Api.Modules.Trips;
 
 namespace TopicLog.Api.Modules.Fulfillment;
 
@@ -99,19 +101,46 @@ public interface IFulfillmentApplicationService
         double longitude,
         int maxRadiusKm = 2,
         CancellationToken cancellationToken = default);
+
+    Task<DeliveryOrderResponse> CreateOrderForContractAsync(
+        Contract contract,
+        Shipment shipment,
+        CancellationToken cancellationToken = default);
+
+    Task<OrderCodesResponse> GetOrderCodesAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        CancellationToken cancellationToken = default);
+
+    Task<DeliveryOrderResponse> UpdateCarrierLocationAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        UpdateDeliveryLocationRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class FulfillmentApplicationService : IFulfillmentApplicationService
 {
     private readonly IFulfillmentRepository _fulfillmentRepo;
     private readonly IShipmentsRepository? _shipmentsRepo;
+    private readonly IProposalsRepository? _proposalsRepo;
+    private readonly ITripsRepository? _tripsRepo;
+    private readonly INotificationsService? _notificationsService;
 
     public FulfillmentApplicationService(
         IFulfillmentRepository fulfillmentRepo,
-        IShipmentsRepository? shipmentsRepo = null)
+        IShipmentsRepository? shipmentsRepo = null,
+        IProposalsRepository? proposalsRepo = null,
+        ITripsRepository? tripsRepo = null,
+        INotificationsService? notificationsService = null)
     {
         _fulfillmentRepo = fulfillmentRepo;
         _shipmentsRepo = shipmentsRepo;
+        _proposalsRepo = proposalsRepo;
+        _tripsRepo = tripsRepo;
+        _notificationsService = notificationsService;
     }
 
     public async Task<DeliveryOrderResponse> PickupCheckinAsync(
@@ -163,9 +192,30 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             return MapOrderToResponse(order);
         }
 
+        // Valida o código de coleta/início de viagem de 4 dígitos quando exigido pela ordem
+        if (!string.IsNullOrWhiteSpace(order.PickupCodeHash) && !string.IsNullOrWhiteSpace(order.PickupCodeSalt))
+        {
+            var providedPickupCode = (request.PickupCode ?? string.Empty).Trim();
+            if (providedPickupCode.Length != 4 || !providedPickupCode.All(char.IsDigit) ||
+                !InMemoryFulfillmentRepository.VerifyCodeHash(providedPickupCode, order.PickupCodeHash, order.PickupCodeSalt))
+            {
+                throw new DomainRuleViolationException(
+                    "PICKUP_CODE_INVALID",
+                    "Código de coleta / início de viagem incorreto. Solicite o código de 4 dígitos ao remetente no momento da retirada.",
+                    400);
+            }
+        }
+
         var prevStatus = order.Status.ToString();
+        order.PickupConfirmed = true;
         order.Status = DeliveryOrderStatus.IN_TRANSIT;
         order.PickedUpAtUtc = DateTimeOffset.UtcNow;
+        if (!order.CurrentLatitude.HasValue && order.OriginLatitude.HasValue)
+        {
+            order.CurrentLatitude = order.OriginLatitude;
+            order.CurrentLongitude = order.OriginLongitude;
+            order.LastLocationUpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
         order.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
@@ -180,6 +230,16 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             }
         }
 
+        if (_tripsRepo != null && order.TripId != Guid.Empty)
+        {
+            var trip = await _tripsRepo.GetByIdAsync(order.TripId, cancellationToken);
+            if (trip != null && trip.Status == TripStatus.SCHEDULED)
+            {
+                trip.Status = TripStatus.ACTIVE;
+                await _tripsRepo.UpdateAsync(trip, cancellationToken);
+            }
+        }
+
         await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
         {
             DeliveryOrderId = order.Id,
@@ -188,9 +248,32 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             ActorRole = actorRole.ToString(),
             PreviousStatus = prevStatus,
             NewStatus = order.Status.ToString(),
-            Notes = request.HandoverNotes ?? "Coleta confirmada pelas partes. Encomenda em trânsito com capacidade de trecho ocupada.",
+            Notes = request.HandoverNotes ?? "Coleta confirmada com código de início de viagem. Encomenda em trânsito.",
             OccurredAtUtc = DateTimeOffset.UtcNow
         }, cancellationToken);
+
+        if (_notificationsService != null)
+        {
+            await _notificationsService.NotifyAsync(
+                order.SenderId,
+                "TRIP_STARTED",
+                "Viagem iniciada!",
+                $"{order.CarrierName} confirmou a coleta com o código e iniciou o transporte da sua encomenda.",
+                "/minhas-atividades",
+                relatedShipmentId: order.ShipmentId,
+                relatedContractId: order.ContractId,
+                cancellationToken: cancellationToken);
+
+            await _notificationsService.NotifyAsync(
+                order.CarrierId,
+                "TRIP_STARTED",
+                "Viagem em andamento",
+                $"Coleta validada para a encomenda de {order.SenderName}. Acompanhe o trajeto e solicite o código de entrega no destino.",
+                "/minhas-atividades",
+                relatedShipmentId: order.ShipmentId,
+                relatedContractId: order.ContractId,
+                cancellationToken: cancellationToken);
+        }
 
         return MapOrderToResponse(order);
     }
@@ -481,6 +564,16 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             }
         }
 
+        if (_proposalsRepo != null)
+        {
+            var contract = await _proposalsRepo.GetContractByIdAsync(order.ContractId, cancellationToken);
+            if (contract != null && contract.Status == ContractStatus.ACTIVE)
+            {
+                contract.Status = ContractStatus.COMPLETED;
+                await _proposalsRepo.UpdateContractAsync(contract, cancellationToken);
+            }
+        }
+
         await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
         {
             DeliveryOrderId = order.Id,
@@ -492,6 +585,19 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             Notes = $"Entrega verificada com sucesso via código de segurança / senha de 4 dígitos válido. Elegível para liberação futura de repasse (Gate G3). Observações: {request.RecipientSignatureOrNotes ?? "Nenhuma"}.",
             OccurredAtUtc = DateTimeOffset.UtcNow
         }, cancellationToken);
+
+        if (_notificationsService != null)
+        {
+            await _notificationsService.NotifyAsync(
+                order.SenderId,
+                "DELIVERY_COMPLETED",
+                "Entrega efetuada no destino!",
+                $"{order.CarrierName} concluiu a entrega mediante confirmação do código de entrega de 4 dígitos.",
+                "/minhas-atividades",
+                relatedShipmentId: order.ShipmentId,
+                relatedContractId: order.ContractId,
+                cancellationToken: cancellationToken);
+        }
 
         return MapOrderToResponse(order);
     }
@@ -684,17 +790,16 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         ActorRole actorRole,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<DeliveryOrder> list;
-        if (actorRole == ActorRole.CARRIER)
-        {
-            list = await _fulfillmentRepo.ListOrdersByCarrierIdAsync(actorId, cancellationToken);
-        }
-        else
-        {
-            list = await _fulfillmentRepo.ListOrdersBySenderIdAsync(actorId, cancellationToken);
-        }
+        var carrierOrders = await _fulfillmentRepo.ListOrdersByCarrierIdAsync(actorId, cancellationToken);
+        var senderOrders = await _fulfillmentRepo.ListOrdersBySenderIdAsync(actorId, cancellationToken);
+        var merged = carrierOrders
+            .Concat(senderOrders)
+            .GroupBy(o => o.Id)
+            .Select(g => g.First())
+            .OrderByDescending(o => o.CreatedAtUtc)
+            .ToList();
 
-        return list.Select(MapOrderToResponse).ToList();
+        return merged.Select(MapOrderToResponse).ToList();
     }
 
     public async Task<DeliveryOrderResponse> GetOrderAsync(
@@ -825,6 +930,176 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         return await _fulfillmentRepo.CreateChallengeAsync(challenge, cancellationToken);
     }
 
+    public async Task<DeliveryOrderResponse> CreateOrderForContractAsync(
+        Contract contract,
+        Shipment shipment,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(shipment);
+
+        var existing = await _fulfillmentRepo.GetOrderByContractIdAsync(contract.Id, cancellationToken)
+                    ?? await _fulfillmentRepo.GetOrderByShipmentIdAsync(shipment.Id, cancellationToken);
+        if (existing != null)
+        {
+            return MapOrderToResponse(existing);
+        }
+
+        var pickupNum = RandomNumberGenerator.GetInt32(1000, 10000);
+        var pickupPlain = pickupNum.ToString(CultureInfo.InvariantCulture);
+        var (pickupHash, pickupSalt) = InMemoryFulfillmentRepository.ComputeCodeHash(pickupPlain);
+
+        string deliveryPlain;
+        do
+        {
+            deliveryPlain = RandomNumberGenerator.GetInt32(1000, 10000).ToString(CultureInfo.InvariantCulture);
+        } while (deliveryPlain == pickupPlain);
+
+        var (deliveryHash, deliverySalt) = InMemoryFulfillmentRepository.ComputeCodeHash(deliveryPlain);
+
+        var originFull = !string.IsNullOrWhiteSpace(shipment.OriginAddress.FormattedAddress)
+            ? shipment.OriginAddress.FormattedAddress
+            : $"{shipment.OriginAddress.StreetAndNumber}, {shipment.OriginAddress.Neighborhood}, {shipment.OriginAddress.City} - {shipment.OriginAddress.StateUf}";
+        var destFull = !string.IsNullOrWhiteSpace(shipment.DestinationAddress.FormattedAddress)
+            ? shipment.DestinationAddress.FormattedAddress
+            : $"{shipment.DestinationAddress.StreetAndNumber}, {shipment.DestinationAddress.Neighborhood}, {shipment.DestinationAddress.City} - {shipment.DestinationAddress.StateUf}";
+
+        var orderStatus = shipment.Status switch
+        {
+            ShipmentStatus.IN_TRANSIT => DeliveryOrderStatus.IN_TRANSIT,
+            ShipmentStatus.DELIVERED or ShipmentStatus.CLOSED => DeliveryOrderStatus.DELIVERED_VERIFIED,
+            _ => DeliveryOrderStatus.AWAITING_PICKUP
+        };
+
+        var order = new DeliveryOrder
+        {
+            Id = Guid.NewGuid(),
+            ContractId = contract.Id,
+            ShipmentId = shipment.Id,
+            TripId = contract.TripId,
+            SenderId = contract.SenderId,
+            SenderName = contract.SenderName,
+            CarrierId = contract.CarrierId,
+            CarrierName = contract.CarrierName,
+            RecipientName = !string.IsNullOrWhiteSpace(shipment.Title) ? $"Destinatário ({shipment.DestinationAddress.City})" : "Destinatário Topic Log",
+            RecipientPhone = null,
+            RecipientDocumentMasked = null,
+            Status = orderStatus,
+            PickupConfirmed = orderStatus != DeliveryOrderStatus.AWAITING_PICKUP,
+            PickupCodeHash = pickupHash,
+            PickupCodeSalt = pickupSalt,
+            PickupPlainCodeProtected = pickupPlain,
+            DeliveryPlainCodeProtected = deliveryPlain,
+            OriginAddressSummary = originFull,
+            DestinationAddressSummary = destFull,
+            OriginLatitude = shipment.OriginAddress.ExactLatitude ?? shipment.OriginAddress.ApproximateLatitude,
+            OriginLongitude = shipment.OriginAddress.ExactLongitude ?? shipment.OriginAddress.ApproximateLongitude,
+            DestinationLatitude = shipment.DestinationAddress.ExactLatitude ?? shipment.DestinationAddress.ApproximateLatitude,
+            DestinationLongitude = shipment.DestinationAddress.ExactLongitude ?? shipment.DestinationAddress.ApproximateLongitude,
+            AmountCents = contract.AmountCents,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        await _fulfillmentRepo.CreateOrderAsync(order, cancellationToken);
+
+        var challenge = new DeliveryChallenge
+        {
+            DeliveryOrderId = order.Id,
+            CodeHash = deliveryHash,
+            CodeSalt = deliverySalt,
+            FailedAttempts = 0,
+            MaxAttempts = 3,
+            IsLocked = false,
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(14),
+            IsActive = true,
+            PlainCode = deliveryPlain,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        await _fulfillmentRepo.CreateChallengeAsync(challenge, cancellationToken);
+
+        await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
+        {
+            DeliveryOrderId = order.Id,
+            EventType = DeliveryEventType.PICKUP_CHECKIN,
+            ActorId = contract.SenderId,
+            ActorRole = "SYSTEM",
+            PreviousStatus = "NONE",
+            NewStatus = order.Status.ToString(),
+            Notes = "Ordem de entrega gerada após pagamento Pix confirmado. Códigos exclusivos de coleta e entrega disponibilizados ao remetente.",
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        }, cancellationToken);
+
+        return MapOrderToResponse(order);
+    }
+
+    public async Task<OrderCodesResponse> GetOrderCodesAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await GetOrderOrThrowAsync(orderId, cancellationToken);
+
+        if (actorId != order.SenderId && actorRole != ActorRole.ADMIN && actorRole != ActorRole.SYSTEM)
+        {
+            throw new DomainRuleViolationException(
+                "FORBIDDEN_CARRIER_CANNOT_VIEW_CODES",
+                "Apenas o remetente pode visualizar os códigos secretos de coleta e entrega.",
+                403);
+        }
+
+        var challenge = await _fulfillmentRepo.GetActiveChallengeByOrderIdAsync(order.Id, cancellationToken)
+            ?? await GenerateChallengeInternalAsync(order.Id, cancellationToken);
+
+        var deliveryPlain = order.DeliveryPlainCodeProtected ?? challenge.PlainCode ?? "4826";
+        if (string.IsNullOrWhiteSpace(order.DeliveryPlainCodeProtected))
+        {
+            order.DeliveryPlainCodeProtected = deliveryPlain;
+            await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(order.PickupPlainCodeProtected))
+        {
+            var pickupNum = RandomNumberGenerator.GetInt32(1000, 10000).ToString(CultureInfo.InvariantCulture);
+            var (pHash, pSalt) = InMemoryFulfillmentRepository.ComputeCodeHash(pickupNum);
+            order.PickupCodeHash = pHash;
+            order.PickupCodeSalt = pSalt;
+            order.PickupPlainCodeProtected = pickupNum;
+            await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+        }
+
+        return new OrderCodesResponse(
+            OrderId: order.Id,
+            PickupCode: order.PickupPlainCodeProtected,
+            PickupConfirmed: order.PickupConfirmed || order.Status != DeliveryOrderStatus.AWAITING_PICKUP,
+            DeliveryCode: deliveryPlain,
+            DeliveryVerified: order.Status == DeliveryOrderStatus.DELIVERED_VERIFIED,
+            RemainingAttempts: Math.Max(0, challenge.MaxAttempts - challenge.FailedAttempts),
+            ExpiresAtUtc: challenge.ExpiresAtUtc,
+            IsLocked: challenge.IsLocked,
+            Disclaimer: "Informe o código de coleta ao transportador no momento da entrega da encomenda. Envie o código de entrega apenas para quem vai receber no destino.");
+    }
+
+    public async Task<DeliveryOrderResponse> UpdateCarrierLocationAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        UpdateDeliveryLocationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await GetOrderOrThrowAsync(orderId, cancellationToken);
+        EnsureIsCarrierOfOrder(actorId, actorRole, order);
+
+        order.CurrentLatitude = request.Latitude;
+        order.CurrentLongitude = request.Longitude;
+        order.LastLocationUpdatedAtUtc = DateTimeOffset.UtcNow;
+        order.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+
+        return MapOrderToResponse(order);
+    }
+
     private static DeliveryOrderResponse MapOrderToResponse(DeliveryOrder o)
     {
         return new DeliveryOrderResponse(
@@ -842,7 +1117,19 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             Status: o.Status.ToString(),
             PickedUpAtUtc: o.PickedUpAtUtc,
             DeliveredAtUtc: o.DeliveredAtUtc,
-            CreatedAtUtc: o.CreatedAtUtc);
+            CreatedAtUtc: o.CreatedAtUtc,
+            PickupConfirmed: o.PickupConfirmed,
+            PickupCodeRequired: !string.IsNullOrWhiteSpace(o.PickupCodeHash),
+            OriginAddressSummary: o.OriginAddressSummary,
+            DestinationAddressSummary: o.DestinationAddressSummary,
+            OriginLatitude: o.OriginLatitude,
+            OriginLongitude: o.OriginLongitude,
+            DestinationLatitude: o.DestinationLatitude,
+            DestinationLongitude: o.DestinationLongitude,
+            CurrentLatitude: o.CurrentLatitude,
+            CurrentLongitude: o.CurrentLongitude,
+            LastLocationUpdatedAtUtc: o.LastLocationUpdatedAtUtc,
+            AmountCents: o.AmountCents);
     }
 
     private static double HaversineDistanceKm(double lat1, double lon1, double lat2, double lon2)

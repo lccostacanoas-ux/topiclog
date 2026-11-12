@@ -76,7 +76,10 @@ import type {
   PreviewLegalTemplateRequestDto,
   PreviewLegalTemplateResponseDto,
   CompareLegalVersionsResponseDto,
-  LegalAcceptanceDto
+  LegalAcceptanceDto,
+  NotificationListResponse,
+  OrderCodesDto,
+  ContractMessageDto
 } from "./types";
 import { isValidCpf } from "./validation";
 import {
@@ -1880,12 +1883,13 @@ export async function acceptProposalApi(
   id: string,
   expectedVersion: number = 1,
   token?: string,
-  customCorrelationId?: string
+  customCorrelationId?: string,
+  deferPayment: boolean = false
 ): Promise<ApiFetchResult<ContractDto>> {
   return apiRequest<ContractDto>(`/api/v1/proposals/${id}/accept`, {
     method: "POST",
     token,
-    body: { expectedVersion },
+    body: { expectedVersion, deferPayment },
     customCorrelationId
   });
 }
@@ -2627,6 +2631,145 @@ export async function acceptLegalTermApi(
     customCorrelationId
   });
 }
+
+/* --------------------------------------------------------------------------
+   NOVOS ENDPOINTS DE FLUXO: MINHAS ENCOMENDAS, PIX, NOTIFICAÇÕES, CHAT E GPS
+   -------------------------------------------------------------------------- */
+
+export async function listMyShipmentsApi(
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ShipmentSummaryDto[]>> {
+  return apiRequest<ShipmentSummaryDto[]>("/api/v1/shipments/mine", {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function listMyContractsApi(
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ContractDto[]>> {
+  return apiRequest<ContractDto[]>("/api/v1/contracts/mine", {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function confirmContractPaymentApi(
+  contractId: string,
+  payload?: { paymentProvider?: string; paymentReferenceId?: string },
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ContractDto>> {
+  return apiRequest<ContractDto>(`/api/v1/contracts/${contractId}/confirm-payment`, {
+    method: "POST",
+    token,
+    body: payload ?? {},
+    customCorrelationId
+  });
+}
+
+export async function listContractMessagesApi(
+  contractId: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ContractMessageDto[]>> {
+  return apiRequest<ContractMessageDto[]>(`/api/v1/contracts/${contractId}/messages`, {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function sendContractMessageApi(
+  contractId: string,
+  body: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<ContractMessageDto>> {
+  return apiRequest<ContractMessageDto>(`/api/v1/contracts/${contractId}/messages`, {
+    method: "POST",
+    token,
+    body: { body },
+    customCorrelationId
+  });
+}
+
+export async function listMyDeliveryOrdersApi(
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<DeliveryOrderDto[]>> {
+  return apiRequest<DeliveryOrderDto[]>("/api/v1/deliveries/my-orders", {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function getOrderCodesApi(
+  orderId: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<OrderCodesDto>> {
+  return apiRequest<OrderCodesDto>(`/api/v1/deliveries/${orderId}/codes`, {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function updateDeliveryLocationApi(
+  orderId: string,
+  latitude: number,
+  longitude: number,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<DeliveryOrderDto>> {
+  return apiRequest<DeliveryOrderDto>(`/api/v1/deliveries/${orderId}/location`, {
+    method: "POST",
+    token,
+    body: { latitude, longitude },
+    customCorrelationId
+  });
+}
+
+export async function getNotificationsApi(
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<NotificationListResponse>> {
+  return apiRequest<NotificationListResponse>("/api/v1/notifications", {
+    method: "GET",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function markNotificationReadApi(
+  notificationId: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<{ read: boolean }>> {
+  return apiRequest<{ read: boolean }>(`/api/v1/notifications/${notificationId}/read`, {
+    method: "POST",
+    token,
+    customCorrelationId
+  });
+}
+
+export async function markAllNotificationsReadApi(
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<{ markedCount: number }>> {
+  return apiRequest<{ markedCount: number }>("/api/v1/notifications/read-all", {
+    method: "POST",
+    token,
+    customCorrelationId
+  });
+}
+
 
 
 

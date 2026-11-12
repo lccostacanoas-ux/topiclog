@@ -66,6 +66,21 @@ public sealed class DeliveryOrder
     public string? RecipientPhone { get; init; }
     public string? RecipientDocumentMasked { get; init; }
     public DeliveryOrderStatus Status { get; set; } = DeliveryOrderStatus.AWAITING_PICKUP;
+    public bool PickupConfirmed { get; set; }
+    public string? PickupCodeHash { get; set; }
+    public string? PickupCodeSalt { get; set; }
+    public string? PickupPlainCodeProtected { get; set; }
+    public string? DeliveryPlainCodeProtected { get; set; }
+    public string? OriginAddressSummary { get; set; }
+    public string? DestinationAddressSummary { get; set; }
+    public double? OriginLatitude { get; set; }
+    public double? OriginLongitude { get; set; }
+    public double? DestinationLatitude { get; set; }
+    public double? DestinationLongitude { get; set; }
+    public double? CurrentLatitude { get; set; }
+    public double? CurrentLongitude { get; set; }
+    public DateTimeOffset? LastLocationUpdatedAtUtc { get; set; }
+    public long AmountCents { get; set; }
     public DateTimeOffset? PickedUpAtUtc { get; set; }
     public DateTimeOffset? DeliveredAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
@@ -144,7 +159,12 @@ public sealed record PickupCheckinRequest(
     string? Notes = null);
 
 public sealed record ConfirmPickupRequest(
-    string? HandoverNotes = null);
+    string? HandoverNotes = null,
+    string? PickupCode = null);
+
+public sealed record UpdateDeliveryLocationRequest(
+    double Latitude,
+    double Longitude);
 
 public sealed record DeliveryProofUploadRequest(
     string FileBase64OrUrl,
@@ -191,7 +211,30 @@ public sealed record DeliveryOrderResponse(
     string Status,
     DateTimeOffset? PickedUpAtUtc,
     DateTimeOffset? DeliveredAtUtc,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool PickupConfirmed = false,
+    bool PickupCodeRequired = false,
+    string? OriginAddressSummary = null,
+    string? DestinationAddressSummary = null,
+    double? OriginLatitude = null,
+    double? OriginLongitude = null,
+    double? DestinationLatitude = null,
+    double? DestinationLongitude = null,
+    double? CurrentLatitude = null,
+    double? CurrentLongitude = null,
+    DateTimeOffset? LastLocationUpdatedAtUtc = null,
+    long AmountCents = 0);
+
+public sealed record OrderCodesResponse(
+    Guid OrderId,
+    string PickupCode,
+    bool PickupConfirmed,
+    string DeliveryCode,
+    bool DeliveryVerified,
+    int RemainingAttempts,
+    DateTimeOffset ExpiresAtUtc,
+    bool IsLocked,
+    string Disclaimer);
 
 public sealed record DeliveryCodeResponse(
     Guid OrderId,

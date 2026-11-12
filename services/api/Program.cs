@@ -12,12 +12,14 @@ using TopicLog.Api.Modules.Fulfillment;
 using TopicLog.Api.Modules.Identity;
 using TopicLog.Api.Modules.Legal;
 using TopicLog.Api.Modules.Matching;
+using TopicLog.Api.Modules.Notifications;
 using TopicLog.Api.Modules.Proposals;
 using TopicLog.Api.Modules.Regions;
 using TopicLog.Api.Modules.Shipments;
 using TopicLog.Api.Modules.Trips;
 using TopicLog.Api.Modules.Verification;
 using TopicLog.Worker;
+using TopicLog.Worker.Contracts;
 using TopicLog.Worker.Services;
 
 namespace TopicLog.Api
@@ -83,10 +85,12 @@ namespace TopicLog.Api
             builder.Services.AddTopicLogFinanceModule();
             builder.Services.AddTopicLogProposalsModule();
             builder.Services.AddTopicLogFulfillmentModule();
+            builder.Services.AddTopicLogNotificationsModule();
             builder.Services.AddTopicLogAdminModule();
             builder.Services.AddTopicLogLegalModule();
 
             // 4. Worker assíncrono acoplado In-Process para otimizar uso de RAM (~8 GB)
+            builder.Services.AddSingleton<IOutboxProcessor, PaymentExpirationOutboxProcessor>();
             bool runWorkerInProcess = overrideRunWorkerInProcess
                 ?? builder.Configuration.GetValue<bool>("FeatureFlags:RunWorkerInProcess", true);
             builder.Services.AddTopicLogWorker(registerHostedService: runWorkerInProcess);
@@ -133,8 +137,21 @@ namespace TopicLog.Api
             app.MapTopicLogFinanceEndpoints();
             app.MapTopicLogProposalsEndpoints();
             app.MapTopicLogFulfillmentEndpoints();
+            app.MapTopicLogNotificationsEndpoints();
             app.MapTopicLogAdminEndpoints();
             app.MapTopicLogLegalEndpoints();
+
+            // Backfill retroativo seguro para pedidos já pagos antes desta versão (ex.: Marcio <-> Luiz)
+            try
+            {
+                using var backfillScope = app.Services.CreateScope();
+                var proposalsAppService = backfillScope.ServiceProvider.GetService<IProposalsApplicationService>();
+                proposalsAppService?.BackfillPaidOrdersAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Startup] Aviso no backfill retroativo: {ex.Message}");
+            }
 
             // Acesso temporário assinado a objetos privados de mídia com validação HMAC e streaming real (D16 / ADR-0006 / Finding 6)
             app.MapGet("/api/v1/private-media", async (

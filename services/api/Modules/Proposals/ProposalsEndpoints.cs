@@ -5,7 +5,7 @@ using TopicLog.Api.Modules.Identity;
 
 namespace TopicLog.Api.Modules.Proposals;
 
-public sealed record AcceptProposalRequest(int ExpectedVersion);
+public sealed record AcceptProposalRequest(int ExpectedVersion, bool DeferPayment = false);
 public sealed record RespondPriorityOfferRequest(bool Accept);
 public sealed record RejectProposalRequest(string? Reason);
 public sealed record CancelProposalRequest(string? Reason);
@@ -145,6 +145,7 @@ public static class ProposalsEndpoints
             Guid id,
             [FromBody] AcceptProposalRequest? body,
             [FromQuery] int? expectedVersion,
+            [FromQuery] bool? deferPayment,
             HttpContext httpContext,
             ResourceAuthorizationService authorization,
             IProposalsApplicationService proposalsService,
@@ -153,13 +154,15 @@ public static class ProposalsEndpoints
             var actor = authorization.RequireAuthenticatedActor(httpContext);
             var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
             int version = body?.ExpectedVersion ?? expectedVersion ?? 1;
+            bool shouldDeferPayment = body?.DeferPayment ?? deferPayment ?? false;
 
             var contract = await proposalsService.AcceptProposalAsync(
                 actor.UserId,
                 actorRole,
                 id,
                 version,
-                cancellationToken).ConfigureAwait(false);
+                deferPayment: shouldDeferPayment,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             return Results.Ok(contract);
         });
@@ -257,6 +260,75 @@ public static class ProposalsEndpoints
             await authorization.EnsureCanAccessPrivateUserResourceAsync(actor, carrierId, "carrier_contracts", httpContext.TraceIdentifier, cancellationToken).ConfigureAwait(false);
             var list = await proposalsService.ListContractsByCarrierIdAsync(carrierId, cancellationToken).ConfigureAwait(false);
             return Results.Ok(list);
+        });
+
+        // GET /api/v1/contracts/mine — Listar contratos em que o usuário autenticado é remetente ou transportador
+        app.MapGet("/api/v1/contracts/mine", async (
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IProposalsApplicationService proposalsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var list = await proposalsService.ListContractsByUserIdAsync(actor.UserId, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(list);
+        });
+
+        // POST /api/v1/contracts/{id}/confirm-payment — Confirmar pagamento Pix do contrato (Somente Remetente)
+        app.MapPost("/api/v1/contracts/{id:guid}/confirm-payment", async (
+            Guid id,
+            [FromBody] ConfirmContractPaymentRequest? request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IProposalsApplicationService proposalsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+            var updated = await proposalsService.ConfirmContractPaymentAsync(
+                actor.UserId,
+                actorRole,
+                id,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return Results.Ok(updated);
+        });
+
+        // GET /api/v1/contracts/{id}/messages — Chat privado bilateral (somente após pagamento confirmado)
+        app.MapGet("/api/v1/contracts/{id:guid}/messages", async (
+            Guid id,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IProposalsApplicationService proposalsService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var list = await proposalsService.ListContractMessagesAsync(actor.UserId, id, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(list);
+        });
+
+        // POST /api/v1/contracts/{id}/messages — Enviar mensagem no chat privado bilateral
+        app.MapPost("/api/v1/contracts/{id:guid}/messages", async (
+            Guid id,
+            [FromBody] CreateContractMessageRequest request,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IProposalsApplicationService proposalsService,
+            IUserRepository userRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+            var user = await userRepository.FindByIdAsync(actor.UserId, cancellationToken).ConfigureAwait(false);
+            string senderName = user?.Profile.DisplayName ?? user?.User.Email ?? "Participante";
+            var created = await proposalsService.SendContractMessageAsync(
+                actor.UserId,
+                actorRole,
+                senderName,
+                id,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return Results.Created($"/api/v1/contracts/{id}/messages/{created.Id}", created);
         });
 
         // POST /api/v1/contracts/{id}/cancel-pre-pickup — Cancelamento pré-coleta

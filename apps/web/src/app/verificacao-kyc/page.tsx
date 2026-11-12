@@ -319,6 +319,31 @@ export default function KycVerificationPage(): React.JSX.Element {
 
   return (
     <main id="main-content" className="container" style={{ paddingTop: "32px", paddingBottom: "48px" }}>
+      <div
+        className="card"
+        style={{
+          marginBottom: "20px",
+          backgroundColor: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          color: "#1e3a8a",
+          padding: "16px 20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px",
+        }}
+      >
+        <div style={{ fontSize: "14px", lineHeight: "20px" }}>
+          <strong>Verificação Automática de Identidade (Sem envio de documentos):</strong>{" "}
+          Sua conta passa automaticamente para o status <strong>Verificada</strong> assim que todos os dados
+          obrigatórios (Nome, CPF, Endereço completo com CEP, E-mail e Telefone — além dos dados de veículo para transportadores) estiverem preenchidos em{" "}
+          <a href="/minha-conta" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
+            Minha Conta
+          </a>.
+        </div>
+      </div>
+
       <header className="card" style={{ marginBottom: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div>

@@ -9,6 +9,7 @@ public interface IShipmentsRepository
     Task<Shipment> CreateAsync(Shipment shipment, CancellationToken cancellationToken = default);
     Task<Shipment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Shipment>> ListActiveAsync(string? originCity = null, string? destinationCity = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Shipment>> ListBySenderAsync(Guid senderId, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(Shipment shipment, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
@@ -124,7 +125,10 @@ public sealed class InMemoryShipmentsRepository : IShipmentsRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var query = _storage.Values.AsEnumerable();
+        // Exclui do mural público encomendas já contratadas/pagas, em trânsito, entregues, encerradas ou canceladas
+        var query = _storage.Values.Where(s =>
+            s.Status == ShipmentStatus.PUBLISHED ||
+            s.Status == ShipmentStatus.NEGOTIATING);
 
         if (!string.IsNullOrWhiteSpace(originCity))
         {
@@ -140,6 +144,16 @@ public sealed class InMemoryShipmentsRepository : IShipmentsRepository
             .OrderByDescending(s => s.CreatedAtUtc)
             .ToList();
 
+        return Task.FromResult<IReadOnlyList<Shipment>>(results);
+    }
+
+    public Task<IReadOnlyList<Shipment>> ListBySenderAsync(Guid senderId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var results = _storage.Values
+            .Where(s => s.SenderId == senderId)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .ToList();
         return Task.FromResult<IReadOnlyList<Shipment>>(results);
     }
 
