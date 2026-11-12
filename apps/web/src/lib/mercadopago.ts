@@ -18,10 +18,11 @@ export const MERCADO_PAGO_CONFIG = {
  */
 export function getMercadoPagoOAuthUrl(userId: string, returnUrl?: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://topiclog-web.vercel.app";
-  const callbackUrl = `${origin}/api/mercadopago/oauth/callback`;
+  // O redirectUri deve ser exatamente o mesmo salvo no painel do Mercado Pago (domínio oficial)
+  const redirectUri = origin.includes("localhost") ? "https://topiclog-web.vercel.app" : origin;
   const statePayload = encodeURIComponent(JSON.stringify({ userId, returnUrl: returnUrl || "/minha-conta" }));
   
-  return `https://auth.mercadopago.com.br/authorization?client_id=${MERCADO_PAGO_CONFIG.clientId}&response_type=code&platform_id=mp&state=${statePayload}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+  return `https://auth.mercadopago.com/authorization?client_id=${MERCADO_PAGO_CONFIG.clientId}&response_type=code&platform_id=mp&state=${statePayload}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 }
 
 export interface CreatePixParams {

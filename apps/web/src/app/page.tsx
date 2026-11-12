@@ -129,6 +129,17 @@ export default function HomePage(): React.JSX.Element {
     });
   }, [isAuthenticated, user]);
 
+  // Intercepta retorno do OAuth do Mercado Pago quando redirecionado para a raiz
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    if (code) {
+      window.location.href = `/api/mercadopago/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state || "")}`;
+    }
+  }, []);
+
   React.useEffect(() => {
     if (user?.roles?.includes("CARRIER")) {
       setActiveRole("CARRIER");

@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${returnUrl}?mp_oauth=error&msg=${errorMsg}`);
   }
 
-  const redirectUri = `${origin}/api/mercadopago/oauth/callback`;
+  const redirectUri = origin.includes("localhost") ? "https://topiclog-web.vercel.app" : origin;
 
   try {
     // Troca do authorization_code pelo access_token do transportador
