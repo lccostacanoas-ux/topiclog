@@ -1163,53 +1163,20 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         return await MapProposalsWithRatingsAsync(list, cancellationToken);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "Compatibilidade de assinatura")]
     private static bool IsContractArchivedAfter24h(Contract contract, DateTimeOffset cutoff)
     {
-        return contract.Status is
-            ContractStatus.COMPLETED or
-            ContractStatus.CANCELLED_PRE_PICKUP or
-            ContractStatus.CANCELLED_POST_PICKUP or
-            ContractStatus.PAYMENT_EXPIRED;
+        return false;
     }
 
-    private async Task<IReadOnlyList<Proposal>> FilterActiveProposalsAsync(
+    private static Task<IReadOnlyList<Proposal>> FilterActiveProposalsAsync(
         IReadOnlyList<Proposal> list,
         CancellationToken cancellationToken)
     {
-        if (list.Count == 0) return list;
-        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
-        var visible = new List<Proposal>(list.Count);
-        var contractCache = new Dictionary<Guid, Contract?>();
-
-        foreach (var p in list)
-        {
-            var isTerminalProposal = p.Status is
-                ProposalStatus.REJECTED or
-                ProposalStatus.EXPIRED or
-                ProposalStatus.SUPERSEDED or
-                ProposalStatus.CANCELLED;
-            if (isTerminalProposal && p.UpdatedAtUtc <= cutoff)
-            {
-                continue;
-            }
-
-            if (p.Status == ProposalStatus.ACCEPTED)
-            {
-                if (!contractCache.TryGetValue(p.ShipmentId, out var contract))
-                {
-                    contract = await _proposalsRepository.GetContractByShipmentIdAsync(p.ShipmentId, cancellationToken).ConfigureAwait(false);
-                    contractCache[p.ShipmentId] = contract;
-                }
-                if (contract is not null && IsContractArchivedAfter24h(contract, cutoff))
-                {
-                    continue;
-                }
-            }
-
-            visible.Add(p);
-        }
-
-        return visible;
+        if (list.Count == 0) return Task.FromResult(list);
+        // Mantém histórico completo de propostas e viagens (Pendentes, Concluídas e Canceladas)
+        // para visualização com filtros na aba Minhas Propostas
+        return Task.FromResult(list);
     }
 
     public async Task<IReadOnlyList<ProposalResponse>> ListProposalsByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default)

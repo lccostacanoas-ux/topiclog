@@ -1816,6 +1816,8 @@ function FeedContent(): React.JSX.Element {
                       if (!apiRes.ok) {
                         if (apiRes.problem?.detail) {
                           alert(apiRes.problem.detail);
+                          setSelectedItem(null);
+                          router.push("/propostas");
                           return;
                         }
                         // Fallback resiliente para ambiente sem backend dedicado

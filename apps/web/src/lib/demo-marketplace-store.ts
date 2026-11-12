@@ -311,7 +311,20 @@ export function addDemoProposal(proposal: Omit<DemoProposal, "id" | "createdAt" 
   // Trava anti-duplicidade: não permite criar nova proposta pendente se já houver uma ativa para a mesma carga
   const existing = current.find(p => p.shipmentId === proposal.shipmentId && (p.status === "PENDING" || p.status === "COUNTER_PROPOSED"));
   if (existing) {
-    return existing;
+    const updated = current.map(p => {
+      if (p.id === existing.id) {
+        return {
+          ...p,
+          proposedPriceCents: proposal.proposedPriceCents,
+          carrierNetCents: proposal.carrierNetCents,
+          platformCommissionCents: proposal.platformCommissionCents,
+          message: proposal.message || p.message
+        };
+      }
+      return p;
+    });
+    safeSetStorage(PROPOSALS_STORAGE_KEY, updated);
+    return { ...existing, proposedPriceCents: proposal.proposedPriceCents };
   }
   const created: DemoProposal = {
     ...proposal,
