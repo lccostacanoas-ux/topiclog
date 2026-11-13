@@ -23,7 +23,6 @@ export async function POST(request: Request) {
     }
 
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
-    const marketplaceFee = body.marketplaceFeeReais ? Math.round(Number(body.marketplaceFeeReais) * 100) / 100 : undefined;
     const expirationIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const mpPayload: Record<string, unknown> = {
@@ -34,19 +33,12 @@ export async function POST(request: Request) {
       payer: payerPayload
     };
 
-    // Split de Marketplace: se o vendedor (transportador) estiver conectado via OAuth ou se houver comissão
-    if (marketplaceFee && marketplaceFee > 0 && marketplaceFee < amount) {
-      // application_fee / marketplace_fee desconta a comissão da TopicLog e transfere o restante sem tarifa
-      mpPayload.application_fee = marketplaceFee;
-    }
-
-    const authHeader = body.sellerAccessToken
-      ? `Bearer ${body.sellerAccessToken}`
-      : `Bearer ${MERCADO_PAGO_CONFIG.accessToken}`;
-
+    // A cobrança Pix é emitida em nome da conta PJ da TopicLog (LUIZ C COSTA LTDA) para custódia segura.
+    // O repasse para o transportador ocorre após a conclusão da viagem.
+    const authHeader = `Bearer ${MERCADO_PAGO_CONFIG.accessToken}`;
     const idempotencyKey = `topiclog-pix-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-    // Chamada segura efetuada no backend (Node.js runtime sem restrição de CORS)
+    // Chamada oficial à API do Mercado Pago no backend
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
@@ -68,45 +60,38 @@ export async function POST(request: Request) {
         qrCodeBase64: txData?.qr_code_base64 || "",
         ticketUrl: txData?.ticket_url || "",
         transactionAmount: json.transaction_amount || amount,
-        marketplaceFee: marketplaceFee,
-        sellerNetReceivable: marketplaceFee ? Math.max(0, amount - marketplaceFee) : undefined,
         createdAt: json.date_created || new Date().toISOString()
       });
     }
 
-    // Fallback gracioso para ambiente de testes e demonstração
-    const mockId = Date.now();
-    const mockPixCode = `00020126580014br.gov.bcb.pix0136topiclog-${mockId}520400005303986540${amount.toFixed(2)}5802BR5925LUIZ C COSTA LTDA6014BELO HORIZONTE62070503***6304ABCD`;
+    const errText = await mpRes.text();
+    console.error("Erro na API Mercado Pago ao gerar Pix:", mpRes.status, errText);
+    let parsedErr = errText;
+    try {
+      const errObj = JSON.parse(errText);
+      parsedErr = errObj.message || errObj.error || errText;
+    } catch {
+      // mantém errText
+    }
 
-    return NextResponse.json({
-      id: mockId,
-      status: "pending",
-      statusDetail: "accredited",
-      qrCode: mockPixCode,
-      qrCodeBase64: "",
-      ticketUrl: "",
-      transactionAmount: amount,
-      marketplaceFee: marketplaceFee,
-      sellerNetReceivable: marketplaceFee ? Math.max(0, amount - marketplaceFee) : undefined,
-      createdAt: new Date().toISOString(),
-      isSimulated: true
-    });
-  } catch {
-    const amount = 1.0;
-    const mockId = Date.now();
-    const mockPixCode = `00020126580014br.gov.bcb.pix0136topiclog-${mockId}520400005303986540${amount.toFixed(2)}5802BR5925LUIZ C COSTA LTDA6014BELO HORIZONTE62070503***6304ABCD`;
-
-    return NextResponse.json({
-      id: mockId,
-      status: "pending",
-      statusDetail: "accredited",
-      qrCode: mockPixCode,
-      qrCodeBase64: "",
-      ticketUrl: "",
-      transactionAmount: amount,
-      createdAt: new Date().toISOString(),
-      isSimulated: true
-    });
+    return NextResponse.json(
+      {
+        error: "O Mercado Pago não pôde gerar o Pix.",
+        details: parsedErr,
+        statusCode: mpRes.status
+      },
+      { status: 400 }
+    );
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Exceção ao comunicar com Mercado Pago:", errorMsg);
+    return NextResponse.json(
+      {
+        error: "Erro de conexão com o Mercado Pago.",
+        details: errorMsg
+      },
+      { status: 500 }
+    );
   }
 }
 

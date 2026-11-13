@@ -389,38 +389,43 @@ export default function PropostasPage(): React.JSX.Element {
       console.warn("Aviso ao buscar propostas da API:", err);
     }
 
-    const localDemos = getDemoProposals();
     const myName = (user.displayName || user.email || "").toLowerCase();
 
-    for (const d of localDemos) {
-      if (!seenIds.has(d.id)) {
-        const isCarrierOfProposal = d.isCurrentUserCarrier === true || (Boolean(myName) && Boolean(d.carrierName?.toLowerCase().includes(myName)));
-        const isSenderOfProposal = d.isCurrentUserCarrier === false || (Boolean(myName) && Boolean(d.senderName?.toLowerCase().includes(myName)));
+    // Se o usuário está autenticado com token na API oficial, NÃO mesclamos dados demo do localStorage
+    // para garantir isolamento estrito entre usuários e evitar vazamento de propostas residuais.
+    if (!token) {
+      const localDemos = getDemoProposals();
 
-        const showInSent = activeTab === "SENT" && (isCarrier || isCarrierOfProposal || d.isCurrentUserCarrier);
-        const showInReceived = activeTab === "RECEIVED" && (isSender || isSenderOfProposal || !d.isCurrentUserCarrier);
+      for (const d of localDemos) {
+        if (!seenIds.has(d.id)) {
+          const isCarrierOfProposal = d.isCurrentUserCarrier === true || (Boolean(myName) && Boolean(d.carrierName?.toLowerCase().includes(myName)));
+          const isSenderOfProposal = d.isCurrentUserCarrier === false || (Boolean(myName) && Boolean(d.senderName?.toLowerCase().includes(myName)));
 
-        if (showInSent || showInReceived) {
-          seenIds.add(d.id);
-          unifiedList.push({
-            id: d.id,
-            shipmentId: d.shipmentId,
-            carrierId: user.userId,
-            carrierName: d.carrierName || user.displayName || "Transportador Parceiro",
-            senderId: user.userId,
-            senderName: d.senderName || "Remetente",
-            amountCents: d.proposedPriceCents,
-            status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
-            version: 1,
-            counterCount: 0,
-            isExpired: false,
-            notes: d.message || "Proposta registrada via TopicLog Feed",
-            expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
-            createdAtUtc: new Date().toISOString(),
-            carrierRatingAvg: user.ratingAvg ?? 4.7,
-            carrierRatingCount: user.ratingCount ?? 3,
-            shipmentTitle: d.shipmentTitle
-          });
+          const showInSent = activeTab === "SENT" && (isCarrier || isCarrierOfProposal || d.isCurrentUserCarrier);
+          const showInReceived = activeTab === "RECEIVED" && (isSender || isSenderOfProposal || !d.isCurrentUserCarrier);
+
+          if (showInSent || showInReceived) {
+            seenIds.add(d.id);
+            unifiedList.push({
+              id: d.id,
+              shipmentId: d.shipmentId,
+              carrierId: user.userId,
+              carrierName: d.carrierName || user.displayName || "Transportador Parceiro",
+              senderId: user.userId,
+              senderName: d.senderName || "Remetente",
+              amountCents: d.proposedPriceCents,
+              status: d.status === "COUNTER_PROPOSED" ? "COUNTERED" : d.status,
+              version: 1,
+              counterCount: 0,
+              isExpired: false,
+              notes: d.message || "Proposta registrada via TopicLog Feed",
+              expiresAtUtc: new Date(Date.now() + 86400000).toISOString(),
+              createdAtUtc: new Date().toISOString(),
+              carrierRatingAvg: user.ratingAvg ?? 4.7,
+              carrierRatingCount: user.ratingCount ?? 3,
+              shipmentTitle: d.shipmentTitle
+            });
+          }
         }
       }
     }
@@ -904,16 +909,31 @@ export default function PropostasPage(): React.JSX.Element {
           </div>
           <button
             type="button"
-            onClick={() => setFilterType("AWAITING_PAYMENT")}
+            onClick={() => {
+              const target = visibleProposals.find((p) => {
+                if (isTripCompleted(p) || isTripCancelled(p)) return false;
+                const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+                return c?.status === "AWAITING_PAYMENT" || p.status === "ACCEPTED";
+              });
+              if (target) {
+                const c = contractsByProposalId[target.id] || contractsByShipmentId[target.shipmentId] || null;
+                setSelectedProposalForPix(target);
+                setSelectedContractForPix(c);
+                setPixModalOpen(true);
+              } else {
+                setFilterType("AWAITING_PAYMENT");
+              }
+            }}
             style={{
               backgroundColor: "#D97706",
               color: "#FFFFFF",
               border: "none",
-              padding: "8px 16px",
+              padding: "10px 18px",
               borderRadius: "8px",
               fontWeight: 700,
               fontSize: "13px",
-              cursor: "pointer"
+              cursor: "pointer",
+              boxShadow: "0 2px 4px rgba(217, 119, 6, 0.3)"
             }}
           >
             Pagar com Pix Agora ➔
@@ -1252,25 +1272,53 @@ export default function PropostasPage(): React.JSX.Element {
                         R$ {(proposal.amountCents / 100).toFixed(2).replace(".", ",")}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "center", whiteSpace: "nowrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExpandedCardIds((prev) => ({ ...prev, [proposal.id]: true }));
-                            setViewMode("CARDS");
-                          }}
-                          style={{
-                            padding: "5px 12px",
-                            backgroundColor: "#EFF6FF",
-                            color: "#1D4ED8",
-                            border: "1px solid #BFDBFE",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                            cursor: "pointer"
-                          }}
-                        >
-                          👁️ Ver Detalhes
-                        </button>
+                        <div style={{ display: "inline-flex", gap: "6px", alignItems: "center", justifyContent: "center" }}>
+                          {isAwaitingPayment && isSender && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProposalForPix(proposal);
+                                setSelectedContractForPix(contract || null);
+                                setPixModalOpen(true);
+                              }}
+                              style={{
+                                padding: "6px 12px",
+                                backgroundColor: "#059669",
+                                color: "#FFFFFF",
+                                border: "none",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                boxShadow: "0 1px 3px rgba(5, 150, 105, 0.3)"
+                              }}
+                            >
+                              ⚡ Pagar Pix
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpandedCardIds((prev) => ({ ...prev, [proposal.id]: true }));
+                              setViewMode("CARDS");
+                            }}
+                            style={{
+                              padding: "5px 12px",
+                              backgroundColor: "#EFF6FF",
+                              color: "#1D4ED8",
+                              border: "1px solid #BFDBFE",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            👁️ Ver Detalhes
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2137,7 +2185,8 @@ export default function PropostasPage(): React.JSX.Element {
       )}
 
       {pixModalOpen && selectedProposalForPix && (() => {
-        const contractCommissionCents = selectedContractForPix?.commissionSnapshot?.commissionCents;
+        const effectiveContract = selectedContractForPix || contractsByProposalId[selectedProposalForPix.id] || contractsByShipmentId[selectedProposalForPix.shipmentId];
+        const contractCommissionCents = effectiveContract?.commissionSnapshot?.commissionCents;
         const calculatedFeeReais = contractCommissionCents !== undefined && contractCommissionCents > 0
           ? Math.round(contractCommissionCents) / 100
           : Math.round(selectedProposalForPix.amountCents * 0.15) / 100;
@@ -2152,7 +2201,7 @@ export default function PropostasPage(): React.JSX.Element {
             payerEmail={user?.email || "contato@topiclog.com.br"}
             payerName={user?.displayName || "Remetente TopicLog"}
             orderId={selectedProposalForPix.shipmentId}
-            expiresAtUtc={selectedContractForPix?.paymentExpiresAtUtc}
+            expiresAtUtc={effectiveContract?.paymentExpiresAtUtc}
             onExpired={() => {
               setPixModalOpen(false);
               setSelectedContractForPix(null);

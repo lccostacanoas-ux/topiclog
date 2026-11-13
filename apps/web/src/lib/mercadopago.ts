@@ -61,48 +61,30 @@ export interface MercadoPagoPixData {
 export async function createMercadoPagoPix(params: CreatePixParams): Promise<MercadoPagoPixData> {
   const amount = Math.max(1.0, Math.round(params.amountReais * 100) / 100);
 
-  try {
-    // 1. Tenta rota interna da API Next.js (executada no servidor com suporte a split)
-    const res = await fetch("/api/mercadopago/pix", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amountReais: amount,
-        description: params.description,
-        payerEmail: params.payerEmail,
-        payerName: params.payerName,
-        payerCpf: params.payerCpf,
-        orderId: params.orderId,
-        marketplaceFeeReais: params.marketplaceFeeReais,
-        sellerAccessToken: params.sellerAccessToken,
-        sellerCollectorId: params.sellerCollectorId
-      })
-    });
+  const res = await fetch("/api/mercadopago/pix", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amountReais: amount,
+      description: params.description,
+      payerEmail: params.payerEmail,
+      payerName: params.payerName,
+      payerCpf: params.payerCpf,
+      orderId: params.orderId,
+      marketplaceFeeReais: params.marketplaceFeeReais,
+      sellerAccessToken: params.sellerAccessToken,
+      sellerCollectorId: params.sellerCollectorId
+    })
+  });
 
-    if (res.ok) {
-      const data = await res.json();
-      return data as MercadoPagoPixData;
-    }
-  } catch {
-    // Fallback silencioso abaixo
+  if (res.ok) {
+    const data = await res.json();
+    return data as MercadoPagoPixData;
   }
 
-  // Fallback simulado para ambiente de teste quando a API externa não responder
-  const mockId = Date.now();
-  const mockPixCode = `00020126580014br.gov.bcb.pix0136topiclog-${mockId}520400005303986540${amount.toFixed(2)}5802BR5925LUIZ C COSTA LTDA6014BELO HORIZONTE62070503***6304ABCD`;
-
-  return {
-    id: mockId,
-    status: "pending",
-    statusDetail: "pending_waiting_payment",
-    qrCode: mockPixCode,
-    qrCodeBase64: "",
-    ticketUrl: "",
-    transactionAmount: amount,
-    marketplaceFee: params.marketplaceFeeReais,
-    sellerNetReceivable: params.marketplaceFeeReais ? Math.max(0, amount - params.marketplaceFeeReais) : undefined,
-    createdAt: new Date().toISOString()
-  };
+  const errJson = await res.json().catch(() => null);
+  const errMsg = errJson?.details || errJson?.error || `Falha ao gerar cobrança Pix (HTTP ${res.status})`;
+  throw new Error(errMsg);
 }
 
 export async function checkMercadoPagoPixStatus(paymentId: number | string): Promise<{
