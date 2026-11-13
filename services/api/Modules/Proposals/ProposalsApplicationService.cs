@@ -1266,7 +1266,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 shipment?.Title,
                 shipment?.SuggestedPriceCents,
                 lastActorId,
-                history));
+                history,
+                shipment?.MinimumFreightPriceCents));
         }
         return results;
     }
@@ -1799,7 +1800,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         string? shipmentTitle = null,
         long? senderSuggestedPriceCents = null,
         Guid? lastNegotiationActorId = null,
-        IReadOnlyList<ProposalNegotiationHistoryItem>? negotiationHistory = null) => new(
+        IReadOnlyList<ProposalNegotiationHistoryItem>? negotiationHistory = null,
+        long? minimumFreightPriceCents = null) => new(
         Id: p.Id,
         ShipmentId: p.ShipmentId,
         TripId: p.TripId,
@@ -1823,7 +1825,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         ShipmentTitle: shipmentTitle,
         SenderSuggestedPriceCents: senderSuggestedPriceCents,
         LastNegotiationActorId: lastNegotiationActorId,
-        NegotiationHistory: negotiationHistory);
+        NegotiationHistory: negotiationHistory,
+        MinimumFreightPriceCents: minimumFreightPriceCents);
 
     private static ContractResponse MapToContractResponse(Contract c) => new(
         Id: c.Id,

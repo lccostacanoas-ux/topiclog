@@ -395,7 +395,8 @@ public static class AdminEndpoints
             {
                 cancellationPenaltyPercent = clampedPercent,
                 cancellationMinFeeCents = settings?.CancellationMinFeeCents ?? 700,
-                cancellationInjuredPartySharePercent = settings?.CancellationInjuredPartySharePercent ?? 80.00m
+                cancellationInjuredPartySharePercent = settings?.CancellationInjuredPartySharePercent ?? 80.00m,
+                minimumFreightPriceCents = settings?.MinimumFreightPriceCents ?? 500
             });
         });
 

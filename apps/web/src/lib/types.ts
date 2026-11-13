@@ -743,6 +743,7 @@ export interface ProposalDto {
   readonly shipmentTitle?: string | null;
   readonly senderSuggestedPriceCents?: number | null;
   readonly lastNegotiationActorId?: string | null;
+  readonly minimumFreightPriceCents?: number | null;
   readonly negotiationHistory?: readonly ProposalNegotiationHistoryItemDto[] | null;
   readonly createdAtUtc: string;
 }
@@ -1402,6 +1403,7 @@ export interface CancellationPolicyDto {
   readonly cancellationPenaltyPercent: number;
   readonly cancellationMinFeeCents: number;
   readonly cancellationInjuredPartySharePercent: number;
+  readonly minimumFreightPriceCents?: number;
 }
 
 

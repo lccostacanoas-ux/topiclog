@@ -130,8 +130,9 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
   // 6. Aceite dos Termos (DESMARCADO POR PADRÃO conforme diretriz estrita)
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  // Política de multa de cancelamento configurada no Console Administrativo (até 10%)
+  // Política de multa de cancelamento e piso mínimo configurados no Console Administrativo
   const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+  const [minFreightPriceCents, setMinFreightPriceCents] = useState<number>(500);
 
   useEffect(() => {
     let active = true;
@@ -140,9 +141,12 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
         if (!active || !res.ok || !res.data) return;
         const pct = Math.min(10, Math.max(0, Number(res.data.cancellationPenaltyPercent ?? 10)));
         setCancellationPenaltyPercent(pct);
+        if (res.data.minimumFreightPriceCents) {
+          setMinFreightPriceCents(Number(res.data.minimumFreightPriceCents));
+        }
       })
       .catch(() => {
-        // fallback 10%
+        // fallback 10% e R$ 5,00
       });
     return () => {
       active = false;
@@ -291,7 +295,8 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
   // Ajuste do valor sugerido com botões +5 / -5
   const adjustPrice = (delta: number) => {
     const current = parsedPrice;
-    const nextVal = Math.max(10, current + delta);
+    const minReais = minFreightPriceCents / 100;
+    const nextVal = Math.max(minReais, current + delta);
     setSuggestedPriceReais(nextVal.toFixed(2).replace(".", ","));
   };
 
@@ -326,8 +331,9 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
     }
 
     const priceCents = Math.round(parsedPrice * 100);
-    if (priceCents < 500) {
-      setErrorMsg("O valor sugerido para o frete deve ser de no mínimo R$ 5,00.");
+    if (priceCents < minFreightPriceCents) {
+      const minFmt = (minFreightPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      setErrorMsg(`O valor sugerido para o frete deve ser de no mínimo ${minFmt} (piso vigente da plataforma).`);
       return;
     }
 
@@ -748,6 +754,49 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
             Quanto você deseja pagar pelo transporte? O valor é totalmente livre. Os transportadores verão sua oferta e poderão aceitar ou enviar uma contraproposta.
           </p>
 
+          {/* Indicativo Explícito em Tela do Valor Mínimo */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 14px",
+              backgroundColor: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+              borderRadius: "8px",
+              marginBottom: "14px",
+              fontSize: "12px",
+              color: "#1E40AF"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "16px" }}>🏷️</span>
+              <div>
+                <strong style={{ color: "#1E3A8A" }}>Valor Mínimo da Plataforma:</strong>{" "}
+                <span style={{ fontWeight: 800, color: "#1D4ED8", fontSize: "13px" }}>
+                  {(minFreightPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+                <span style={{ display: "block", fontSize: "11px", color: "#2563EB" }}>
+                  Livre para sugerir qualquer valor a partir deste piso (sem teto máximo).
+                </span>
+              </div>
+            </div>
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                backgroundColor: "#DBEAFE",
+                color: "#1D4ED8",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}
+            >
+              Piso Vigente
+            </span>
+          </div>
+
           <div className="uber-price-stepper-box">
             <button
               type="button"
@@ -808,7 +857,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
               💡 Distinção Importante:
             </div>
             <div style={{ marginBottom: "3px" }}>
-              • <strong>Valor Sugerido para o Transporte (Frete):</strong> Totalmente livre e <strong>sem teto</strong>. Você informa livremente quanto deseja pagar pelo serviço.
+              • <strong>Valor Sugerido para o Transporte (Frete):</strong> Livre a partir de <strong>{(minFreightPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong> (sem teto máximo). Você informa livremente quanto deseja pagar pelo serviço.
             </div>
             <div>
               • <strong>Valor do Objeto Declarado:</strong> Limite de cobertura padrão de até R$ 500,00 sobre a encomenda nos Termos de Uso.

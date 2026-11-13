@@ -1579,9 +1579,14 @@ function FeedContent(): React.JSX.Element {
                 </div>
 
                 <div style={{ marginBottom: "12px", padding: "10px", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
-                  <label htmlFor="carrier-offer-input" style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-brand-deep-navy)", display: "block", marginBottom: "4px" }}>
-                    Sua Oferta ou Contraproposta de Frete (R$):
-                  </label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label htmlFor="carrier-offer-input" style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-brand-deep-navy)", display: "block" }}>
+                      Sua Oferta ou Contraproposta de Frete (R$):
+                    </label>
+                    <span style={{ fontSize: "11px", color: "#1D4ED8", fontWeight: 700, backgroundColor: "#EFF6FF", padding: "2px 8px", borderRadius: "4px", border: "1px solid #BFDBFE" }}>
+                      🏷️ Piso Mínimo: {((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </div>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                     <div style={{ position: "relative", flex: 1 }}>
                       <span style={{ position: "absolute", left: "10px", top: "7px", fontSize: "13px", color: "var(--color-muted)", fontWeight: 700 }}>R$</span>
@@ -1601,6 +1606,9 @@ function FeedContent(): React.JSX.Element {
                       Aceitar Sugerido
                     </button>
                   </div>
+                  <span style={{ display: "block", fontSize: "11px", color: "#64748B", marginTop: "4px" }}>
+                    ℹ️ O valor ofertado deve ser igual ou superior ao piso mínimo ({((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente na abertura desta carga.
+                  </span>
                 </div>
 
                 {(() => {
@@ -1804,6 +1812,13 @@ function FeedContent(): React.JSX.Element {
                       const shipmentId = isShipment ? selectedItem.id : "e0000001-0000-0000-0000-000000000001";
                       const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (isShipment ? selectedItem.suggestedPriceCents / 100 : 42);
                       const amountCents = Math.round(numVal * 100);
+                      const minPriceCents = (isShipment && (selectedItem as any).minimumFreightPriceCents > 0) ? (selectedItem as any).minimumFreightPriceCents : 500;
+                      if (isShipment && amountCents < minPriceCents) {
+                        const minFmt = (minPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                        alert(`O valor da proposta não pode ser inferior ao piso mínimo de ${minFmt} desta encomenda.`);
+                        setIsSendingProposal(false);
+                        return;
+                      }
                       const tripId = !isShipment ? selectedItem.id : undefined;
 
                       const apiRes = await createProposalApi({
