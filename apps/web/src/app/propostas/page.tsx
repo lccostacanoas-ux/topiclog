@@ -2136,25 +2136,33 @@ export default function PropostasPage(): React.JSX.Element {
         </div>
       )}
 
-      {pixModalOpen && selectedProposalForPix && (
-        <MercadoPagoPixModal
-          isOpen={pixModalOpen}
-          onClose={() => setPixModalOpen(false)}
-          amountReais={selectedProposalForPix.amountCents / 100}
-          description={`Frete TopicLog #${selectedProposalForPix.shipmentId.slice(0, 8)}`}
-          payerEmail={user?.email || "contato@topiclog.com.br"}
-          payerName={user?.displayName || "Remetente TopicLog"}
-          orderId={selectedProposalForPix.shipmentId}
-          expiresAtUtc={selectedContractForPix?.paymentExpiresAtUtc}
-          onExpired={() => {
-            setPixModalOpen(false);
-            setSelectedContractForPix(null);
-            setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a encomenda voltou ao mural.");
-            void loadData(true);
-          }}
-          onPaymentSuccess={handlePixSuccess}
-        />
-      )}
+      {pixModalOpen && selectedProposalForPix && (() => {
+        const contractCommissionCents = selectedContractForPix?.commissionSnapshot?.commissionCents;
+        const calculatedFeeReais = contractCommissionCents !== undefined && contractCommissionCents > 0
+          ? Math.round(contractCommissionCents) / 100
+          : Math.round(selectedProposalForPix.amountCents * 0.15) / 100;
+
+        return (
+          <MercadoPagoPixModal
+            isOpen={pixModalOpen}
+            onClose={() => setPixModalOpen(false)}
+            amountReais={selectedProposalForPix.amountCents / 100}
+            marketplaceFeeReais={calculatedFeeReais}
+            description={`Frete TopicLog #${selectedProposalForPix.shipmentId.slice(0, 8)}`}
+            payerEmail={user?.email || "contato@topiclog.com.br"}
+            payerName={user?.displayName || "Remetente TopicLog"}
+            orderId={selectedProposalForPix.shipmentId}
+            expiresAtUtc={selectedContractForPix?.paymentExpiresAtUtc}
+            onExpired={() => {
+              setPixModalOpen(false);
+              setSelectedContractForPix(null);
+              setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a encomenda voltou ao mural.");
+              void loadData(true);
+            }}
+            onPaymentSuccess={handlePixSuccess}
+          />
+        );
+      })()}
 
       {cancelTarget && (() => {
         const agreedCents = cancelTarget.contract.amountCents ?? cancelTarget.proposal.amountCents ?? 0;

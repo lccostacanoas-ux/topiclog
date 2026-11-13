@@ -17,6 +17,9 @@ interface MercadoPagoPixModalProps {
   payerCpf?: string;
   orderId?: string;
   expiresAtUtc?: string | null;
+  marketplaceFeeReais?: number;
+  sellerAccessToken?: string;
+  sellerCollectorId?: string;
   onExpired?: () => void;
   onPaymentSuccess: (paymentData: MercadoPagoPixData) => void;
 }
@@ -31,6 +34,9 @@ export function MercadoPagoPixModal({
   payerCpf,
   orderId,
   expiresAtUtc,
+  marketplaceFeeReais,
+  sellerAccessToken,
+  sellerCollectorId,
   onExpired,
   onPaymentSuccess
 }: MercadoPagoPixModalProps): React.JSX.Element | null {
@@ -122,7 +128,10 @@ export function MercadoPagoPixModal({
         payerEmail: payerEmail || "contato@topiclog.com.br",
         payerName: payerName || "Remetente TopicLog",
         payerCpf: payerCpf,
-        orderId
+        orderId,
+        marketplaceFeeReais,
+        sellerAccessToken,
+        sellerCollectorId
       });
       setPixData(data);
 
