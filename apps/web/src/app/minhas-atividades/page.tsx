@@ -15,7 +15,8 @@ import {
   updateDeliveryLocationApi,
   rateCarrierApi,
   getCancellationPolicyApi,
-  cancelContractBySenderApi
+  cancelContractBySenderApi,
+  regenerateDeliveryCodeApi
 } from "../../lib/api-client";
 import type {
   DeliveryOrderDto,
@@ -126,6 +127,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
   const [cancelJustification, setCancelJustification] = useState<string>("");
   const [cancelReopen, setCancelReopen] = useState<boolean>(true);
   const [submittingCancel, setSubmittingCancel] = useState(false);
+  const [regeneratingOrderId, setRegeneratingOrderId] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
   const loadActivities = useCallback(
@@ -359,6 +361,37 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
       });
     }
     setSubmittingId(null);
+  };
+
+  const handleRegenerateCode = async (orderId: string) => {
+    if (!token) return;
+    setRegeneratingOrderId(orderId);
+    setBanner(null);
+    try {
+      const res = await regenerateDeliveryCodeApi(orderId, "Reemissão solicitada pelo remetente", token);
+      if (res.ok && res.data) {
+        const newCode = res.data.plainCode || "";
+        setBanner({
+          type: "success",
+          text: newCode
+            ? `Novo código de entrega gerado com sucesso: ${newCode}. O código anterior foi invalidado e a viagem está desbloqueada!`
+            : "Novo código de entrega gerado com sucesso! As tentativas foram zeradas e a viagem está desbloqueada."
+        });
+        await loadActivities(true);
+      } else {
+        setBanner({
+          type: "error",
+          text: res.problem?.detail || "Não foi possível gerar novo código no momento."
+        });
+      }
+    } catch {
+      setBanner({
+        type: "error",
+        text: "Erro de conexão ao tentar gerar novo código."
+      });
+    } finally {
+      setRegeneratingOrderId(null);
+    }
   };
 
   const pushSimulatedOrGpsLocation = async (
@@ -676,21 +709,68 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                       style={{
                         padding: "14px",
                         borderRadius: "12px",
-                        backgroundColor: codes.deliveryVerified ? "#F8FAFC" : "#ECFDF5",
-                        border: codes.deliveryVerified ? "1px solid #CBD5E1" : "1.5px solid #6EE7B7"
+                        backgroundColor: codes.deliveryVerified
+                          ? "#F8FAFC"
+                          : codes.isLocked
+                          ? "#FEF2F2"
+                          : "#ECFDF5",
+                        border: codes.deliveryVerified
+                          ? "1px solid #CBD5E1"
+                          : codes.isLocked
+                          ? "1.5px solid #F87171"
+                          : "1.5px solid #6EE7B7"
                       }}
                     >
-                      <div style={{ fontSize: "11px", fontWeight: 800, color: "#065F46", textTransform: "uppercase" }}>
-                        🏁 Código 2 — Entrega no Destino
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: codes.isLocked ? "#991B1B" : "#065F46", textTransform: "uppercase" }}>
+                          🏁 Código 2 — Entrega no Destino
+                        </div>
+                        {codes.isLocked && (
+                          <span style={{ fontSize: "10px", fontWeight: 800, color: "#991B1B", backgroundColor: "#FEE2E2", padding: "2px 6px", borderRadius: "4px" }}>
+                            🔒 BLOQUEADO (3 ERROS)
+                          </span>
+                        )}
                       </div>
-                      <div style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "6px", color: "#0F172A", margin: "6px 0" }}>
+                      <div style={{ fontSize: "28px", fontWeight: 900, letterSpacing: "6px", color: codes.isLocked ? "#991B1B" : "#0F172A", margin: "6px 0" }}>
                         {codes.deliveryCode}
                       </div>
                       <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.4 }}>
                         {codes.deliveryVerified
                           ? "✓ Entrega confirmada no destino!"
+                          : codes.isLocked
+                          ? "O transportador errou o código 3 vezes e a entrega foi bloqueada por segurança. Clique abaixo para desbloquear e reemitir um novo código."
                           : "Passe este código para quem receberá a encomenda informar ao transportador na chegada."}
                       </div>
+
+                      {!codes.deliveryVerified && (
+                        <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #E2E8F0" }}>
+                          <button
+                            type="button"
+                            disabled={regeneratingOrderId === order.id}
+                            onClick={() => void handleRegenerateCode(order.id)}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: "8px",
+                              backgroundColor: codes.isLocked ? "#DC2626" : "#2563EB",
+                              color: "#FFFFFF",
+                              border: "none",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                            }}
+                          >
+                            {regeneratingOrderId === order.id
+                              ? "Gerando Novo Código..."
+                              : codes.isLocked
+                              ? "🔓 Desbloquear & Gerar Novo Código de Entrega"
+                              : "🔄 Gerar Novo Código de Entrega"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -855,6 +935,24 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                         >
                           {submittingId === order.id ? "Encerrando..." : "✅ Confirmar Entrega & Encerrar Viagem"}
                         </button>
+                        <Link
+                          href="/mensagens"
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: "8px",
+                            backgroundColor: "#EFF6FF",
+                            color: "#1D4ED8",
+                            border: "1px solid #BFDBFE",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          💬 Chat da Viagem
+                        </Link>
                       </div>
                     </div>
                   </div>
