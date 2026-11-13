@@ -9,7 +9,6 @@ import { changePasswordApi, getPublicUserCardApi, updatePrivateProfileApi } from
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
 import { BRAZILIAN_STATES, formatCep, lookupCepViaCep } from "../../lib/brazil-address";
-import { getMercadoPagoOAuthUrl } from "../../lib/mercadopago";
 import type { ProblemDetailsDto, PublicUserCardResponse, UserRole } from "../../lib/types";
 
 export default function MyAccountPage(): React.JSX.Element {
@@ -60,12 +59,12 @@ export default function MyAccountPage(): React.JSX.Element {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [localMpSeller, setLocalMpSeller] = useState<{ connected: boolean; userId: string; connectedAt?: string } | null>(null);
 
-  // Escuta retorno do OAuth do Mercado Pago Marketplace
+  // Escuta retorno ou inicialização da Subconta Asaas
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const mpOauth = params.get("mp_oauth");
-    const mpUserId = params.get("mp_user_id");
+    const asaasOauth = params.get("asaas_oauth") || params.get("mp_oauth");
+    const asaasUserId = params.get("asaas_user_id") || params.get("mp_user_id");
 
     if (user?.userId) {
       const stored = localStorage.getItem(`topiclog_mp_connected_${user.userId}`);
@@ -76,21 +75,21 @@ export default function MyAccountPage(): React.JSX.Element {
       }
     }
 
-    if (mpOauth === "success") {
+    if (asaasOauth === "success") {
       const sellerData = {
         connected: true,
-        userId: mpUserId || "conectado",
+        userId: asaasUserId || "subconta_asaas_ativa",
         connectedAt: new Date().toISOString()
       };
       setLocalMpSeller(sellerData);
       if (user?.userId) {
         localStorage.setItem(`topiclog_mp_connected_${user.userId}`, JSON.stringify(sellerData));
       }
-      setSuccessMessage(`🎉 Conta Mercado Pago vinculada com sucesso! Você agora recebe fretes com Split Automático e CUSTO ZERO de transferência.`);
+      setSuccessMessage(`🎉 Subconta Asaas vinculada com sucesso! Você agora recebe fretes com Split Nativo e Custódia Segura.`);
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (mpOauth === "error") {
+    } else if (asaasOauth === "error") {
       const msg = params.get("msg");
-      setCarrierValidationMsg(`Não foi possível conectar a conta Mercado Pago: ${msg || "Operação cancelada"}`);
+      setCarrierValidationMsg(`Não foi possível ativar a subconta Asaas: ${msg || "Operação cancelada"}`);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [user?.userId]);
@@ -552,58 +551,12 @@ export default function MyAccountPage(): React.JSX.Element {
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-                                alignItems: "center",
-                                gap: "6px",
-                                backgroundColor: "#059669",
-                                color: "#FFFFFF",
-                                fontWeight: 700,
-                                fontSize: "12px",
-                                padding: "8px 14px",
-                                borderRadius: "8px",
-                                border: "none",
-                                cursor: "pointer",
-                                boxShadow: "0 2px 6px rgba(5, 150, 105, 0.35)",
-                                whiteSpace: "nowrap"
-                              }}
-                            >
-                              <span>⚡</span>
-                              <span>Ativar Vínculo com {user.mpAccountEmail}</span>
-                            </button>
-                          )}
-                          <a
-                            href={getMercadoPagoOAuthUrl(user.userId, "/minha-conta")}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              backgroundColor: "#009EE3",
-                              color: "#FFFFFF",
-                              fontWeight: 700,
-                              fontSize: "12px",
-                              padding: "8px 14px",
-                              borderRadius: "8px",
-                              textDecoration: "none",
-                              boxShadow: "0 2px 6px rgba(0, 158, 227, 0.35)",
-                              whiteSpace: "nowrap"
-                            }}
-                          >
-                            <span>🔗</span>
-                            <span>Autorizar via Mercado Pago</span>
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Informações Complementares de Chave Pix Cadastrada */}
                   {user.pixKey || user.mpAccountEmail ? (
-                    <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: "#334155" }}>
+                    <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: "#334155", marginTop: "12px" }}>
                       <p style={{ margin: "2px 0" }}>
-                        <strong>Chave Pix de Contingência:</strong>{" "}
+                        <strong>Chave Pix de Recebimento (Asaas):</strong>{" "}
                         <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#E2E8F0", padding: "2px 6px", borderRadius: "4px" }}>
                           {user.pixKey || "Não informada"}
                         </span>{" "}
@@ -1247,7 +1200,7 @@ export default function MyAccountPage(): React.JSX.Element {
               <div style={{ fontSize: "22px", fontWeight: 800, color: "#1D4ED8", marginTop: "4px" }}>
                 R$ 13,77
               </div>
-              <div style={{ fontSize: "11px", color: "#1D4ED8", marginTop: "2px" }}>Mercado Pago / Pix</div>
+              <div style={{ fontSize: "11px", color: "#1D4ED8", marginTop: "2px" }}>Asaas / Pix Direto</div>
             </div>
 
             <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "14px", textAlign: "center" }}>

@@ -410,7 +410,7 @@ export default function MensagensPage(): React.JSX.Element {
               <option value="Comunicação de Cancelamento / Força Maior">Comunicação de Cancelamento / Força Maior</option>
               <option value="Cadastro de Veículo, Placa, Renavam ou CNH">Cadastro de Veículo, Placa, Renavam ou CNH</option>
               <option value="Suporte Operacional de Coleta e Entrega">Suporte Operacional de Coleta e Entrega</option>
-              <option value="Divisão e Repasse Mercado Pago">Divisão e Repasse Mercado Pago</option>
+              <option value="Divisão e Repasse Asaas Split">Divisão e Repasse Asaas Split</option>
               <option value="Outros Assuntos">Outros Assuntos</option>
             </select>
           </div>
