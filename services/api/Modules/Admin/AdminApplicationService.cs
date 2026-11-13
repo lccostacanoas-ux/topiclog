@@ -189,6 +189,14 @@ public class AdminApplicationService
         current.CancellationPenaltyPercent = request.CancellationPenaltyPercent ?? current.CancellationPenaltyPercent;
         current.CancellationMinFeeCents = request.CancellationMinFeeCents ?? current.CancellationMinFeeCents;
         current.CancellationInjuredPartySharePercent = request.CancellationInjuredPartySharePercent ?? current.CancellationInjuredPartySharePercent;
+        if (request.MinimumFreightPriceCents.HasValue)
+        {
+            if (request.MinimumFreightPriceCents.Value <= 0)
+            {
+                throw new DomainRuleViolationException("INVALID_MINIMUM_PRICE", "O valor mínimo de frete deve ser estritamente positivo (mínimo R$ 1,00).");
+            }
+            current.MinimumFreightPriceCents = request.MinimumFreightPriceCents.Value;
+        }
         current.Justification = request.Justification.Trim();
         current.UpdatedByUserId = actorUserId;
         current.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -545,6 +553,7 @@ public class AdminApplicationService
         s.CancellationPenaltyPercent,
         s.CancellationMinFeeCents,
         s.CancellationInjuredPartySharePercent,
+        s.MinimumFreightPriceCents,
         s.IsActive,
         s.Justification,
         s.UpdatedAtUtc);

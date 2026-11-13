@@ -74,6 +74,7 @@ public sealed class Shipment
     public double DimensionsHeightCm { get; init; }
     public long DeclaredValueCents { get; init; }
     public long SuggestedPriceCents { get; set; }
+    public long MinimumFreightPriceCents { get; set; } = 500;
     public IReadOnlyList<string> SpecialCareNotes { get; set; } = [];
     public ShipmentAddress OriginAddress { get; set; } = default!;
     public ShipmentAddress DestinationAddress { get; set; } = default!;
@@ -165,7 +166,8 @@ public sealed record ShipmentDetailResponse(
     InsuranceInterestResponse InsuranceInterest,
     string Status,
     IReadOnlyList<string> PhotoUrls,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    long? MinimumFreightPriceCents = null);
 
 public sealed record ShipmentSummaryResponse(
     Guid Id,
@@ -183,7 +185,8 @@ public sealed record ShipmentSummaryResponse(
     string DeliveryWindow,
     string Status,
     int PhotoCount,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    long? MinimumFreightPriceCents = null);
 
 public sealed record InsuranceInterestResponse(
     bool Interested,

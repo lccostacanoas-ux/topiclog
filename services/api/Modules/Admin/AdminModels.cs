@@ -43,6 +43,7 @@ public class OperationalSettings
     public decimal CancellationPenaltyPercent { get; set; } = 10.00m;
     public long CancellationMinFeeCents { get; set; } = 700;
     public decimal CancellationInjuredPartySharePercent { get; set; } = 80.00m;
+    public long MinimumFreightPriceCents { get; set; } = 500;
     public bool IsActive { get; set; } = true;
     public string Justification { get; set; } = string.Empty;
     public Guid UpdatedByUserId { get; set; }
@@ -117,6 +118,7 @@ public record UpdateOperationalSettingsRequest(
     decimal? CancellationPenaltyPercent,
     long? CancellationMinFeeCents,
     decimal? CancellationInjuredPartySharePercent,
+    long? MinimumFreightPriceCents,
     string Justification);
 
 public record OperationalSettingsResponse(
@@ -135,6 +137,7 @@ public record OperationalSettingsResponse(
     decimal CancellationPenaltyPercent,
     long CancellationMinFeeCents,
     decimal CancellationInjuredPartySharePercent,
+    long MinimumFreightPriceCents,
     bool IsActive,
     string Justification,
     DateTimeOffset UpdatedAtUtc);

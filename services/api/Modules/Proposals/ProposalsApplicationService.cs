@@ -202,6 +202,15 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 $"A encomenda não está disponível para receber propostas. Status atual: {shipment.Status}.");
         }
 
+        long minAllowedCents = shipment.MinimumFreightPriceCents > 0 ? shipment.MinimumFreightPriceCents : 500;
+        if (request.AmountCents < minAllowedCents)
+        {
+            throw new DomainRuleViolationException(
+                "PROPOSAL_BELOW_MINIMUM",
+                $"O valor da proposta (R$ {(request.AmountCents / 100.0):F2}) não pode ser inferior ao valor mínimo vigente na abertura desta negociação (R$ {(minAllowedCents / 100.0):F2}).",
+                422);
+        }
+
         if (shipment.SenderId == carrierId)
         {
             throw new DomainRuleViolationException(
@@ -369,6 +378,16 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
 
         var proposal = await _proposalsRepository.GetProposalByIdAsync(proposalId, cancellationToken)
             ?? throw new DomainRuleViolationException("PROPOSAL_NOT_FOUND", "A proposta informada não foi encontrada.", 404);
+
+        var shipment = await _shipmentsRepository.GetByIdAsync(proposal.ShipmentId, cancellationToken);
+        long minAllowedCents = (shipment is not null && shipment.MinimumFreightPriceCents > 0) ? shipment.MinimumFreightPriceCents : 500;
+        if (request.AmountCents < minAllowedCents)
+        {
+            throw new DomainRuleViolationException(
+                "COUNTER_PROPOSAL_BELOW_MINIMUM",
+                $"O valor da contraproposta (R$ {(request.AmountCents / 100.0):F2}) não pode ser inferior ao valor mínimo vigente na abertura desta negociação (R$ {(minAllowedCents / 100.0):F2}).",
+                422);
+        }
 
         // 1. Autorização: Apenas transportador ou remetente da proposta podem contrapropor
         if (actorId != proposal.CarrierId && actorId != proposal.SenderId)

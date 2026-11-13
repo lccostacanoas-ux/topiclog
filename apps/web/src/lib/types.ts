@@ -427,6 +427,7 @@ export interface ShipmentDetailDto {
   readonly dimensionsHeightCm: number;
   readonly declaredValueCents: number;
   readonly suggestedPriceCents: number;
+  readonly minimumFreightPriceCents?: number;
   readonly specialCareNotes: readonly string[];
   readonly origin: ShipmentAddressDto;
   readonly destination: ShipmentAddressDto;
@@ -1128,6 +1129,7 @@ export interface OperationalSettingsDto {
   readonly cancellationPenaltyPercent: number;
   readonly cancellationMinFeeCents: number;
   readonly cancellationInjuredPartySharePercent: number;
+  readonly minimumFreightPriceCents: number;
   readonly isActive: boolean;
   readonly justification: string;
   readonly updatedAtUtc: string;
@@ -1147,6 +1149,7 @@ export interface UpdateOperationalSettingsDto {
   readonly cancellationPenaltyPercent?: number;
   readonly cancellationMinFeeCents?: number;
   readonly cancellationInjuredPartySharePercent?: number;
+  readonly minimumFreightPriceCents?: number;
   readonly justification: string;
 }
 

@@ -52,17 +52,20 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
     private readonly IObjectStorageProvider _storageProvider;
     private readonly IMapsProvider _mapsProvider;
     private readonly IProposalsRepository? _proposalsRepository;
+    private readonly TopicLog.Api.Modules.Admin.IOperationalSettingsRepository? _operationalSettingsRepository;
 
     public ShipmentsApplicationService(
         IShipmentsRepository repository,
         IObjectStorageProvider storageProvider,
         IMapsProvider? mapsProvider = null,
-        IProposalsRepository? proposalsRepository = null)
+        IProposalsRepository? proposalsRepository = null,
+        TopicLog.Api.Modules.Admin.IOperationalSettingsRepository? operationalSettingsRepository = null)
     {
         _repository = repository;
         _storageProvider = storageProvider;
         _mapsProvider = mapsProvider ?? new TopicLog.Api.Infrastructure.Providers.LocalFreeMapsProvider();
         _proposalsRepository = proposalsRepository;
+        _operationalSettingsRepository = operationalSettingsRepository;
     }
 
     public async Task<ShipmentDetailResponse> CreateShipmentAsync(
@@ -73,12 +76,22 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.SuggestedPriceCents <= 0)
+        long minPriceCents = 500;
+        if (_operationalSettingsRepository != null)
+        {
+            var opSettings = await _operationalSettingsRepository.GetActiveSettingsAsync(cancellationToken);
+            if (opSettings != null && opSettings.MinimumFreightPriceCents > 0)
+            {
+                minPriceCents = opSettings.MinimumFreightPriceCents;
+            }
+        }
+
+        if (request.SuggestedPriceCents < minPriceCents)
         {
             throw new DomainRuleViolationException(
-                "INVALID_PRICE",
-                "O valor sugerido para o transporte deve ser estritamente positivo (mínimo R$ 1,00).",
-                httpStatusCode: 400);
+                "INVALID_PRICE_BELOW_MINIMUM",
+                $"O valor sugerido para o frete não pode ser inferior ao valor mínimo vigente de R$ {(minPriceCents / 100.0):F2}.",
+                httpStatusCode: 422);
         }
 
         var title = !string.IsNullOrWhiteSpace(request.Title)
@@ -276,6 +289,7 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
             DimensionsHeightCm = Math.Max(1, heightCm),
             DeclaredValueCents = Math.Max(0, declaredValue),
             SuggestedPriceCents = request.SuggestedPriceCents,
+            MinimumFreightPriceCents = minPriceCents,
             SpecialCareNotes = specialNotes,
             OriginAddress = originAddress,
             DestinationAddress = destinationAddress,
@@ -378,7 +392,8 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
             DeliveryWindow: s.DeliveryWindow,
             Status: s.Status.ToString(),
             PhotoCount: s.PhotoStorageKeys.Count,
-            CreatedAtUtc: s.CreatedAtUtc);
+            CreatedAtUtc: s.CreatedAtUtc,
+            MinimumFreightPriceCents: s.MinimumFreightPriceCents);
 
     public async Task<string> AddShipmentPhotoAsync(
         Guid shipmentId,
@@ -481,7 +496,8 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
             InsuranceInterest: insuranceResp,
             Status: s.Status.ToString(),
             PhotoUrls: photoUrls,
-            CreatedAtUtc: s.CreatedAtUtc);
+            CreatedAtUtc: s.CreatedAtUtc,
+            MinimumFreightPriceCents: s.MinimumFreightPriceCents);
     }
 
     public async Task<ShipmentDetailResponse> UpdateShipmentAsync(

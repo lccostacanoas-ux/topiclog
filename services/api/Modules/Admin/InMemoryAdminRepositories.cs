@@ -13,6 +13,8 @@ public class InMemoryOperationalSettingsRepository : IOperationalSettingsReposit
 {
     private readonly Lock _syncLock = new();
     private OperationalSettings _currentSettings;
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("operational_settings_store.json");
 
     public InMemoryOperationalSettingsRepository()
     {
@@ -33,11 +35,29 @@ public class InMemoryOperationalSettingsRepository : IOperationalSettingsReposit
             CancellationPenaltyPercent = 10.00m,
             CancellationMinFeeCents = 700,
             CancellationInjuredPartySharePercent = 80.00m,
+            MinimumFreightPriceCents = 500,
             IsActive = true,
             Justification = "Configurações operacionais padrão da plataforma Topic Log (D03, D04, D16, PR-03, PR-04, PR-05)",
             UpdatedByUserId = Guid.Parse("00000000-0000-0000-0000-000000000001"),
             UpdatedAtUtc = DateTimeOffset.UtcNow
         };
+
+        try
+        {
+            if (File.Exists(StorageFilePath))
+            {
+                var json = File.ReadAllText(StorageFilePath);
+                var loaded = System.Text.Json.JsonSerializer.Deserialize<OperationalSettings>(json);
+                if (loaded != null)
+                {
+                    _currentSettings = loaded;
+                }
+            }
+        }
+        catch
+        {
+            // fallback para valores padrão
+        }
     }
 
     public Task<OperationalSettings> GetActiveSettingsAsync(CancellationToken cancellationToken = default)
@@ -54,6 +74,15 @@ public class InMemoryOperationalSettingsRepository : IOperationalSettingsReposit
         lock (_syncLock)
         {
             _currentSettings = settings;
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(_currentSettings, JsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch
+            {
+                // ignore
+            }
             return Task.CompletedTask;
         }
     }
