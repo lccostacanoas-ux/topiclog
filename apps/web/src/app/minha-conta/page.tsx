@@ -44,7 +44,7 @@ export default function MyAccountPage(): React.JSX.Element {
   const [editAcceptTerms, setEditAcceptTerms] = useState<boolean>(true);
   const [editPixKeyType, setEditPixKeyType] = useState<string>("CPF");
   const [editPixKey, setEditPixKey] = useState<string>("");
-  const [editBankName, setEditBankName] = useState<string>("Mercado Pago");
+  const [editBankName, setEditBankName] = useState<string>("Asaas (Instituição de Pagamento)");
   const [editMpAccountEmail, setEditMpAccountEmail] = useState<string>("");
   const [editCnhDocName, setEditCnhDocName] = useState<string>("");
   const [editCnhDocData, setEditCnhDocData] = useState<string>("");
@@ -136,7 +136,7 @@ export default function MyAccountPage(): React.JSX.Element {
       setEditAcceptTerms(user.carrierTermsAccepted ?? true);
       setEditPixKeyType(user.pixKeyType || "CPF");
       setEditPixKey(user.pixKey || "");
-      setEditBankName("Mercado Pago (Banco 323)");
+      setEditBankName("Asaas (Instituição de Pagamento)");
       setEditMpAccountEmail(user.mpAccountEmail || user.email || "");
       setEditCnhDocName(user.cnhDocumentName || "");
       setEditCnhDocData(user.cnhDocumentData || "");
@@ -447,14 +447,14 @@ export default function MyAccountPage(): React.JSX.Element {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ fontSize: "18px" }}>⚡</span>
-                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>Recebimento de Fretes • Mercado Pago Marketplace (Split Nativo)</strong>
+                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>Recebimento de Fretes • Asaas (Split Nativo & Custódia Segura)</strong>
                     </div>
                     <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D", padding: "2px 8px", borderRadius: "12px", border: "1px solid #86EFAC" }}>
-                      Custo Zero de Tarifa
+                      Custódia Protegida
                     </span>
                   </div>
 
-                  {/* Bloco de Integração OAuth Marketplace (Split) */}
+                  {/* Bloco de Integração Subconta Asaas (Split) */}
                   {(user.mpSellerConnected || localMpSeller?.connected) ? (
                     <div style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
@@ -462,22 +462,22 @@ export default function MyAccountPage(): React.JSX.Element {
                           <span style={{ fontSize: "20px" }}>✅</span>
                           <div>
                             <div style={{ fontWeight: 800, fontSize: "13px", color: "#166534" }}>
-                              Conta Mercado Pago Conectada via OAuth
+                              Subconta Asaas Conectada para Split Automático
                             </div>
                             <div style={{ fontSize: "12px", color: "#15803D", marginTop: "2px" }}>
-                              ID do Vendedor: <code>{user.mpSellerUserId || localMpSeller?.userId || "Ativo"}</code> • Split automático habilitado
+                              Identificador da Carteira: <code>{user.mpSellerUserId || localMpSeller?.userId || "Subconta Ativa"}</code> • Split nativo habilitado
                             </div>
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm("Deseja desconectar sua conta Mercado Pago?")) {
+                            if (confirm("Deseja desconectar sua subconta Asaas?")) {
                               if (user?.userId) {
                                 localStorage.removeItem(`topiclog_mp_connected_${user.userId}`);
                               }
                               setLocalMpSeller(null);
-                              setSuccessMessage("Conta Mercado Pago desconectada. Você pode reconectar a qualquer momento.");
+                              setSuccessMessage("Subconta Asaas desconectada. Você pode reconectar a qualquer momento.");
                             }
                           }}
                           style={{
@@ -495,7 +495,7 @@ export default function MyAccountPage(): React.JSX.Element {
                         </button>
                       </div>
                       <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed #BBF7D0", fontSize: "11px", color: "#166534", lineHeight: 1.4 }}>
-                        ✓ Quando você concluir uma viagem, o valor líquido do frete entra imediatamente na sua conta Mercado Pago sem nenhuma retenção nem tarifa de TED ou Pix.
+                        ✓ Quando você concluir uma viagem com o código de segurança, o valor líquido do frete é liberado imediatamente na sua carteira Asaas para saque Pix.
                       </div>
                     </div>
                   ) : (
@@ -503,10 +503,10 @@ export default function MyAccountPage(): React.JSX.Element {
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
                         <div style={{ maxWidth: "520px" }}>
                           <div style={{ fontWeight: 800, fontSize: "13px", color: "#1E40AF" }}>
-                            Vincule sua Conta Mercado Pago para Receber com Split Automático
+                            Vincule sua Subconta Asaas para Receber com Split Automático
                           </div>
                           <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#1D4ED8", lineHeight: 1.4 }}>
-                            Ao vincular sua conta, o valor líquido dos fretes concluídos entra diretamente no seu saldo do Mercado Pago com <strong>tarifa ZERO de transferência</strong>.
+                            Ao vincular seus dados do Asaas, o valor líquido dos fretes concluídos entra em custódia segura e é liberado diretamente para saque via Pix após a validação da entrega.
                           </p>
                           {user.mpAccountEmail && (
                             <div style={{ marginTop: "6px", fontSize: "11px", color: "#1E40AF", fontWeight: 600 }}>
@@ -521,7 +521,7 @@ export default function MyAccountPage(): React.JSX.Element {
                               onClick={() => {
                                 const sellerData = {
                                   connected: true,
-                                  userId: "3829261083 (LUIZ C COSTA LTDA)",
+                                  userId: "wal_asaas_active (LUIZ C COSTA)",
                                   email: user.mpAccountEmail,
                                   connectedAt: new Date().toISOString()
                                 };
@@ -529,10 +529,31 @@ export default function MyAccountPage(): React.JSX.Element {
                                 if (user?.userId) {
                                   localStorage.setItem(`topiclog_mp_connected_${user.userId}`, JSON.stringify(sellerData));
                                 }
-                                setSuccessMessage("🎉 Conta Mercado Pago vinculada com sucesso! Split Automático e Custo Zero ativados.");
+                                setSuccessMessage("🎉 Subconta Asaas vinculada com sucesso! Split Automático e Custódia ativados.");
                               }}
                               style={{
                                 display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                backgroundColor: "#059669",
+                                color: "#FFFFFF",
+                                fontWeight: 700,
+                                fontSize: "12px",
+                                padding: "8px 14px",
+                                borderRadius: "6px",
+                                border: "none",
+                                cursor: "pointer"
+                              }}
+                            >
+                              ⚡ Ativar Split Asaas
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
                                 alignItems: "center",
                                 gap: "6px",
                                 backgroundColor: "#059669",
@@ -969,80 +990,105 @@ export default function MyAccountPage(): React.JSX.Element {
                   margin: "16px 0"
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "20px" }}>💳</span>
-                  <strong style={{ fontSize: "15px", color: "#1E40AF" }}>
-                    Dados Bancários Homologados para Split & Repasses (Mercado Pago Exclusivo)
-                  </strong>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "20px" }}>💳</span>
+                    <strong style={{ fontSize: "15px", color: "#1E40AF" }}>
+                      Dados Bancários & Chave Pix de Recebimento (Asaas White Label)
+                    </strong>
+                  </div>
+                  {/* Badge de Status KYC Asaas */}
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      backgroundColor: user.kycStatus === "VERIFIED" ? "#DCFCE7" : "#FEF3C7",
+                      color: user.kycStatus === "VERIFIED" ? "#15803D" : "#B45309",
+                      padding: "3px 10px",
+                      borderRadius: "12px",
+                      border: `1px solid ${user.kycStatus === "VERIFIED" ? "#86EFAC" : "#FCD34D"}`
+                    }}
+                  >
+                    {user.kycStatus === "VERIFIED" ? "🟢 Carteira Apta para Saque" : "🟡 Aguardando Validação Asaas"}
+                  </span>
                 </div>
 
-                {/* Aviso Regulatório Obrigatório */}
+                {/* Banner Informativo Asaas White Label */}
                 <div
                   style={{
-                    backgroundColor: "#FEF2F2",
-                    border: "1.5px solid #FCA5A5",
+                    backgroundColor: "#EFF6FF",
+                    border: "1.5px solid #93C5FD",
                     borderRadius: "8px",
                     padding: "12px 14px",
                     marginBottom: "14px",
                     fontSize: "12px",
-                    color: "#991B1B",
+                    color: "#1E40AF",
                     lineHeight: 1.5
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, marginBottom: "4px" }}>
-                    <span>⚠️</span> AVISO OBRIGATÓRIO: CONTA NO MERCADO PAGO EXIGIDA
+                    <span>⚡</span> SUBCONTA INTEGRADA & CHAVE PIX UNIVERSAL
                   </div>
-                  Para viabilizar a divisão automatizada de valores (split financeiro entre transportador e plataforma) e o repasse seguro dos fretes, <strong>a única instituição financeira aceita é o Mercado Pago (Banco 323)</strong>. É obrigatório que o transportador possua conta ativa no Mercado Pago. Sua chave Pix e e-mail informados abaixo devem pertencer a essa conta.
+                  Para garantir o split automático e o repasse seguro dos fretes, a TopicLog cria automaticamente sua carteira digital integrada (via Asaas). Informe abaixo sua chave Pix de <strong>qualquer banco</strong> de sua titularidade (mesmo CPF/CNPJ cadastrado) para receber seus saques após a confirmação das entregas.
                 </div>
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>
-                      Instituição Financeira Homologada *
-                    </label>
-                    <select
-                      className="form-input"
-                      value="Mercado Pago (Banco 323)"
-                      disabled={true}
-                      style={{ backgroundColor: "#F1F5F9", fontWeight: 700, color: "#0F172A", cursor: "not-allowed" }}
-                    >
-                      <option value="Mercado Pago (Banco 323)">Mercado Pago (Banco 323 - Exclusivo para Split & Repasses)</option>
-                    </select>
-                    <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                      Única instituição autorizada para split automático e repasses ao transportador na TopicLog.
-                    </small>
-                  </div>
-
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Tipo de Chave Pix (no Mercado Pago) *</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Tipo de Chave Pix *</label>
                     <select
                       className="form-input"
                       value={editPixKeyType}
                       onChange={e => setEditPixKeyType(e.target.value)}
                       disabled={isSaving}
                     >
-                      <option value="CPF">CPF (Registrado no Mercado Pago)</option>
-                      <option value="CNPJ">CNPJ (Registrado no Mercado Pago)</option>
-                      <option value="EMAIL">E-mail da Conta Mercado Pago</option>
-                      <option value="TELEFONE">Telefone Celular</option>
-                      <option value="ALEATORIA">Chave Aleatória (EVP)</option>
+                      <option value="CPF">CPF / CNPJ do Titular</option>
+                      <option value="EMAIL">E-mail Pessoal ou Comercial</option>
+                      <option value="TELEFONE">Telefone Celular com DDD</option>
+                      <option value="ALEATORIA">Chave Aleatória (EVP / BACEN)</option>
                     </select>
+                    <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Aceita chaves de qualquer banco (Itaú, Bradesco, BB, Nubank, Inter, Caixa, etc.).
+                    </small>
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Banco Destino da Chave Pix (Opcional)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ex: Nubank, Inter, Caixa, Bradesco..."
+                      value={editBankName}
+                      onChange={e => setEditBankName(e.target.value)}
+                      disabled={isSaving}
+                    />
+                    <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      Identificação visual do banco para conferência no momento do repasse.
+                    </small>
                   </div>
                 </div>
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Sua Chave Pix (Mercado Pago)</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>Sua Chave Pix para Recebimento *</label>
                     <input
                       type="text"
                       className="form-input"
-                      maxLength={editPixKeyType === "CPF" ? 14 : undefined}
-                      placeholder={editPixKeyType === "CPF" ? "000.000.000-00" : "Ex: seu CPF ou e-mail cadastrado no Mercado Pago"}
+                      maxLength={editPixKeyType === "CPF" ? 18 : undefined}
+                      placeholder={
+                        editPixKeyType === "CPF" 
+                          ? "000.000.000-00 ou 00.000.000/0000-00" 
+                          : editPixKeyType === "EMAIL"
+                            ? "seu.email@banco.com.br"
+                            : editPixKeyType === "TELEFONE"
+                              ? "(00) 90000-0000"
+                              : "Chave aleatória gerada no seu banco"
+                      }
                       value={editPixKey}
                       onChange={e =>
                         setEditPixKey(editPixKeyType === "CPF" ? formatCpf(e.target.value) : e.target.value)
                       }
                       disabled={isSaving}
+                      required
                     />
                     {editPixKeyType === "CPF" && editPixKey.replace(/\D/g, "").length > 0 && (
                       <div
@@ -1054,24 +1100,27 @@ export default function MyAccountPage(): React.JSX.Element {
                         }}
                       >
                         {isValidCpf(editPixKey)
-                          ? "✓ CPF Válido (Receita Federal)"
+                          ? "✓ Documento Válido para Transferência Pix"
                           : editPixKey.replace(/\D/g, "").length < 11
-                            ? "⚠️ CPF incompleto: informe os 11 dígitos."
-                            : "⚠️ CPF Inválido: confira os números digitados."}
+                            ? "⚠️ Documento incompleto: informe todos os dígitos."
+                            : "⚠️ Documento Inválido: confira a numeração digitada."}
                       </div>
                     )}
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>E-mail da Conta Mercado Pago</label>
+                    <label className="form-label" style={{ fontSize: "12px", fontWeight: 700 }}>E-mail de Notificação de Saque</label>
                     <input
                       type="email"
                       className="form-input"
-                      placeholder="seu.email@mercadopago.com"
+                      placeholder="seu.email@exemplo.com"
                       value={editMpAccountEmail}
                       onChange={e => setEditMpAccountEmail(e.target.value)}
                       disabled={isSaving}
                     />
+                    <small style={{ fontSize: "11px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                      E-mail que receberá os comprovantes de Pix e notificações de liberação de fretes.
+                    </small>
                   </div>
                 </div>
               </div>

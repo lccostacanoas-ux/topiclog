@@ -166,6 +166,9 @@ export interface UpdateProfileRequest {
   readonly bankAgency?: string;
   readonly bankAccount?: string;
   readonly mpAccountEmail?: string;
+  readonly asaasWalletId?: string;
+  readonly asaasAccountId?: string;
+  readonly asaasKycStatus?: string;
   readonly cnhDocumentName?: string;
   readonly cnhDocumentData?: string;
   readonly crlvDocumentName?: string;
@@ -216,6 +219,9 @@ export interface PrivateUserProfileResponse {
   readonly bankAgency?: string;
   readonly bankAccount?: string;
   readonly mpAccountEmail?: string;
+  readonly asaasWalletId?: string;
+  readonly asaasAccountId?: string;
+  readonly asaasKycStatus?: string;
   readonly cnhDocumentName?: string;
   readonly cnhDocumentData?: string;
   readonly crlvDocumentName?: string;

@@ -670,6 +670,9 @@ public sealed class IdentityApplicationService
         if (request.PixKey is not null) profile.PixKey = request.PixKey;
         if (request.BankName is not null) profile.BankName = request.BankName;
         if (request.MpAccountEmail is not null) profile.MpAccountEmail = request.MpAccountEmail;
+        if (request.AsaasWalletId is not null) profile.AsaasWalletId = request.AsaasWalletId;
+        if (request.AsaasAccountId is not null) profile.AsaasAccountId = request.AsaasAccountId;
+        if (request.AsaasKycStatus is not null) profile.AsaasKycStatus = request.AsaasKycStatus;
         if (request.CnhDocumentName is not null) profile.CnhDocumentName = request.CnhDocumentName;
         if (request.CnhDocumentData is not null) profile.CnhDocumentData = request.CnhDocumentData;
         if (request.CrlvDocumentName is not null) profile.CrlvDocumentName = request.CrlvDocumentName;
@@ -858,6 +861,9 @@ public sealed class IdentityApplicationService
             PixKey: profile.PixKey,
             BankName: profile.BankName,
             MpAccountEmail: profile.MpAccountEmail,
+            AsaasWalletId: profile.AsaasWalletId,
+            AsaasAccountId: profile.AsaasAccountId,
+            AsaasKycStatus: profile.AsaasKycStatus,
             CnhDocumentName: profile.CnhDocumentName,
             CnhDocumentData: profile.CnhDocumentData,
             crlvDocumentName: profile.CrlvDocumentName,

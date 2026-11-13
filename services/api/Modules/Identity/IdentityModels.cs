@@ -116,9 +116,15 @@ public sealed class UserProfileEntity
 
     public string? PixKey { get; set; }
 
-    public string? BankName { get; set; } = "Mercado Pago";
+    public string? BankName { get; set; } = "Asaas";
 
     public string? MpAccountEmail { get; set; }
+
+    public string? AsaasWalletId { get; set; }
+
+    public string? AsaasAccountId { get; set; }
+
+    public string? AsaasKycStatus { get; set; } = "NOT_STARTED";
 
     public string? CnhDocumentName { get; set; }
 
@@ -252,6 +258,9 @@ public sealed record UpdateProfileRequest(
     string? PixKey = null,
     string? BankName = null,
     string? MpAccountEmail = null,
+    string? AsaasWalletId = null,
+    string? AsaasAccountId = null,
+    string? AsaasKycStatus = null,
     string? CnhDocumentName = null,
     string? CnhDocumentData = null,
     string? CrlvDocumentName = null,
@@ -304,6 +313,9 @@ public sealed record PrivateUserProfileResponse(
     string? PixKey = null,
     string? BankName = null,
     string? MpAccountEmail = null,
+    string? AsaasWalletId = null,
+    string? AsaasAccountId = null,
+    string? AsaasKycStatus = null,
     string? CnhDocumentName = null,
     string? CnhDocumentData = null,
     string? crlvDocumentName = null,
