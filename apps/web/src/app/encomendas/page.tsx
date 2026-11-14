@@ -42,7 +42,8 @@ interface UnifiedShipment {
 function safeFormatDate(val?: string): string {
   if (!val) return new Date().toLocaleDateString("pt-BR");
   const d = new Date(val);
-  return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
+  if (isNaN(d.getTime())) return new Date().toLocaleDateString("pt-BR");
+  return `${d.toLocaleDateString("pt-BR")} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export default function MinhasEncomendasPage(): React.JSX.Element {
@@ -71,6 +72,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const [cancelJustification, setCancelJustification] = useState<string>("");
   const [cancelReopen, setCancelReopen] = useState<boolean>(true);
   const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({});
 
   const loadShipments = useCallback(async () => {
     if (!isAuthenticated || !token) {
@@ -847,6 +849,97 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                     >
                       🗺️ Acompanhar Trajeto & PIN
                     </Link>
+                  </div>
+
+                  {/* Linha do Tempo & Histórico de Atualizações da Encomenda */}
+                  <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed #E2E8F0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569", display: "flex", alignItems: "center", gap: "6px" }}>
+                        📋 Histórico & Atualizações da Encomenda
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedHistoryIds((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#2563EB",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          padding: "2px 6px"
+                        }}
+                      >
+                        {expandedHistoryIds[s.id] ? "▲ Recolher Histórico" : "▼ Ver Linha do Tempo"}
+                      </button>
+                    </div>
+
+                    {expandedHistoryIds[s.id] && (
+                      <div style={{ marginTop: "10px", padding: "12px", backgroundColor: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0", fontSize: "12px" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                            <span style={{ color: "#10B981", fontSize: "14px" }}>●</span>
+                            <div>
+                              <strong style={{ color: "#0F172A" }}>Publicação Criada:</strong>{" "}
+                              <span>{safeFormatDate(s.createdAt)}</span> • Valor sugerido: R$ {(s.suggestedPriceCents / 100).toFixed(2).replace(".", ",")}
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const contract = contractsByShipmentId[s.id];
+                            if (!contract) {
+                              return (
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                                  <span style={{ color: "#3B82F6", fontSize: "14px" }}>●</span>
+                                  <div>
+                                    <strong style={{ color: "#0F172A" }}>Status Atual:</strong>{" "}
+                                    <span>Disponível no mural público para envio de propostas por transportadores.</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <>
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                                  <span style={{ color: "#F59E0B", fontSize: "14px" }}>●</span>
+                                  <div>
+                                    <strong style={{ color: "#0F172A" }}>Contratação / Proposta Aceita:</strong>{" "}
+                                    Transportador: <strong style={{ color: "#1E293B" }}>{contract.carrierName}</strong> • Frete acordado: R$ {(contract.amountCents / 100).toFixed(2).replace(".", ",")}
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                                  <span style={{ color: contract.status === "ACTIVE" || contract.status === "COMPLETED" ? "#10B981" : "#F59E0B", fontSize: "14px" }}>●</span>
+                                  <div>
+                                    <strong style={{ color: "#0F172A" }}>Situação Financeira:</strong>{" "}
+                                    {contract.status === "ACTIVE" || contract.status === "COMPLETED"
+                                      ? "✓ Pagamento Pix aprovado e retido em custódia segura da TopicLog."
+                                      : contract.status === "AWAITING_PAYMENT"
+                                      ? "⏳ Aguardando compensação do pagamento Pix (reserva temporária de 15 min)."
+                                      : contract.status === "CANCELLED_PRE_PICKUP" || contract.status === "CANCELLED_POST_PICKUP"
+                                      ? "🚫 Contrato cancelado."
+                                      : contract.status === "PAYMENT_EXPIRED"
+                                      ? "⏰ Reserva Pix expirada por falta de pagamento."
+                                      : `Status: ${String(contract.status)}`}
+                                  </div>
+                                </div>
+
+                                {s.status === "DELIVERED" && (
+                                  <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                                    <span style={{ color: "#10B981", fontSize: "14px" }}>✓</span>
+                                    <div>
+                                      <strong style={{ color: "#065F46" }}>Entrega Finalizada:</strong>{" "}
+                                      <span>Mercadoria entregue ao destinatário mediante código de segurança validado.</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

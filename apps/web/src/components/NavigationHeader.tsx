@@ -21,23 +21,47 @@ export function NavigationHeader(): React.JSX.Element {
   const [notifications, setNotifications] = useState<readonly UserNotificationDto[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const prevUnreadCountRef = useRef<number | null>(null);
+  const [activePopupNotification, setActivePopupNotification] = useState<UserNotificationDto | null>(null);
+  const [dismissedPopupIds, setDismissedPopupIds] = useState<Record<string, boolean>>({});
 
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated || !token) {
       setNotifications([]);
       setUnreadCount(0);
+      setActivePopupNotification(null);
       return;
     }
     const res = await getNotificationsApi(token);
     if (res.ok && res.data) {
+      const items = res.data.items;
       if (prevUnreadCountRef.current !== null && res.data.unreadCount > prevUnreadCountRef.current) {
         playNotificationSound();
       }
       prevUnreadCountRef.current = res.data.unreadCount;
-      setNotifications(res.data.items);
+      setNotifications(items);
       setUnreadCount(res.data.unreadCount);
+
+      // Pop-up na tela: localiza o aviso não lido mais recente que ainda não foi dispensado
+      const unreadItem = items.find((n) => !n.isRead && !dismissedPopupIds[n.id]);
+      if (unreadItem) {
+        setActivePopupNotification(unreadItem);
+      } else {
+        setActivePopupNotification(null);
+      }
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, dismissedPopupIds]);
+
+  const handleDismissPopup = async (item: UserNotificationDto, openLink: boolean = true) => {
+    setDismissedPopupIds((prev) => ({ ...prev, [item.id]: true }));
+    setActivePopupNotification(null);
+    if (token && !item.isRead) {
+      await markNotificationReadApi(item.id, token);
+      void loadNotifications();
+    }
+    if (openLink && item.href) {
+      router.push(item.href);
+    }
+  };
 
   useEffect(() => {
     void loadNotifications();
@@ -688,6 +712,96 @@ export function NavigationHeader(): React.JSX.Element {
         </div>
         </div>
       </div>
+
+      {/* POP-UP INTERATIVO NA TELA (PERMANECE ATÉ O USUÁRIO CLICAR EM CIMA) */}
+      {activePopupNotification && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: "fixed",
+            top: "68px",
+            left: "12px",
+            right: "12px",
+            maxWidth: "460px",
+            margin: "0 auto",
+            zIndex: 99999,
+            backgroundColor: "#0F172A",
+            border: "2px solid #3B82F6",
+            borderRadius: "16px",
+            padding: "16px 18px",
+            boxShadow: "0 20px 30px -10px rgba(0, 0, 0, 0.8), 0 0 25px rgba(59, 130, 246, 0.4)",
+            cursor: "pointer",
+            color: "#FFFFFF"
+          }}
+          onClick={() => void handleDismissPopup(activePopupNotification, true)}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "20px" }}>🔔</span>
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "#F59E0B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Aviso TopicLog
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleDismissPopup(activePopupNotification, false);
+              }}
+              aria-label="Dispensar aviso"
+              style={{
+                background: "rgba(255, 255, 255, 0.12)",
+                border: "none",
+                borderRadius: "999px",
+                width: "28px",
+                height: "28px",
+                color: "#CBD5E1",
+                fontSize: "14px",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div style={{ fontSize: "14px", fontWeight: 800, color: "#FFFFFF", marginBottom: "4px" }}>
+            {activePopupNotification.title}
+          </div>
+
+          <div style={{ fontSize: "13px", color: "#E2E8F0", lineHeight: 1.45, marginBottom: "12px" }}>
+            {activePopupNotification.message}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", paddingTop: "8px", borderTop: "1px solid rgba(255, 255, 255, 0.12)" }}>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>
+              📅 {(() => {
+                const d = new Date(activePopupNotification.createdAtUtc);
+                const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                return `${dt} às ${hr}`;
+              })()}
+            </span>
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#60A5FA",
+                backgroundColor: "rgba(59, 130, 246, 0.2)",
+                padding: "4px 10px",
+                borderRadius: "8px",
+                border: "1px solid rgba(59, 130, 246, 0.4)"
+              }}
+            >
+              👉 Toque aqui para abrir
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Notificações Mobile */}
       {notificationsOpen && (
