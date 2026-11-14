@@ -162,34 +162,18 @@ function FeedContent(): React.JSX.Element {
       }, token);
 
       if (!apiRes.ok) {
-        if (apiRes.problem?.detail) {
-          setProposalFeedback({ type: "error", message: apiRes.problem.detail });
-          setIsSendingProposal(false);
-          return;
-        }
-        // Fallback resiliente para mock/demo
-        const ownerSenderName = isShipment ? ((selectedItem as any).senderName || "Remetente") : (user.displayName || user.email || "Remetente");
-        const driverCarrierName = isShipment ? (user.displayName || "Transportador") : ((selectedItem as any).carrierName || "Transportador Parceiro");
-        addDemoProposal({
-          shipmentId,
-          shipmentTitle: isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`,
-          route: `${selectedItem.originCity} ➔ ${selectedItem.destinationCity}`,
-          senderName: ownerSenderName,
-          carrierName: driverCarrierName,
-          originalPriceCents: amountCents,
-          proposedPriceCents: amountCents,
-          platformCommissionCents: Math.round(amountCents * (commissionPercent / 100)),
-          carrierNetCents: amountCents - Math.round(amountCents * (commissionPercent / 100)),
-          message: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem.",
-          isCurrentUserCarrier: isShipment
-        });
+        const errorDetail = apiRes.problem?.detail || apiRes.problem?.title || (apiRes as any).error || (apiRes as any).message || `Erro HTTP ${apiRes.status} ao processar proposta no servidor.`;
+        setProposalFeedback({ type: "error", message: errorDetail });
+        setIsSendingProposal(false);
+        return;
       }
 
       const title = isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`;
+      const valFmt = (amountCents / 100).toFixed(2).replace(".", ",");
       setProposalSuccessDetails({ amountCents, shipmentTitle: title });
       setProposalFeedback({
         type: "success",
-        message: "Proposta enviada com sucesso! Aguardando aceite do remetente."
+        message: `✅ Proposta de R$ ${valFmt} enviada com sucesso! O remetente foi notificado.`
       });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Erro ao enviar proposta. Verifique os dados e tente novamente.";
@@ -1674,54 +1658,75 @@ function FeedContent(): React.JSX.Element {
                   <strong style={{ color: "var(--color-brand-deep-navy)" }}>R$ {(selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ",")}</strong>
                 </div>
 
-                <div style={{ marginBottom: "12px", padding: "10px", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                    <label htmlFor="carrier-offer-input" style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-brand-deep-navy)", display: "block" }}>
-                      Sua Oferta ou Contraproposta de Frete (R$):
-                    </label>
-                    <span style={{ fontSize: "11px", color: "#1D4ED8", fontWeight: 700, backgroundColor: "#EFF6FF", padding: "2px 8px", borderRadius: "4px", border: "1px solid #BFDBFE" }}>
-                      🏷️ Piso Mínimo: {((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                {proposalSuccessDetails ? (
+                  <div
+                    style={{
+                      padding: "16px",
+                      backgroundColor: "#F0FDF4",
+                      borderRadius: "8px",
+                      border: "1.5px solid #22C55E",
+                      marginBottom: "12px",
+                      textAlign: "center"
+                    }}
+                  >
+                    <div style={{ fontSize: "20px", marginBottom: "4px" }}>✅</div>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: "#166534" }}>
+                      Proposta Enviada — Aguardando Resposta do Remetente
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#15803D", marginTop: "4px" }}>
+                      Valor Ofertado: <strong>R$ {(proposalSuccessDetails.amountCents / 100).toFixed(2).replace(".", ",")}</strong> • O remetente foi notificado no painel de propostas.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: "12px", padding: "10px", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <label htmlFor="carrier-offer-input" style={{ fontSize: "12px", fontWeight: 700, color: "var(--color-brand-deep-navy)", display: "block" }}>
+                        Sua Oferta ou Contraproposta de Frete (R$):
+                      </label>
+                      <span style={{ fontSize: "11px", color: "#1D4ED8", fontWeight: 700, backgroundColor: "#EFF6FF", padding: "2px 8px", borderRadius: "4px", border: "1px solid #BFDBFE" }}>
+                        🏷️ Piso Mínimo: {((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <div style={{ position: "relative", flex: 1 }}>
+                        <span style={{ position: "absolute", left: "10px", top: "7px", fontSize: "13px", color: "var(--color-muted)", fontWeight: 700 }}>R$</span>
+                        <input
+                          id="carrier-offer-input"
+                          type="text"
+                          disabled={isSendingProposal || proposalSuccessDetails !== null}
+                          value={carrierOfferValue}
+                          onChange={(e) => setCarrierOfferValue(e.target.value)}
+                          style={{ width: "100%", padding: "6px 10px 6px 32px", fontSize: "15px", fontWeight: 700, borderRadius: "6px", border: "1px solid #CBD5E1" }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isSendingProposal || proposalSuccessDetails !== null}
+                        onClick={() => {
+                          const sugCents = selectedItem.suggestedPriceCents;
+                          setCarrierOfferValue((sugCents / 100).toFixed(2).replace(".", ","));
+                          void handlePerformSendProposal(sugCents);
+                        }}
+                        style={{
+                          padding: "6px 12px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          background: isSendingProposal ? "#F1F5F9" : "#EFF6FF",
+                          color: "#1D4ED8",
+                          border: "1px solid #93C5FD",
+                          borderRadius: "6px",
+                          cursor: isSendingProposal ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        {isSendingProposal ? "Enviando proposta..." : "Aceitar Sugerido"}
+                      </button>
+                    </div>
+                    <span style={{ display: "block", fontSize: "11px", color: "#64748B", marginTop: "4px" }}>
+                      ℹ️ O valor ofertado deve ser igual ou superior ao piso mínimo ({((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente na abertura desta carga.
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <div style={{ position: "relative", flex: 1 }}>
-                      <span style={{ position: "absolute", left: "10px", top: "7px", fontSize: "13px", color: "var(--color-muted)", fontWeight: 700 }}>R$</span>
-                      <input
-                        id="carrier-offer-input"
-                        type="text"
-                        disabled={isSendingProposal || proposalSuccessDetails !== null}
-                        value={carrierOfferValue}
-                        onChange={(e) => setCarrierOfferValue(e.target.value)}
-                        style={{ width: "100%", padding: "6px 10px 6px 32px", fontSize: "15px", fontWeight: 700, borderRadius: "6px", border: "1px solid #CBD5E1" }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isSendingProposal || proposalSuccessDetails !== null}
-                      onClick={() => {
-                        const sugCents = selectedItem.suggestedPriceCents;
-                        setCarrierOfferValue((sugCents / 100).toFixed(2).replace(".", ","));
-                        void handlePerformSendProposal(sugCents);
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: isSendingProposal ? "#F1F5F9" : "#EFF6FF",
-                        color: "#1D4ED8",
-                        border: "1px solid #93C5FD",
-                        borderRadius: "6px",
-                        cursor: isSendingProposal ? "not-allowed" : "pointer",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      {isSendingProposal ? "Enviando..." : "Aceitar Sugerido"}
-                    </button>
-                  </div>
-                  <span style={{ display: "block", fontSize: "11px", color: "#64748B", marginTop: "4px" }}>
-                    ℹ️ O valor ofertado deve ser igual ou superior ao piso mínimo ({((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente na abertura desta carga.
-                  </span>
-                </div>
+                )}
 
                 {(() => {
                   const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (selectedItem.suggestedPriceCents / 100);

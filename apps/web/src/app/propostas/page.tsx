@@ -520,13 +520,12 @@ export default function PropostasPage(): React.JSX.Element {
         setPixModalOpen(true);
         setActionNotice("✓ Proposta aceita! O código Pix foi gerado — conclua o pagamento em até 15 minutos para confirmar o frete.");
         await loadData(true);
-      } else if (res.problem) {
-        setErrorMessage(res.problem.detail || "Não foi possível aceitar a proposta.");
       } else {
-        setErrorMessage("Erro ao formalizar aceite da proposta.");
+        const detail = res.problem?.detail || res.problem?.title || "Não foi possível aceitar a proposta.";
+        setErrorMessage(`⚠️ ${detail}`);
       }
-    } catch {
-      setErrorMessage("Erro ao processar o aceite da proposta.");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Erro ao processar o aceite da proposta.");
     } finally {
       setIsSubmitting(false);
     }
@@ -685,12 +684,13 @@ export default function PropostasPage(): React.JSX.Element {
           setCounterProposalId(null);
           setCounterValueInput("");
           await loadData();
-        } else if (res.problem) {
-          setErrorMessage(res.problem.detail || "Não foi possível enviar a contraproposta.");
+        } else {
+          const detail = res.problem?.detail || res.problem?.title || "Não foi possível enviar a contraproposta.";
+          setErrorMessage(`⚠️ ${detail}`);
         }
       }
-    } catch {
-      setErrorMessage("Erro ao enviar contraproposta.");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Erro ao enviar contraproposta.");
     } finally {
       setIsSubmitting(false);
     }
@@ -2218,13 +2218,14 @@ export default function PropostasPage(): React.JSX.Element {
             description={`Frete TopicLog #${selectedProposalForPix.shipmentId.slice(0, 8)}`}
             payerEmail={user?.email || "contato@topiclog.com.br"}
             payerName={user?.displayName || "Remetente TopicLog"}
+            payerCpfCnpj={(user as any)?.cpfCnpj || (user as any)?.documentNumber || (user as any)?.cpf || undefined}
             orderId={selectedProposalForPix.shipmentId}
             carrierWalletId={effectiveContract?.carrierId}
             expiresAtUtc={effectiveContract?.paymentExpiresAtUtc}
             onExpired={() => {
               setPixModalOpen(false);
               setSelectedContractForPix(null);
-              setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a encomenda voltou ao mural.");
+              setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a reserva foi liberada.");
               void loadData(true);
             }}
             onPaymentSuccess={handlePixSuccess}

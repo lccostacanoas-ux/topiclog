@@ -132,7 +132,7 @@ export function AsaasPixModal({
       });
       setPixData(data);
 
-      // Verificação automática a cada 4 segundos caso seja cobrança real no Asaas
+      // Verificação automática a cada 5 segundos caso seja cobrança real no Asaas
       if (data.isKeyConfigured && data.id) {
         pollTimerRef.current = setInterval(async () => {
           try {
@@ -145,7 +145,7 @@ export function AsaasPixModal({
           } catch {
             // Silencioso em caso de oscilação de rede
           }
-        }, 4000);
+        }, 5000);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao gerar cobrança Pix via Asaas.";
@@ -380,10 +380,10 @@ export function AsaasPixModal({
           >
             <div style={{ fontSize: "36px", marginBottom: "6px" }}>🎉</div>
             <h3 style={{ color: "#15803D", margin: "4px 0", fontSize: "18px", fontWeight: 800 }}>
-              Pagamento Pix Confirmado!
+              Pagamento Confirmado! Códigos de Início e Entrega gerados.
             </h3>
             <p style={{ color: "#166534", fontSize: "12px", margin: "4px 0 0" }}>
-              Valor retido em custódia segura. Os códigos de início e entrega já estão liberados!
+              Valor retido em custódia segura na TopicLog. A viagem já pode ser iniciada pelo transportador!
             </p>
           </div>
         )}
@@ -407,18 +407,16 @@ export function AsaasPixModal({
                     marginBottom: "14px"
                   }}
                 >
-                  {pixData.qrCodeBase64 ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={pixData.qrCodeBase64}
-                      alt="QR Code Pix Asaas Oficial"
-                      style={{ width: "200px", height: "200px", display: "block" }}
-                    />
-                  ) : (
-                    <div style={{ fontSize: "12px", color: "#64748B", padding: "20px" }}>
-                      QR Code gerado. Utilize o Copia e Cola abaixo no seu banco.
-                    </div>
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={
+                      pixData.qrCodeBase64 && pixData.qrCodeBase64.length > 50
+                        ? (pixData.qrCodeBase64.startsWith("data:") ? pixData.qrCodeBase64 : `data:image/png;base64,${pixData.qrCodeBase64}`)
+                        : `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(pixData.qrCode)}`
+                    }
+                    alt="QR Code Pix Asaas Oficial"
+                    style={{ width: "200px", height: "200px", display: "block", borderRadius: "8px" }}
+                  />
                   <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
                     Abra o app do seu banco e escolha <strong>Pix &gt; Pagar com QR Code</strong> ou utilize o Copia e Cola.
                   </div>
@@ -460,7 +458,7 @@ export function AsaasPixModal({
                         whiteSpace: "nowrap"
                       }}
                     >
-                      {copied ? "✓ Copiado!" : "Copiar"}
+                      {copied ? "✓ Código Copiado!" : "Copiar Código Pix"}
                     </button>
                   </div>
                 </div>

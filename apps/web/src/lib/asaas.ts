@@ -73,10 +73,20 @@ export async function checkAsaasPixStatus(paymentId: string): Promise<{
   isApproved: boolean;
 }> {
   try {
-    const res = await fetch(`/api/asaas/pix?id=${encodeURIComponent(paymentId)}`);
+    const res = await fetch(`/api/pagamentos/${encodeURIComponent(paymentId)}/status`);
     if (res.ok) {
       const data = await res.json();
-      return data;
+      return {
+        id: data.id,
+        status: data.status,
+        statusDetail: data.message || "Aguardando confirmação bancária",
+        isApproved: Boolean(data.isApproved)
+      };
+    }
+    const fbRes = await fetch(`/api/asaas/pix?id=${encodeURIComponent(paymentId)}`);
+    if (fbRes.ok) {
+      const fbData = await fbRes.json();
+      return fbData;
     }
   } catch {
     // fallback

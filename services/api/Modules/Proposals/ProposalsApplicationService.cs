@@ -195,6 +195,14 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             }
         }
 
+        // Expira preventivamente pagamentos pendentes cujo prazo de 15 minutos já encerrou
+        await ExpirePendingPaymentsAsync(cancellationToken).ConfigureAwait(false);
+        var refreshedShipment = await _shipmentsRepository.GetByIdAsync(shipment.Id, cancellationToken).ConfigureAwait(false);
+        if (refreshedShipment is not null)
+        {
+            shipment = refreshedShipment;
+        }
+
         if (shipment.Status != ShipmentStatus.PUBLISHED && shipment.Status != ShipmentStatus.NEGOTIATING)
         {
             throw new DomainRuleViolationException(
@@ -257,6 +265,19 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                         AmountCents: request.AmountCents,
                         Justification: $"Proposta atualizada pelo transportador: de R$ {prevAmount / 100.0:N2} para R$ {request.AmountCents / 100.0:N2}",
                         OccurredAtUtc: DateTimeOffset.UtcNow), cancellationToken).ConfigureAwait(false);
+
+                    if (_notificationsService is not null)
+                    {
+                        var amountFormatted = (request.AmountCents / 100.0m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+                        await _notificationsService.NotifyAsync(
+                            shipment.SenderId,
+                            "PROPOSAL_RECEIVED",
+                            "Nova proposta recebida!",
+                            $"O transportador {carrierName} enviou uma oferta de R$ {amountFormatted} para sua encomenda '{shipment.Title}'.",
+                            "/propostas",
+                            relatedShipmentId: shipment.Id,
+                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                    }
 
                     return MapToProposalResponse(activeProposalFromCarrier);
                 }
@@ -351,7 +372,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 shipment.SenderId,
                 "PROPOSAL_RECEIVED",
                 "Nova proposta recebida!",
-                $"{carrierName} enviou proposta de R$ {amountFormatted} para '{shipment.Title}'.",
+                $"Nova proposta recebida! O transportador {carrierName} enviou uma oferta de R$ {amountFormatted} para sua encomenda '{shipment.Title}'.",
                 "/propostas",
                 relatedShipmentId: shipment.Id,
                 cancellationToken: cancellationToken);
@@ -1464,16 +1485,16 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             }
         }
 
-        if (shipment is not null && shipment.Status == ShipmentStatus.NEGOTIATING)
+        if (shipment is not null)
         {
             shipment.Status = ShipmentStatus.PUBLISHED;
             await _shipmentsRepository.UpdateAsync(shipment, cancellationToken);
         }
 
         var proposal = await _proposalsRepository.GetProposalByIdAsync(contract.ProposalId, cancellationToken);
-        if (proposal is not null && proposal.Status == ProposalStatus.ACCEPTED)
+        if (proposal is not null)
         {
-            proposal.Status = proposal.ExpiresAtUtc > DateTimeOffset.UtcNow ? ProposalStatus.PENDING : ProposalStatus.EXPIRED;
+            proposal.Status = ProposalStatus.EXPIRED;
             proposal.Version++;
             await _proposalsRepository.UpdateProposalAsync(proposal, cancellationToken);
         }

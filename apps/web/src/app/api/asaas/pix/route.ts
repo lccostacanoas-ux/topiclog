@@ -79,7 +79,10 @@ export async function POST(request: Request) {
       const payerName = (body.payerName || "Cliente TopicLog").trim();
 
       try {
-        const findCustRes = await fetch(`${baseUrl}/customers?email=${encodeURIComponent(payerEmail)}`, {
+        const custQueryParam = (cleanDoc.length === 11 || cleanDoc.length === 14)
+          ? `cpfCnpj=${cleanDoc}`
+          : `email=${encodeURIComponent(payerEmail)}`;
+        const findCustRes = await fetch(`${baseUrl}/customers?${custQueryParam}`, {
           headers: { access_token: apiKey }
         });
         if (findCustRes.ok) {
@@ -101,9 +104,9 @@ export async function POST(request: Request) {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              name: payerName,
-              email: payerEmail,
-              cpfCnpj: cleanDoc.length === 11 || cleanDoc.length === 14 ? cleanDoc : undefined
+              name: payerName || "Remetente TopicLog",
+              email: payerEmail || "contato@topiclog.com.br",
+              cpfCnpj: (cleanDoc.length === 11 || cleanDoc.length === 14) ? cleanDoc : undefined
             })
           });
           if (createCustRes.ok) {
@@ -112,31 +115,63 @@ export async function POST(request: Request) {
           } else {
             const errTxt = await createCustRes.text();
             console.warn("[Asaas Pix] Erro ao criar cliente Asaas:", createCustRes.status, errTxt);
+            // Tenta fallback com nome e email genérico do pagador
+            const fallbackCustRes = await fetch(`${baseUrl}/customers`, {
+              method: "POST",
+              headers: {
+                access_token: apiKey,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                name: payerName || "Cliente TopicLog",
+                email: payerEmail || "contato@topiclog.com.br"
+              })
+            });
+            if (fallbackCustRes.ok) {
+              const fallbackCust = await fallbackCustRes.json();
+              customerId = fallbackCust.id;
+            }
           }
         } catch (err) {
           console.warn("[Asaas Pix] Exceção ao cadastrar cliente:", err);
         }
       }
 
-      // B. Criar a Cobrança Pix com Split no Asaas
-      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      if (!customerId) {
+        return NextResponse.json(
+          {
+            error: "Falha ao registrar ou localizar cliente remetente no Asaas.",
+            details: "O Asaas requer nome e e-mail válidos para emissão de cobranças Pix."
+          },
+          { status: 400 }
+        );
+      }
+
+      // B. Criar a Cobrança Pix com Split no Asaas (dueDate: hoje)
+      const today = new Date().toISOString().split("T")[0];
       const paymentPayload: Record<string, unknown> = {
-        customer: customerId || "cus_default",
+        customer: customerId,
         billingType: "PIX",
         value: amount,
-        dueDate: tomorrow,
+        dueDate: today,
         description: description,
         postalService: false
       };
 
       if (body.carrierWalletId) {
-        const carrierSharePercent = body.carrierSharePercent || 80.0;
-        paymentPayload.split = [
-          {
-            walletId: body.carrierWalletId,
-            percentualValue: carrierSharePercent
-          }
-        ];
+        const carrierWallet = String(body.carrierWalletId).trim();
+        const isValidAsaasWallet = (carrierWallet.startsWith("wal_") || carrierWallet.startsWith("acc_")) && carrierWallet.length >= 10;
+        if (isValidAsaasWallet) {
+          const carrierSharePercent = body.carrierSharePercent || 80.0;
+          paymentPayload.split = [
+            {
+              walletId: carrierWallet,
+              percentualValue: carrierSharePercent
+            }
+          ];
+        } else {
+          console.info(`[Asaas Pix] Identificador "${carrierWallet}" não é uma subconta Asaas (wal_...). Frete retido em custódia na conta mestre TopicLog.`);
+        }
       }
 
       const payRes = await fetch(`${baseUrl}/payments`, {

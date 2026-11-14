@@ -466,7 +466,14 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
                     SupersededProposals: []);
             }
 
-            bool anotherProposalAccepted = _proposals.Values.Any(p => p.ShipmentId == proposal.ShipmentId && p.Status == ProposalStatus.ACCEPTED && p.Id != proposal.Id);
+            bool anotherProposalAccepted = _proposals.Values.Any(p =>
+                p.ShipmentId == proposal.ShipmentId &&
+                p.Status == ProposalStatus.ACCEPTED &&
+                p.Id != proposal.Id &&
+                _contracts.Values.Any(c => c.ProposalId == p.Id &&
+                    (c.Status == ContractStatus.ACTIVE ||
+                     c.Status == ContractStatus.COMPLETED ||
+                     (c.Status == ContractStatus.AWAITING_PAYMENT && (c.PaymentExpiresAtUtc == null || c.PaymentExpiresAtUtc > now)))));
             if (anotherProposalAccepted)
             {
                 proposal.Status = ProposalStatus.SUPERSEDED;
