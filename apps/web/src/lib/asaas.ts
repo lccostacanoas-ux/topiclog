@@ -4,9 +4,14 @@
  */
 
 export const ASAAS_CONFIG = {
-  apiKey: process.env.ASAAS_API_KEY || "",
-  environment: process.env.ASAAS_ENVIRONMENT || "sandbox",
-  baseUrl: process.env.ASAAS_BASE_URL || (process.env.ASAAS_ENVIRONMENT === "production" ? "https://api.asaas.com/v3" : "https://sandbox.asaas.com/api/v3")
+  apiKey: (
+    process.env.ASAAS_API_KEY ||
+    process.env.ASAAS_ACCESS_TOKEN ||
+    process.env.ASAAS_TOKEN ||
+    ""
+  ).trim(),
+  environment: (process.env.ASAAS_ENVIRONMENT || process.env.ASAAS_ENV || "production").trim(),
+  baseUrl: (process.env.ASAAS_API_URL || process.env.ASAAS_BASE_URL || "https://api.asaas.com/v3").trim()
 };
 
 export interface CreateAsaasPixParams {

@@ -35,7 +35,7 @@ function isValidPixCrc16(payload: string): boolean {
  * Utiliza https://api.asaas.com/v3 como padrão, a menos que ASAAS_API_URL ou ASAAS_ENV=sandbox seja explicitamente definido.
  */
 function resolveAsaasEndpoint(apiKey: string): { baseUrl: string; environment: "production" | "sandbox" } {
-  const customUrl = process.env.ASAAS_API_URL || process.env.ASAAS_BASE_URL;
+  const customUrl = (process.env.ASAAS_API_URL || process.env.ASAAS_BASE_URL || "").trim();
   if (customUrl) {
     const isSandbox = customUrl.toLowerCase().includes("sandbox");
     return {
@@ -44,7 +44,7 @@ function resolveAsaasEndpoint(apiKey: string): { baseUrl: string; environment: "
     };
   }
 
-  const envVar = (process.env.ASAAS_ENV || process.env.ASAAS_ENVIRONMENT || "").toLowerCase();
+  const envVar = (process.env.ASAAS_ENV || process.env.ASAAS_ENVIRONMENT || "").toLowerCase().trim();
   const trimmedKey = (apiKey || "").trim();
   const isExplicitSandbox = envVar === "sandbox" || trimmedKey.startsWith("$aact_hmlg_") || trimmedKey.includes("hmlg");
 
@@ -52,7 +52,17 @@ function resolveAsaasEndpoint(apiKey: string): { baseUrl: string; environment: "
     return { baseUrl: "https://sandbox.asaas.com/api/v3", environment: "sandbox" };
   }
 
-  return { baseUrl: "https://api.asaas.com/v3", environment: "production" };
+  const asaasBaseUrl = (process.env.ASAAS_API_URL || "https://api.asaas.com/v3").trim();
+  return { baseUrl: asaasBaseUrl, environment: "production" };
+}
+
+function getAsaasApiKey(): string {
+  return (
+    process.env.ASAAS_API_KEY ||
+    process.env.ASAAS_ACCESS_TOKEN ||
+    process.env.ASAAS_TOKEN ||
+    ""
+  ).trim();
 }
 
 export async function POST(request: Request) {
@@ -60,11 +70,15 @@ export async function POST(request: Request) {
     const body = await request.json();
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
     const description = (body.description || "Frete TopicLog via Asaas").trim();
-    const apiKey = (process.env.ASAAS_API_KEY || "").trim();
+    const apiKey = getAsaasApiKey();
     const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
+    console.info(
+      `[Asaas Pix Config] Status da chave: ${isKeyConfigured ? `PRESENTE (tamanho: ${apiKey.length})` : "AUSENTE"}`
+    );
+
     if (!isKeyConfigured) {
-      console.warn("[Asaas Pix] ASAAS_API_KEY não configurada no servidor.");
+      console.warn("[Asaas Pix] ASAAS_API_KEY não configurada no servidor (status: AUSENTE).");
       return NextResponse.json(
         {
           error: "Serviço de pagamento Asaas não configurado no servidor",
@@ -287,7 +301,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Parâmetro id é obrigatório" }, { status: 400 });
   }
 
-  const apiKey = (process.env.ASAAS_API_KEY || "").trim();
+  const apiKey = getAsaasApiKey();
   const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
   if (isKeyConfigured && !paymentId.startsWith("pay_asaas_demo_") && !paymentId.startsWith("pay_asaas_sim_")) {
