@@ -42,6 +42,15 @@ function safeFormatDate(val?: string): string {
   return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
 }
 
+function safeFormatDateTime(val?: string): string {
+  if (!val) return "";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "";
+  const dateStr = d.toLocaleDateString("pt-BR");
+  const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dateStr} às ${timeStr}`;
+}
+
 function formatTimeHHMM(val?: string): string {
   if (!val) return "";
   const d = new Date(val);
@@ -732,18 +741,20 @@ export default function PropostasPage(): React.JSX.Element {
   const visibleProposals = proposals;
 
   const isTripCompleted = (p: ProposalDto) => {
-    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
-    const o = (c && ordersByContractId[c.id]) || ordersByShipmentId[p.shipmentId];
+    const c = contractsByProposalId[p.id];
+    const o = c ? ordersByContractId[c.id] : undefined;
     return c?.status === "COMPLETED" || o?.status === "DELIVERED_VERIFIED" || o?.status === "CLOSED";
   };
 
   const isTripCancelled = (p: ProposalDto) => {
-    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    const c = contractsByProposalId[p.id];
     return (
       c?.status === "CANCELLED_PRE_PICKUP" ||
       c?.status === "CANCELLED_POST_PICKUP" ||
       c?.status === "PAYMENT_EXPIRED" ||
-      p.status === "REJECTED"
+      p.status === "REJECTED" ||
+      p.status === "CANCELLED" ||
+      p.status === "EXPIRED"
     );
   };
 
@@ -757,7 +768,7 @@ export default function PropostasPage(): React.JSX.Element {
 
   const awaitingPaymentCount = visibleProposals.filter((p) => {
     if (isTripCompleted(p) || isTripCancelled(p)) return false;
-    const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+    const c = contractsByProposalId[p.id];
     return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
   }).length;
 
@@ -767,7 +778,7 @@ export default function PropostasPage(): React.JSX.Element {
     if (filterType === "PENDING") return isTripPending(p);
     if (filterType === "AWAITING_PAYMENT") {
       if (isTripCompleted(p) || isTripCancelled(p)) return false;
-      const c = contractsByProposalId[p.id] || contractsByShipmentId[p.shipmentId];
+      const c = contractsByProposalId[p.id];
       return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
     }
     return true;
@@ -1198,10 +1209,8 @@ export default function PropostasPage(): React.JSX.Element {
               </thead>
               <tbody>
                 {filteredProposals.map((proposal) => {
-                  const contract =
-                    contractsByProposalId[proposal.id] ||
-                    contractsByShipmentId[proposal.shipmentId];
-                  const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
+                  const contract = contractsByProposalId[proposal.id];
+                  const order = contract ? ordersByContractId[contract.id] : undefined;
                   const isCompleted =
                     contract?.status === "COMPLETED" ||
                     order?.status === "DELIVERED_VERIFIED" ||
@@ -1210,7 +1219,9 @@ export default function PropostasPage(): React.JSX.Element {
                     contract?.status === "CANCELLED_PRE_PICKUP" ||
                     contract?.status === "CANCELLED_POST_PICKUP" ||
                     contract?.status === "PAYMENT_EXPIRED" ||
-                    proposal.status === "REJECTED";
+                    proposal.status === "REJECTED" ||
+                    proposal.status === "CANCELLED" ||
+                    proposal.status === "EXPIRED";
                   const isPaid =
                     !isCancelled &&
                     (contract?.status === "ACTIVE" ||
@@ -1240,7 +1251,7 @@ export default function PropostasPage(): React.JSX.Element {
                         <span style={{ display: "block", fontSize: "11px", color: "#94A3B8" }}>#{proposal.shipmentId.slice(0, 8)}</span>
                       </td>
                       <td style={{ padding: "12px 16px", color: "#64748B", whiteSpace: "nowrap" }}>
-                        {safeFormatDate(proposal.createdAtUtc)}
+                        {safeFormatDateTime(proposal.createdAtUtc) || safeFormatDate(proposal.createdAtUtc)}
                       </td>
                       <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                         {isCompleted && (
@@ -1343,10 +1354,8 @@ export default function PropostasPage(): React.JSX.Element {
            ========================================================================= */
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {filteredProposals.map((proposal) => {
-            const contract =
-              contractsByProposalId[proposal.id] ||
-              contractsByShipmentId[proposal.shipmentId];
-            const order = (contract && ordersByContractId[contract.id]) || ordersByShipmentId[proposal.shipmentId];
+            const contract = contractsByProposalId[proposal.id];
+            const order = contract ? ordersByContractId[contract.id] : undefined;
             const orderCodes = order ? orderCodesByOrderId[order.id] : undefined;
 
             const isCompleted =
@@ -1358,7 +1367,9 @@ export default function PropostasPage(): React.JSX.Element {
               contract?.status === "CANCELLED_PRE_PICKUP" ||
               contract?.status === "CANCELLED_POST_PICKUP" ||
               contract?.status === "PAYMENT_EXPIRED" ||
-              proposal.status === "REJECTED";
+              proposal.status === "REJECTED" ||
+              proposal.status === "CANCELLED" ||
+              proposal.status === "EXPIRED";
 
             const isPaid =
               !isCancelled &&
@@ -1460,14 +1471,17 @@ export default function PropostasPage(): React.JSX.Element {
                         </span>
                       )}
                       {isPending && !isPaid && !isAwaitingPayment && !isCountered && (
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#475569", backgroundColor: "#F1F5F9", padding: "3px 10px", borderRadius: "12px", border: "1px solid #CBD5E1" }}>
-                          ⏳ Pendente • Em Negociação
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#166534", backgroundColor: "#DCFCE7", padding: "3px 10px", borderRadius: "12px", border: "1px solid #86EFAC" }}>
+                          {activeTab === "SENT" ? "⏳ Aguardando Resposta do Remetente" : "📬 Nova Proposta Recebida"}
                         </span>
                       )}
                     </div>
 
-                    <span style={{ fontSize: "12px", color: "#94A3B8", display: "block" }}>
-                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • Recebida em: {safeFormatDate(proposal.createdAtUtc)}
+                    <span style={{ fontSize: "12px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • {activeTab === "SENT" ? "Enviada em" : "Recebida em"}:{" "}
+                      <strong style={{ color: "#1E293B" }}>
+                        {safeFormatDateTime(proposal.createdAtUtc) || safeFormatDate(proposal.createdAtUtc)}
+                      </strong>
                     </span>
 
                     {/* Quantidade de Estrelas da Avaliação da Viagem Concluída */}
@@ -1622,7 +1636,7 @@ export default function PropostasPage(): React.JSX.Element {
                             >
                               <span style={{ color: "#1E293B" }}>
                                 <strong>{isInitial ? "🚚 Proposta inicial" : "🔄 Contraproposta"}</strong>{" "}
-                                ({roleLabel}: {item.actorName}) • {safeFormatDate(item.occurredAtUtc)}
+                                ({roleLabel}: {item.actorName}) • {safeFormatDateTime(item.occurredAtUtc) || safeFormatDate(item.occurredAtUtc)}
                               </span>
                               <strong style={{ color: "#1D4ED8" }}>
                                 R$ {(item.amountCents / 100).toFixed(2).replace(".", ",")}

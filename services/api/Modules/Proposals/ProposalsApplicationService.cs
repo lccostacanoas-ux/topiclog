@@ -242,44 +242,11 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             {
                 if (activeProposalFromCarrier.Status == ProposalStatus.PENDING)
                 {
-                    long prevAmount = activeProposalFromCarrier.AmountCents;
-                    activeProposalFromCarrier.AmountCents = request.AmountCents;
-                    activeProposalFromCarrier.EstimatedPickup = request.EstimatedPickup ?? activeProposalFromCarrier.EstimatedPickup;
-                    activeProposalFromCarrier.EstimatedDelivery = request.EstimatedDelivery ?? activeProposalFromCarrier.EstimatedDelivery;
-                    activeProposalFromCarrier.Notes = !string.IsNullOrWhiteSpace(request.Notes)
-                        ? request.Notes
-                        : activeProposalFromCarrier.Notes;
-                    activeProposalFromCarrier.UpdatedAtUtc = DateTimeOffset.UtcNow;
-                    activeProposalFromCarrier.Version++;
-
-                    await _proposalsRepository.UpdateProposalAsync(activeProposalFromCarrier, cancellationToken).ConfigureAwait(false);
-                    await _proposalsRepository.AddEventAsync(new ProposalEvent(
-                        Id: Guid.NewGuid(),
-                        ProposalId: activeProposalFromCarrier.Id,
-                        ShipmentId: activeProposalFromCarrier.ShipmentId,
-                        ActorId: carrierId,
-                        ActorRole: ActorRole.CARRIER,
-                        EventType: ProposalEventType.COUNTER_PROPOSAL_SENT,
-                        PreviousStatus: ProposalStatus.PENDING.ToString(),
-                        NewStatus: ProposalStatus.PENDING.ToString(),
-                        AmountCents: request.AmountCents,
-                        Justification: $"Proposta atualizada pelo transportador: de R$ {prevAmount / 100.0:N2} para R$ {request.AmountCents / 100.0:N2}",
-                        OccurredAtUtc: DateTimeOffset.UtcNow), cancellationToken).ConfigureAwait(false);
-
-                    if (_notificationsService is not null)
-                    {
-                        var amountFormatted = (request.AmountCents / 100.0m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
-                        await _notificationsService.NotifyAsync(
-                            shipment.SenderId,
-                            "PROPOSAL_RECEIVED",
-                            "Nova proposta recebida!",
-                            $"O transportador {carrierName} enviou uma oferta de R$ {amountFormatted} para sua encomenda '{shipment.Title}'.",
-                            "/propostas",
-                            relatedShipmentId: shipment.Id,
-                            cancellationToken: cancellationToken).ConfigureAwait(false);
-                    }
-
-                    return MapToProposalResponse(activeProposalFromCarrier);
+                    var valFmt = (activeProposalFromCarrier.AmountCents / 100.0m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+                    throw new DomainRuleViolationException(
+                        "PROPOSAL_ALREADY_EXISTS",
+                        $"Você já possui uma proposta ativa de R$ {valFmt} enviada para esta encomenda. Aguarde a resposta do remetente.",
+                        409);
                 }
 
                 throw new DomainRuleViolationException(
