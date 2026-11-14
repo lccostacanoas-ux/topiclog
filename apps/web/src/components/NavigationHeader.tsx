@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   getNotificationsApi,
   markAllNotificationsReadApi,
   markNotificationReadApi
 } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
+import { playNotificationSound } from "../lib/notification-sound";
 import type { UserNotificationDto } from "../lib/types";
 
 export function NavigationHeader(): React.JSX.Element {
@@ -19,6 +20,7 @@ export function NavigationHeader(): React.JSX.Element {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<readonly UserNotificationDto[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const prevUnreadCountRef = useRef<number | null>(null);
 
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated || !token) {
@@ -28,6 +30,10 @@ export function NavigationHeader(): React.JSX.Element {
     }
     const res = await getNotificationsApi(token);
     if (res.ok && res.data) {
+      if (prevUnreadCountRef.current !== null && res.data.unreadCount > prevUnreadCountRef.current) {
+        playNotificationSound();
+      }
+      prevUnreadCountRef.current = res.data.unreadCount;
       setNotifications(res.data.items);
       setUnreadCount(res.data.unreadCount);
     }
@@ -768,7 +774,12 @@ export function NavigationHeader(): React.JSX.Element {
                         {!n.isRead ? "● " : ""}{n.title}
                       </span>
                       <span style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap" }}>
-                        {new Date(n.createdAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        {(() => {
+                          const d = new Date(n.createdAtUtc);
+                          const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                          const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                          return `${dt} às ${hr}`;
+                        })()}
                       </span>
                     </div>
                     <div style={{ fontSize: "12px", color: "#CBD5E1", lineHeight: 1.4 }}>{n.message}</div>

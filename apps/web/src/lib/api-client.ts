@@ -344,8 +344,8 @@ export const DEFAULT_TOPICLOG_SYSTEM_STATE: SystemFeatureFlagsResponse = {
   },
   featureFlags: {
     environmentMode: "Production",
-    realPaymentsEnabled: false,
-    asaasSandboxEnabled: true,
+    realPaymentsEnabled: true,
+    asaasSandboxEnabled: false,
     bilateralKycRequiredOnContract: true,
     requireCodeAndPhotoForDelivery: false,
     runWorkerInProcess: true

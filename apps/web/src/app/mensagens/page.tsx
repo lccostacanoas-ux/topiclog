@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "../../lib/auth-context";
 import {
@@ -8,6 +8,7 @@ import {
   listContractMessagesApi,
   sendContractMessageApi
 } from "../../lib/api-client";
+import { playNotificationSound } from "../../lib/notification-sound";
 import type { ContractDto, ContractMessageDto } from "../../lib/types";
 
 function ContractChatCard({
@@ -22,13 +23,21 @@ function ContractChatCard({
   const [messages, setMessages] = useState<ContractMessageDto[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const prevCountRef = useRef(0);
 
   const loadMsgs = React.useCallback(async () => {
     const res = await listContractMessagesApi(contract.id, token);
     if (res.ok && res.data) {
+      if (prevCountRef.current > 0 && res.data.length > prevCountRef.current) {
+        const lastMsg = res.data[res.data.length - 1];
+        if (lastMsg && lastMsg.senderUserId !== currentUserId) {
+          playNotificationSound();
+        }
+      }
+      prevCountRef.current = res.data.length;
       setMessages(res.data);
     }
-  }, [contract.id, token]);
+  }, [contract.id, token, currentUserId]);
 
   useEffect(() => {
     void loadMsgs();
@@ -98,7 +107,12 @@ function ContractChatCard({
                 }}
               >
                 <div style={{ fontSize: "10px", fontWeight: 700, opacity: 0.85, marginBottom: "2px" }}>
-                  {isMine ? "Você" : m.senderName} • {new Date(m.sentAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {isMine ? "Você" : m.senderName} • {(() => {
+                    const d = new Date(m.sentAtUtc);
+                    const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+                    const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                    return `${dt} às ${hr}`;
+                  })()}
                 </div>
                 <div>{m.body}</div>
               </div>
