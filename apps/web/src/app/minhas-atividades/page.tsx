@@ -120,7 +120,16 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [ratingModalOrder, setRatingModalOrder] = useState<DeliveryOrderDto | null>(null);
   const [selectedRatingStars, setSelectedRatingStars] = useState<number>(5);
-  const [dismissedRatingIds, setDismissedRatingIds] = useState<Record<string, boolean>>({});
+  const [dismissedRatingIds, setDismissedRatingIds] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("topiclog_dismissed_ratings");
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return {};
+  });
+  const [ratingError, setRatingError] = useState<string | null>(null);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
   const [cancelModalOrder, setCancelModalOrder] = useState<DeliveryOrderDto | null>(null);
@@ -218,6 +227,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
     if (pendingRating) {
       setSelectedRatingStars(5);
       setRatingModalOrder(pendingRating);
+      setRatingError(null);
     }
   }, [orders, user?.userId, ratingModalOrder, dismissedRatingIds]);
 
@@ -239,22 +249,49 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
 
   const handleSubmitCarrierRating = async () => {
     if (!token || !ratingModalOrder || submittingRating) return;
+    const orderId = ratingModalOrder.id;
+    const carrierName = ratingModalOrder.carrierName || "o transportador";
     setSubmittingRating(true);
-    const res = await rateCarrierApi(ratingModalOrder.id, selectedRatingStars, token);
-    if (res.ok) {
-      setBanner({
-        type: "success",
-        text: `⭐ Avaliação de ${selectedRatingStars} estrela(s) registrada para ${ratingModalOrder.carrierName || "o transportador"}!`
-      });
-      setRatingModalOrder(null);
-      await loadActivities(true);
-    } else {
-      setBanner({
-        type: "error",
-        text: res.problem?.detail || "Não foi possível registrar sua avaliação no momento."
-      });
+    setRatingError(null);
+    try {
+      const res = await rateCarrierApi(orderId, selectedRatingStars, token);
+      if (res.ok) {
+        // Marca como dispensada/avaliada localmente e no localStorage para não reabrir
+        setDismissedRatingIds((prev) => {
+          const next = { ...prev, [orderId]: true };
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("topiclog_dismissed_ratings", JSON.stringify(next));
+            } catch {}
+          }
+          return next;
+        });
+
+        // Atualiza a lista em memória imediatamente
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, carrierRatingStars: selectedRatingStars } : o))
+        );
+
+        // Fecha o modal automaticamente
+        setRatingModalOrder(null);
+        setRatingError(null);
+
+        // Toast de confirmação discreto
+        setBanner({
+          type: "success",
+          text: `⭐ Avaliação enviada com sucesso! ${selectedRatingStars} estrela(s) registrada(s) para ${carrierName}.`
+        });
+
+        await loadActivities(true);
+      } else {
+        const errMsg = res.problem?.detail || res.problem?.title || "Não foi possível registrar sua avaliação no momento.";
+        setRatingError(errMsg);
+      }
+    } catch (err: unknown) {
+      setRatingError(err instanceof Error ? err.message : "Erro ao enviar avaliação.");
+    } finally {
+      setSubmittingRating(false);
     }
-    setSubmittingRating(false);
   };
 
   const handleConfirmCancelOrder = async () => {
@@ -1196,9 +1233,58 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
               maxWidth: "420px",
               width: "100%",
               boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
-              textAlign: "center"
+              textAlign: "center",
+              position: "relative"
             }}
           >
+            {/* Botão de Fechar (X) no Canto Superior Direito */}
+            <button
+              type="button"
+              onClick={() => {
+                const orderId = ratingModalOrder.id;
+                setDismissedRatingIds((prev) => {
+                  const next = { ...prev, [orderId]: true };
+                  if (typeof window !== "undefined") {
+                    try {
+                      localStorage.setItem("topiclog_dismissed_ratings", JSON.stringify(next));
+                    } catch {}
+                  }
+                  return next;
+                });
+                setRatingModalOrder(null);
+                setRatingError(null);
+              }}
+              aria-label="Fechar modal de avaliação"
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                backgroundColor: "#F1F5F9",
+                border: "none",
+                color: "#64748B",
+                fontSize: "16px",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background-color 0.15s ease, color 0.15s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "#E2E8F0";
+                e.currentTarget.style.color = "#0F172A";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "#F1F5F9";
+                e.currentTarget.style.color = "#64748B";
+              }}
+            >
+              ✕
+            </button>
+
             <div style={{ fontSize: "40px", marginBottom: "8px" }}>⭐</div>
             <h2
               id="rate-carrier-modal-title"
@@ -1210,6 +1296,23 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
               Sua entrega foi finalizada! Quantas estrelas você dá para{" "}
               <strong>{ratingModalOrder.carrierName || "o transportador"}</strong>?
             </p>
+
+            {ratingError && (
+              <div
+                style={{
+                  backgroundColor: "#FEF2F2",
+                  border: "1px solid #FCA5A5",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  color: "#991B1B",
+                  marginBottom: "16px",
+                  lineHeight: 1.4
+                }}
+              >
+                ⚠️ {ratingError}
+              </div>
+            )}
 
             <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "12px" }}>
               {[1, 2, 3, 4, 5].map((star) => (
@@ -1243,8 +1346,18 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                 type="button"
                 disabled={submittingRating}
                 onClick={() => {
-                  setDismissedRatingIds((prev) => ({ ...prev, [ratingModalOrder.id]: true }));
+                  const orderId = ratingModalOrder.id;
+                  setDismissedRatingIds((prev) => {
+                    const next = { ...prev, [orderId]: true };
+                    if (typeof window !== "undefined") {
+                      try {
+                        localStorage.setItem("topiclog_dismissed_ratings", JSON.stringify(next));
+                      } catch {}
+                    }
+                    return next;
+                  });
                   setRatingModalOrder(null);
+                  setRatingError(null);
                 }}
                 className="btn btn--outline"
                 style={{ padding: "10px 16px", fontSize: "13px", fontWeight: 700 }}
