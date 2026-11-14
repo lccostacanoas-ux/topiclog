@@ -1,23 +1,85 @@
 import { NextResponse } from "next/server";
-import { ASAAS_CONFIG } from "../../../../lib/asaas";
+
+/**
+ * Validação rigorosa de CRC16-CCITT para strings Pix (EMV QRCPS-MPM).
+ * Padrão BACEN: Polinômio 0x1021, valor inicial 0xFFFF, finaliza com 6304XXXX.
+ */
+function isValidPixCrc16(payload: string): boolean {
+  if (!payload || payload.length < 15) return false;
+  if (!payload.startsWith("000201")) return false;
+  
+  const crcMatch = payload.match(/6304([0-9A-Fa-f]{4})$/);
+  if (!crcMatch || !crcMatch[1]) return false;
+  
+  const expectedCrc = crcMatch[1].toUpperCase();
+  const textToVerify = payload.slice(0, -4); // toda a string até '6304' inclusive
+  
+  let crc = 0xFFFF;
+  for (let i = 0; i < textToVerify.length; i++) {
+    crc ^= (textToVerify.charCodeAt(i) << 8);
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+      } else {
+        crc = (crc << 1) & 0xFFFF;
+      }
+    }
+  }
+  const calculatedCrc = crc.toString(16).toUpperCase().padStart(4, "0");
+  return calculatedCrc === expectedCrc;
+}
+
+/**
+ * Resolução dinâmica do endpoint Asaas (Produção vs Sandbox)
+ * Baseado no prefixo oficial da ASAAS_API_KEY:
+ * - $aact_prod_ ou $aact_ (sem hmlg) -> https://api.asaas.com/v3
+ * - $aact_hmlg_ ou contendo 'hmlg' / 'sandbox' -> https://sandbox.asaas.com/api/v3
+ */
+function resolveAsaasEndpoint(apiKey: string): { baseUrl: string; environment: "production" | "sandbox" } {
+  if (process.env.ASAAS_BASE_URL) {
+    const isSandbox = process.env.ASAAS_BASE_URL.includes("sandbox");
+    return {
+      baseUrl: process.env.ASAAS_BASE_URL.replace(/\/+$/, ""),
+      environment: isSandbox ? "sandbox" : "production"
+    };
+  }
+
+  const trimmedKey = (apiKey || "").trim();
+  if (trimmedKey.startsWith("$aact_hmlg_") || trimmedKey.includes("hmlg") || process.env.ASAAS_ENVIRONMENT === "sandbox") {
+    return { baseUrl: "https://sandbox.asaas.com/api/v3", environment: "sandbox" };
+  }
+
+  if (trimmedKey.startsWith("$aact_prod_") || (trimmedKey.startsWith("$aact_") && !trimmedKey.includes("hmlg")) || process.env.ASAAS_ENVIRONMENT === "production") {
+    return { baseUrl: "https://api.asaas.com/v3", environment: "production" };
+  }
+
+  return process.env.NODE_ENV === "production" && process.env.ASAAS_ENVIRONMENT !== "sandbox"
+    ? { baseUrl: "https://api.asaas.com/v3", environment: "production" }
+    : { baseUrl: "https://sandbox.asaas.com/api/v3", environment: "sandbox" };
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
-    const description = body.description || "Frete TopicLog via Asaas Split";
+    const description = (body.description || "Frete TopicLog via Asaas").trim();
     const apiKey = (process.env.ASAAS_API_KEY || "").trim();
-    const hasLiveAsaasKey = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
+    const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
-    // Se temos a chave da API Asaas (Produção ou Sandbox oficial)
-    if (hasLiveAsaasKey) {
-      const baseUrl = ASAAS_CONFIG.baseUrl;
+    // 1. SE A CHAVE DO ASAAS ESTIVER CONFIGURADA: Comunicação direta com a API oficial do Asaas
+    if (isKeyConfigured) {
+      const { baseUrl, environment } = resolveAsaasEndpoint(apiKey);
       const cleanDoc = (body.payerCpfCnpj || "").replace(/\D/g, "");
 
-      // 1. Obter ou criar Cliente no Asaas
+      console.info(`[Asaas Pix] Criando cobrança de R$ ${amount.toFixed(2)} em ${baseUrl} (${environment})`);
+
+      // A. Obter ou Criar Cliente no Asaas
       let customerId = "";
+      const payerEmail = (body.payerEmail || "contato@topiclog.com.br").trim();
+      const payerName = (body.payerName || "Cliente TopicLog").trim();
+
       try {
-        const findCustRes = await fetch(`${baseUrl}/customers?email=${encodeURIComponent(body.payerEmail || "contato@topiclog.com.br")}`, {
+        const findCustRes = await fetch(`${baseUrl}/customers?email=${encodeURIComponent(payerEmail)}`, {
           headers: { access_token: apiKey }
         });
         if (findCustRes.ok) {
@@ -27,7 +89,7 @@ export async function POST(request: Request) {
           }
         }
       } catch (err) {
-        console.warn("Aviso ao buscar cliente Asaas:", err);
+        console.warn("[Asaas Pix] Falha na consulta de cliente existente:", err);
       }
 
       if (!customerId) {
@@ -39,21 +101,24 @@ export async function POST(request: Request) {
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              name: body.payerName || "Cliente TopicLog",
-              email: body.payerEmail || "contato@topiclog.com.br",
+              name: payerName,
+              email: payerEmail,
               cpfCnpj: cleanDoc.length === 11 || cleanDoc.length === 14 ? cleanDoc : undefined
             })
           });
           if (createCustRes.ok) {
             const newCust = await createCustRes.json();
             customerId = newCust.id;
+          } else {
+            const errTxt = await createCustRes.text();
+            console.warn("[Asaas Pix] Erro ao criar cliente Asaas:", createCustRes.status, errTxt);
           }
         } catch (err) {
-          console.warn("Aviso ao criar cliente Asaas:", err);
+          console.warn("[Asaas Pix] Exceção ao cadastrar cliente:", err);
         }
       }
 
-      // 2. Configurar Cobrança Pix com Split Nativo
+      // B. Criar a Cobrança Pix com Split no Asaas
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split("T")[0];
       const paymentPayload: Record<string, unknown> = {
         customer: customerId || "cus_default",
@@ -64,7 +129,6 @@ export async function POST(request: Request) {
         postalService: false
       };
 
-      // Split nativo caso o transportador tenha carteira Asaas
       if (body.carrierWalletId) {
         const carrierSharePercent = body.carrierSharePercent || 80.0;
         paymentPayload.split = [
@@ -84,70 +148,116 @@ export async function POST(request: Request) {
         body: JSON.stringify(paymentPayload)
       });
 
-      if (payRes.ok) {
-        const payData = await payRes.json();
-        
-        // 3. Buscar QR Code Pix da cobrança gerada
-        const qrRes = await fetch(`${baseUrl}/payments/${payData.id}/pixQrCode`, {
-          headers: { access_token: apiKey }
-        });
+      if (!payRes.ok) {
+        const payErrText = await payRes.text();
+        console.error(`[Asaas Pix] Erro HTTP ${payRes.status} ao criar cobrança:`, payErrText);
+        let errorDetail = payErrText;
+        try {
+          const parsed = JSON.parse(payErrText);
+          if (parsed.errors && parsed.errors.length > 0) {
+            errorDetail = parsed.errors.map((e: { description: string }) => e.description).join("; ");
+          }
+        } catch {}
 
-        let qrCode = "";
-        let qrCodeBase64 = "";
-        if (qrRes.ok) {
-          const qrData = await qrRes.json();
-          qrCode = qrData.payload || "";
-          qrCodeBase64 = qrData.encodedImage ? `data:image/png;base64,${qrData.encodedImage}` : "";
-        }
-
-        return NextResponse.json({
-          id: payData.id,
-          status: payData.status,
-          statusDetail: "Aguardando pagamento via Pix no Asaas",
-          qrCode: qrCode || `pay_asaas_${payData.id}`,
-          qrCodeBase64: qrCodeBase64,
-          ticketUrl: payData.invoiceUrl || payData.bankSlipUrl || "",
-          transactionAmount: amount,
-          carrierNetReceivable: body.carrierWalletId ? amount * 0.8 : amount,
-          marketplaceFee: body.carrierWalletId ? amount * 0.2 : 0,
-          createdAt: payData.dateCreated || new Date().toISOString(),
-          isSandboxSimulator: false
-        });
+        return NextResponse.json(
+          {
+            error: "O Asaas recusou a criação da cobrança Pix.",
+            details: errorDetail,
+            statusCode: payRes.status
+          },
+          { status: 400 }
+        );
       }
 
-      const payErr = await payRes.text();
-      console.error("Erro na API Asaas:", payRes.status, payErr);
+      const payData = await payRes.json();
+
+      // C. Buscar QR Code Oficial e Payload Copia e Cola do Asaas
+      const qrRes = await fetch(`${baseUrl}/payments/${payData.id}/pixQrCode`, {
+        headers: { access_token: apiKey }
+      });
+
+      if (!qrRes.ok) {
+        const qrErrText = await qrRes.text();
+        console.error(`[Asaas Pix] Erro ao obter QR Code ${payData.id}:`, qrErrText);
+        return NextResponse.json(
+          {
+            error: "Cobrança criada no Asaas, mas houve falha ao obter o QR Code oficial.",
+            details: qrErrText,
+            paymentId: payData.id
+          },
+          { status: 502 }
+        );
+      }
+
+      const qrData = await qrRes.json();
+      const rawPayload = (qrData.payload || "").trim();
+      const encodedImage = qrData.encodedImage ? `data:image/png;base64,${qrData.encodedImage.trim()}` : "";
+
+      // D. Validação estrita do padrão EMV / CRC16
+      if (!rawPayload.startsWith("000201")) {
+        console.error("[Asaas Pix] Payload retornado pelo Asaas não inicia com 000201:", rawPayload);
+        return NextResponse.json(
+          {
+            error: "Código Pix retornado pelo Asaas possui formato EMV incompatível.",
+            details: "Payload não inicia com 000201."
+          },
+          { status: 502 }
+        );
+      }
+
+      const isCrcValid = isValidPixCrc16(rawPayload);
+      if (!isCrcValid) {
+        console.warn("[Asaas Pix] Aviso de integridade: CRC16 do payload retornado pelo Asaas divergiu:", rawPayload);
+      }
+
+      return NextResponse.json({
+        id: payData.id,
+        status: payData.status,
+        statusDetail: "Cobrança Pix oficial gerada no Asaas com sucesso",
+        qrCode: rawPayload,
+        qrCodeBase64: encodedImage,
+        ticketUrl: payData.invoiceUrl || payData.bankSlipUrl || "",
+        transactionAmount: amount,
+        carrierNetReceivable: body.carrierWalletId ? amount * 0.8 : amount,
+        marketplaceFee: body.carrierWalletId ? amount * 0.2 : 0,
+        createdAt: payData.dateCreated || new Date().toISOString(),
+        isSandboxSimulator: false,
+        isKeyConfigured: true,
+        environment
+      });
     }
 
-    // MODO SANDBOX / AMBIENTE DE TRANSIÇÃO (Enquanto a chave real não é inserida)
-    // Permite testar o fluxo de Split e entrega segura sem enviar fundos para o Mercado Pago antigo
-    const simulatedId = `pay_asaas_sim_${Date.now()}`;
-    const feePercent = 0.20; // 20% comissão padrão TopicLog
+    // 2. SE A CHAVE NÃO ESTIVER CONFIGURADA:
+    // NUNCA montamos string Copia e Cola manualmente (para evitar o erro 2056 no app bancário).
+    // Retornamos status explícito para o frontend orientar o cadastro da chave e permitir teste simulado seguro.
+    const feePercent = 0.20;
     const marketplaceFee = Math.round(amount * feePercent * 100) / 100;
     const carrierNet = Math.round((amount - marketplaceFee) * 100) / 100;
+    const simulatedId = `pay_asaas_demo_${Date.now()}`;
 
-    // Código Pix Copia e Cola formatado no padrão BACEN
-    const simulatedPixPayload = `00020101021226870014br.gov.bcb.pix2565pix.asaas.com/qr/v3/topiclog/${simulatedId}520400005303986540${amount.toFixed(2).length < 5 ? "0" : ""}${amount.toFixed(2)}5802BR5918TOPICLOG ASAAS SPLIT6014BELO HORIZONTE62070503***6304E8A2`;
+    console.warn("[Asaas Pix] Chave ASAAS_API_KEY ausente ou não configurada. Operando em modo de transição segura.");
 
     return NextResponse.json({
       id: simulatedId,
       status: "PENDING",
-      statusDetail: "Aguardando pagamento Pix (Ambiente Seguro Asaas White Label)",
-      qrCode: simulatedPixPayload,
-      qrCodeBase64: "", // O frontend renderiza QR Code dinâmico
-      ticketUrl: `https://sandbox.asaas.com/i/${simulatedId}`,
+      statusDetail: "Chave ASAAS_API_KEY não configurada na Vercel",
+      qrCode: "", // Não envia string falsa para impedir tentativa bancária que causaria Erro 2056
+      qrCodeBase64: "",
+      ticketUrl: "",
       transactionAmount: amount,
       carrierNetReceivable: carrierNet,
       marketplaceFee: marketplaceFee,
       createdAt: new Date().toISOString(),
-      isSandboxSimulator: true
+      isSandboxSimulator: true,
+      isKeyConfigured: false,
+      environment: "sandbox"
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Exceção na rota /api/asaas/pix:", errorMsg);
+    console.error("[Asaas Pix] Exceção na rota POST /api/asaas/pix:", errorMsg);
     return NextResponse.json(
       {
-        error: "Erro ao gerar cobrança Pix via Asaas.",
+        error: "Erro interno no servidor ao processar cobrança Asaas.",
         details: errorMsg
       },
       { status: 500 }
@@ -164,11 +274,11 @@ export async function GET(request: Request) {
   }
 
   const apiKey = (process.env.ASAAS_API_KEY || "").trim();
-  const hasLiveAsaasKey = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
+  const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
-  if (hasLiveAsaasKey && !paymentId.startsWith("pay_asaas_sim_")) {
+  if (isKeyConfigured && !paymentId.startsWith("pay_asaas_demo_") && !paymentId.startsWith("pay_asaas_sim_")) {
     try {
-      const baseUrl = ASAAS_CONFIG.baseUrl;
+      const { baseUrl } = resolveAsaasEndpoint(apiKey);
       const res = await fetch(`${baseUrl}/payments/${encodeURIComponent(paymentId)}`, {
         headers: { access_token: apiKey }
       });
@@ -178,16 +288,15 @@ export async function GET(request: Request) {
         return NextResponse.json({
           id: data.id,
           status: data.status,
-          statusDetail: isApproved ? "Pagamento Pix compensado com sucesso no Asaas" : "Aguardando compensação",
+          statusDetail: isApproved ? "Pagamento Pix compensado com sucesso no Asaas" : "Aguardando compensação bancária",
           isApproved
         });
       }
     } catch (err) {
-      console.warn("Erro ao consultar status no Asaas:", err);
+      console.warn("[Asaas Pix] Erro ao consultar status no Asaas:", err);
     }
   }
 
-  // No modo simulador ou pagamento pendente
   return NextResponse.json({
     id: paymentId,
     status: "PENDING",

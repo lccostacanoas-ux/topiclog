@@ -132,19 +132,21 @@ export function AsaasPixModal({
       });
       setPixData(data);
 
-      // Verificação automática a cada 4 segundos
-      pollTimerRef.current = setInterval(async () => {
-        try {
-          const check = await checkAsaasPixStatus(data.id);
-          if (check.isApproved) {
-            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-            setIsApproved(true);
-            onPaymentSuccess({ ...data, status: "RECEIVED" });
+      // Verificação automática a cada 4 segundos caso seja cobrança real no Asaas
+      if (data.isKeyConfigured && data.id) {
+        pollTimerRef.current = setInterval(async () => {
+          try {
+            const check = await checkAsaasPixStatus(data.id);
+            if (check.isApproved) {
+              if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+              setIsApproved(true);
+              onPaymentSuccess({ ...data, status: "RECEIVED" });
+            }
+          } catch {
+            // Silencioso em caso de oscilação de rede
           }
-        } catch {
-          // Erro transitório de rede
-        }
-      }, 4000);
+        }, 4000);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao gerar cobrança Pix via Asaas.";
       setErrorMsg(msg);
@@ -164,10 +166,10 @@ export function AsaasPixModal({
         setIsApproved(true);
         onPaymentSuccess({ ...pixData, status: "RECEIVED" });
       } else {
-        setErrorMsg("Pagamento ainda não identificado no sistema bancário do Asaas. Se já pagou, aguarde alguns instantes.");
+        setErrorMsg("Pagamento ainda não identificado no Asaas. Se já efetuou a transferência, aguarde alguns instantes.");
       }
     } catch {
-      setErrorMsg("Não foi possível verificar no momento. O sistema continuará checando automaticamente.");
+      setErrorMsg("Não foi possível verificar no momento. Tentaremos novamente automaticamente.");
     } finally {
       setChecking(false);
     }
@@ -176,7 +178,7 @@ export function AsaasPixModal({
   const handleCopyPix = async () => {
     if (!pixData?.qrCode) return;
     try {
-      await navigator.clipboard.writeText(pixData.qrCode);
+      await navigator.clipboard.writeText(pixData.qrCode.trim());
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch {
@@ -188,12 +190,13 @@ export function AsaasPixModal({
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setIsApproved(true);
     const successData: AsaasPixData = pixData || {
-      id: `pay_asaas_sim_${Date.now()}`,
+      id: `pay_asaas_demo_${Date.now()}`,
       status: "RECEIVED",
       statusDetail: "Aprovado em modo de teste Asaas",
       qrCode: "",
       transactionAmount: selectedAmount,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      isSandboxSimulator: true
     };
     onPaymentSuccess({ ...successData, status: "RECEIVED" });
   };
@@ -229,7 +232,7 @@ export function AsaasPixModal({
           position: "relative"
         }}
       >
-        {/* Botão de Fechar */}
+        {/* Botão Fechar */}
         <button
           type="button"
           onClick={onClose}
@@ -280,30 +283,7 @@ export function AsaasPixModal({
           </p>
         </div>
 
-        {/* Alerta de Modo de Teste Asaas caso a chave real não esteja inserida */}
-        {pixData?.isSandboxSimulator && (
-          <div
-            style={{
-              backgroundColor: "#EFF6FF",
-              border: "1px dashed #3B82F6",
-              borderRadius: "8px",
-              padding: "8px 12px",
-              marginBottom: "12px",
-              fontSize: "11px",
-              color: "#1E40AF",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "8px"
-            }}
-          >
-            <div>
-              <strong>Ambiente Asaas Integrado:</strong> Nenhum valor vai para o banco legado. Transição para chave definitiva pronta.
-            </div>
-          </div>
-        )}
-
-        {/* Cronômetro de Expiração */}
+        {/* Cronômetro */}
         <div
           style={{
             backgroundColor: remainingSeconds < 180 ? "#FEF2F2" : "#F8FAFC",
@@ -334,7 +314,7 @@ export function AsaasPixModal({
           </span>
         </div>
 
-        {/* Card de Valor do Frete */}
+        {/* Valor do Frete */}
         <div
           style={{
             backgroundColor: "#F0FDF4",
@@ -356,7 +336,7 @@ export function AsaasPixModal({
           </div>
         </div>
 
-        {/* Feedback de Erro */}
+        {/* Erro */}
         {errorMsg && (
           <div
             style={{
@@ -373,20 +353,20 @@ export function AsaasPixModal({
           </div>
         )}
 
-        {/* Estado de Carregamento */}
+        {/* Loading */}
         {loading && (
           <div style={{ textAlign: "center", padding: "30px 0" }}>
             <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
             <div style={{ fontWeight: 700, color: "#1E293B", fontSize: "14px" }}>
-              Gerando cobrança Pix Asaas...
+              Conectando à API do Asaas...
             </div>
             <div style={{ fontSize: "12px", color: "#64748B", marginTop: "4px" }}>
-              Conectando ao sistema bancário integrado da TopicLog.
+              Gerando cobrança Pix oficial com split nativo.
             </div>
           </div>
         )}
 
-        {/* Sucesso / Aprovado */}
+        {/* Aprovado */}
         {isApproved && (
           <div
             style={{
@@ -408,148 +388,172 @@ export function AsaasPixModal({
           </div>
         )}
 
-        {/* Dados do Pix (QR Code e Copia e Cola) */}
+        {/* Conteúdo do Pix quando carregado e não aprovado */}
         {!loading && pixData && !isApproved && (
           <div>
-            {/* Box do QR Code */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "#FFFFFF",
-                border: "2px dashed #CBD5E1",
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "14px"
-              }}
-            >
-              {pixData.qrCodeBase64 ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={pixData.qrCodeBase64}
-                  alt="QR Code Pix Asaas"
-                  style={{ width: "200px", height: "200px", display: "block" }}
-                />
-              ) : (
+            {/* CENÁRIO A: Chave Asaas configurada (Pix Oficial Disponível) */}
+            {pixData.isKeyConfigured && pixData.qrCode ? (
+              <div>
                 <div
                   style={{
-                    width: "180px",
-                    height: "180px",
-                    backgroundColor: "#F8FAFC",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "8px",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    padding: "8px",
-                    textAlign: "center"
+                    backgroundColor: "#FFFFFF",
+                    border: "2px dashed #CBD5E1",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    marginBottom: "14px"
                   }}
                 >
-                  <span style={{ fontSize: "36px" }}>📱</span>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#1E40AF", marginTop: "4px" }}>
-                    Pix Copia e Cola Asaas
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
-                    Copie a chave no botão abaixo
-                  </span>
+                  {pixData.qrCodeBase64 ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={pixData.qrCodeBase64}
+                      alt="QR Code Pix Asaas Oficial"
+                      style={{ width: "200px", height: "200px", display: "block" }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: "12px", color: "#64748B", padding: "20px" }}>
+                      QR Code gerado. Utilize o Copia e Cola abaixo no seu banco.
+                    </div>
+                  )}
+                  <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
+                    Abra o app do seu banco e escolha <strong>Pix &gt; Pagar com QR Code</strong> ou utilize o Copia e Cola.
+                  </div>
                 </div>
-              )}
-              <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
-                Abra o app do seu banco e escolha <strong>Pix &gt; Pagar com QR Code</strong> ou utilize o Copia e Cola.
-              </div>
-            </div>
 
-            {/* Input Copia e Cola */}
-            <div style={{ marginBottom: "14px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px" }}>
-                Código Pix Copia e Cola:
-              </label>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <input
-                  type="text"
-                  readOnly
-                  value={pixData.qrCode}
-                  style={{
-                    flex: 1,
-                    fontSize: "11px",
-                    fontFamily: "monospace",
-                    padding: "8px 10px",
-                    backgroundColor: "#F8FAFC",
-                    border: "1px solid #CBD5E1",
-                    borderRadius: "6px",
-                    color: "#334155"
-                  }}
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
+                <div style={{ marginBottom: "14px" }}>
+                  <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px" }}>
+                    Código Pix Copia e Cola Oficial (Asaas):
+                  </label>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      readOnly
+                      value={pixData.qrCode}
+                      style={{
+                        flex: 1,
+                        fontSize: "11px",
+                        fontFamily: "monospace",
+                        padding: "8px 10px",
+                        backgroundColor: "#F8FAFC",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "6px",
+                        color: "#334155"
+                      }}
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyPix}
+                      style={{
+                        backgroundColor: copied ? "#16A34A" : "#1E40AF",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "0 14px",
+                        fontWeight: 700,
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {copied ? "✓ Copiado!" : "Copiar"}
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleCopyPix}
+                  onClick={handleManualCheck}
+                  disabled={checking}
                   style={{
-                    backgroundColor: copied ? "#16A34A" : "#1E40AF",
+                    width: "100%",
+                    backgroundColor: "#059669",
                     color: "#FFFFFF",
                     border: "none",
-                    borderRadius: "6px",
-                    padding: "0 14px",
+                    borderRadius: "8px",
+                    padding: "10px",
                     fontWeight: 700,
-                    fontSize: "11px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px"
+                    fontSize: "13px",
+                    cursor: checking ? "not-allowed" : "pointer"
                   }}
                 >
-                  {copied ? "✓ Copiado!" : "Copiar"}
+                  {checking ? "Verificando no Asaas..." : "Já realizei o pagamento Pix"}
                 </button>
               </div>
-            </div>
-
-            {/* Ações de Verificação */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <button
-                type="button"
-                onClick={handleManualCheck}
-                disabled={checking}
+            ) : (
+              /* CENÁRIO B: Chave Asaas ainda não configurada no ambiente da Vercel */
+              <div
                 style={{
-                  width: "100%",
-                  backgroundColor: "#059669",
-                  color: "#FFFFFF",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "10px",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  cursor: checking ? "not-allowed" : "pointer"
-                }}
-              >
-                {checking ? "Verificando no Asaas..." : "Já realizei o pagamento Pix"}
-              </button>
-
-              {/* Botão de Simulação Instantânea em Ambiente de Teste */}
-              <button
-                type="button"
-                onClick={handleSimulateInstantPayment}
-                style={{
-                  width: "100%",
                   backgroundColor: "#EFF6FF",
-                  color: "#1E40AF",
-                  border: "1px dashed #93C5FD",
-                  borderRadius: "8px",
-                  padding: "8px",
-                  fontWeight: 700,
-                  fontSize: "11px",
-                  cursor: "pointer"
+                  border: "1.5px solid #93C5FD",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  marginBottom: "16px"
                 }}
               >
-                ⚡ Simular Confirmação Instantânea (Ambiente de Testes)
-              </button>
-            </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "22px" }}>ℹ️</span>
+                  <div>
+                    <strong style={{ fontSize: "14px", color: "#1E40AF" }}>
+                      Integração Asaas Pronta para Ativação
+                    </strong>
+                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#1D4ED8", lineHeight: 1.45 }}>
+                      O sistema já está 100% migrado para a arquitetura do <strong>Asaas Split</strong>. Nenhuma cobrança será enviada para o banco legado antigo.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    border: "1px dashed #BFDBFE",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    fontSize: "12px",
+                    color: "#334155",
+                    marginBottom: "14px",
+                    lineHeight: 1.5
+                  }}
+                >
+                  <strong>Como ativar pagamentos reais via banco:</strong>
+                  <div style={{ marginTop: "4px" }}>
+                    Adicione a variável <code>ASAAS_API_KEY</code> no painel da Vercel (ou no arquivo de ambiente). O sistema detectará automaticamente se a chave é de Produção ou Sandbox e gerará QR Codes oficiais registrados no BACEN.
+                  </div>
+                </div>
+
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: "11px", color: "#64748B", margin: "0 0 8px" }}>
+                    Para testar a máquina de estados (reserva, custódia e entrega via PIN) agora mesmo:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSimulateInstantPayment}
+                    style={{
+                      width: "100%",
+                      backgroundColor: "#2563EB",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "11px",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)"
+                    }}
+                  >
+                    ⚡ Simular Confirmação Pix (Ambiente de Teste)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* Rodapé */}
         <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #F1F5F9", textAlign: "center" }}>
           <button
             type="button"

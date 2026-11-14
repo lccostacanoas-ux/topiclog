@@ -25,7 +25,8 @@ import {
   searchMunicipalitiesApi,
   createProposalApi,
   getSandboxTokenApi,
-  getCommercialPolicyCurrentApi
+  getCommercialPolicyCurrentApi,
+  getCancellationPolicyApi
 } from "../../lib/api-client";
 import type {
   MatchEvaluationResultDto,
@@ -71,6 +72,9 @@ function FeedContent(): React.JSX.Element {
   const [isSendingProposal, setIsSendingProposal] = useState(false);
   const [commissionPercent, setCommissionPercent] = useState<number>(15);
   const [carrierOfferValue, setCarrierOfferValue] = useState<string>("");
+  const [globalMinFreightPriceCents, setGlobalMinFreightPriceCents] = useState<number>(900);
+  const [proposalFeedback, setProposalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [proposalSuccessDetails, setProposalSuccessDetails] = useState<{ amountCents: number; shipmentTitle: string } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,6 +83,11 @@ function FeedContent(): React.JSX.Element {
         setCommissionPercent(res.data.freePlanCommissionPercent);
       }
     });
+    getCancellationPolicyApi().then((res) => {
+      if (isMounted && res.ok && res.data?.minimumFreightPriceCents) {
+        setGlobalMinFreightPriceCents(Number(res.data.minimumFreightPriceCents));
+      }
+    }).catch(() => {});
     return () => {
       isMounted = false;
     };
@@ -98,10 +107,97 @@ function FeedContent(): React.JSX.Element {
   const [selectedItem, setSelectedItem] = useState<DemoShipment | DemoTrip | null>(null);
 
   useEffect(() => {
+    setProposalFeedback(null);
+    setProposalSuccessDetails(null);
     if (selectedItem && "suggestedPriceCents" in selectedItem) {
       setCarrierOfferValue((selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ","));
     }
   }, [selectedItem]);
+
+  const handlePerformSendProposal = async (customAmountCents?: number) => {
+    if (!selectedItem) return;
+    if (!token || !user) {
+      setProposalFeedback({ type: "error", message: "Acesse sua conta para enviar propostas ou solicitar frete." });
+      router.push("/entrar");
+      return;
+    }
+
+    const isShipment = "weightGrams" in selectedItem;
+    if (isShipment && !isCarrier) {
+      setProposalFeedback({ type: "error", message: "Apenas usuários cadastrados como Transportador parceiro podem propor transporte para encomendas." });
+      return;
+    }
+
+    setIsSendingProposal(true);
+    setProposalFeedback(null);
+
+    try {
+      const shipmentId = isShipment ? selectedItem.id : "e0000001-0000-0000-0000-000000000001";
+      const numVal = customAmountCents !== undefined
+        ? customAmountCents / 100
+        : (parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (isShipment ? selectedItem.suggestedPriceCents / 100 : 42));
+      const amountCents = customAmountCents !== undefined ? customAmountCents : Math.round(numVal * 100);
+
+      const activeMin = (isShipment && (selectedItem as any).minimumFreightPriceCents > 0)
+        ? (selectedItem as any).minimumFreightPriceCents
+        : (globalMinFreightPriceCents || 900);
+
+      if (isShipment && amountCents < activeMin) {
+        const minFmt = (activeMin / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        setProposalFeedback({
+          type: "error",
+          message: `O valor ofertado (R$ ${(amountCents / 100).toFixed(2).replace(".", ",")}) não pode ser inferior ao piso mínimo de ${minFmt} desta carga.`
+        });
+        setIsSendingProposal(false);
+        return;
+      }
+
+      const tripId = !isShipment ? selectedItem.id : undefined;
+
+      const apiRes = await createProposalApi({
+        shipmentId,
+        tripId,
+        amountCents,
+        notes: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem acordada via Feed."
+      }, token);
+
+      if (!apiRes.ok) {
+        if (apiRes.problem?.detail) {
+          setProposalFeedback({ type: "error", message: apiRes.problem.detail });
+          setIsSendingProposal(false);
+          return;
+        }
+        // Fallback resiliente para mock/demo
+        const ownerSenderName = isShipment ? ((selectedItem as any).senderName || "Remetente") : (user.displayName || user.email || "Remetente");
+        const driverCarrierName = isShipment ? (user.displayName || "Transportador") : ((selectedItem as any).carrierName || "Transportador Parceiro");
+        addDemoProposal({
+          shipmentId,
+          shipmentTitle: isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`,
+          route: `${selectedItem.originCity} ➔ ${selectedItem.destinationCity}`,
+          senderName: ownerSenderName,
+          carrierName: driverCarrierName,
+          originalPriceCents: amountCents,
+          proposedPriceCents: amountCents,
+          platformCommissionCents: Math.round(amountCents * (commissionPercent / 100)),
+          carrierNetCents: amountCents - Math.round(amountCents * (commissionPercent / 100)),
+          message: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem.",
+          isCurrentUserCarrier: isShipment
+        });
+      }
+
+      const title = isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`;
+      setProposalSuccessDetails({ amountCents, shipmentTitle: title });
+      setProposalFeedback({
+        type: "success",
+        message: "Proposta enviada com sucesso! Aguardando aceite do remetente."
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Erro ao enviar proposta. Verifique os dados e tente novamente.";
+      setProposalFeedback({ type: "error", message: errMsg });
+    } finally {
+      setIsSendingProposal(false);
+    }
+  };
   const [matchingResults, setMatchingResults] = useState<readonly MatchEvaluationResultDto[]>([]);
   const [isLoadingMatches, setIsLoadingMatches] = useState<boolean>(false);
 
@@ -1584,7 +1680,7 @@ function FeedContent(): React.JSX.Element {
                       Sua Oferta ou Contraproposta de Frete (R$):
                     </label>
                     <span style={{ fontSize: "11px", color: "#1D4ED8", fontWeight: 700, backgroundColor: "#EFF6FF", padding: "2px 8px", borderRadius: "4px", border: "1px solid #BFDBFE" }}>
-                      🏷️ Piso Mínimo: {((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      🏷️ Piso Mínimo: {((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -1593,6 +1689,7 @@ function FeedContent(): React.JSX.Element {
                       <input
                         id="carrier-offer-input"
                         type="text"
+                        disabled={isSendingProposal || proposalSuccessDetails !== null}
                         value={carrierOfferValue}
                         onChange={(e) => setCarrierOfferValue(e.target.value)}
                         style={{ width: "100%", padding: "6px 10px 6px 32px", fontSize: "15px", fontWeight: 700, borderRadius: "6px", border: "1px solid #CBD5E1" }}
@@ -1600,14 +1697,29 @@ function FeedContent(): React.JSX.Element {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setCarrierOfferValue((selectedItem.suggestedPriceCents / 100).toFixed(2).replace(".", ","))}
-                      style={{ padding: "6px 10px", fontSize: "11px", fontWeight: 600, background: "#FFFFFF", border: "1px solid #CBD5E1", borderRadius: "6px", cursor: "pointer" }}
+                      disabled={isSendingProposal || proposalSuccessDetails !== null}
+                      onClick={() => {
+                        const sugCents = selectedItem.suggestedPriceCents;
+                        setCarrierOfferValue((sugCents / 100).toFixed(2).replace(".", ","));
+                        void handlePerformSendProposal(sugCents);
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        background: isSendingProposal ? "#F1F5F9" : "#EFF6FF",
+                        color: "#1D4ED8",
+                        border: "1px solid #93C5FD",
+                        borderRadius: "6px",
+                        cursor: isSendingProposal ? "not-allowed" : "pointer",
+                        whiteSpace: "nowrap"
+                      }}
                     >
-                      Aceitar Sugerido
+                      {isSendingProposal ? "Enviando..." : "Aceitar Sugerido"}
                     </button>
                   </div>
                   <span style={{ display: "block", fontSize: "11px", color: "#64748B", marginTop: "4px" }}>
-                    ℹ️ O valor ofertado deve ser igual ou superior ao piso mínimo ({((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente na abertura desta carga.
+                    ℹ️ O valor ofertado deve ser igual ou superior ao piso mínimo ({((("minimumFreightPriceCents" in selectedItem ? (selectedItem as any).minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente na abertura desta carga.
                   </span>
                 </div>
 
@@ -1727,7 +1839,7 @@ function FeedContent(): React.JSX.Element {
                 border: "1px solid #BFDBFE",
                 borderRadius: "var(--radius-sm)",
                 padding: "12px",
-                marginBottom: "20px"
+                marginBottom: "16px"
               }}
             >
               <div style={{ fontSize: "12px", fontWeight: 700, color: "#1E40AF", marginBottom: "2px" }}>
@@ -1738,138 +1850,139 @@ function FeedContent(): React.JSX.Element {
               </div>
             </div>
 
-            {/* Ações do Modal */}
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => setSelectedItem(null)}
-                className="btn btn--outline"
+            {/* Banner de Feedback Visual de Proposta */}
+            {proposalFeedback && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  marginBottom: "16px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  backgroundColor: proposalFeedback.type === "success" ? "#F0FDF4" : "#FEF2F2",
+                  color: proposalFeedback.type === "success" ? "#166534" : "#991B1B",
+                  border: `1.5px solid ${proposalFeedback.type === "success" ? "#86EFAC" : "#FCA5A5"}`
+                }}
               >
-                Voltar
-              </button>
+                {proposalFeedback.type === "success" ? "🎉 " : "⚠️ "}
+                {proposalFeedback.message}
+              </div>
+            )}
 
-              {Boolean(
-                user && selectedItem && (
-                  ("carrierName" in selectedItem && (
-                    (user.displayName && selectedItem.carrierName.toLowerCase() === user.displayName.toLowerCase()) ||
-                    (user.email && selectedItem.carrierName.toLowerCase().includes(user.email.toLowerCase())) ||
-                    selectedItem.carrierName === "Transportador Cadastrado"
-                  )) ||
-                  ("senderName" in selectedItem && (
-                    (user.displayName && selectedItem.senderName.toLowerCase() === user.displayName.toLowerCase()) ||
-                    (user.email && selectedItem.senderName.toLowerCase().includes(user.email.toLowerCase())) ||
-                    selectedItem.senderName === "Remetente"
-                  ))
-                )
-              ) ? (
-                <Link
-                  href={"weightGrams" in selectedItem ? "/encomendas" : "/viagens"}
-                  className="btn btn--primary"
-                  onClick={() => setSelectedItem(null)}
+            {/* Ações do Modal */}
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
+              {proposalSuccessDetails ? (
+                <div
+                  style={{
+                    backgroundColor: "#F0FDF4",
+                    border: "1.5px solid #22C55E",
+                    borderRadius: "10px",
+                    padding: "14px",
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px"
+                  }}
                 >
-                  ✏️ Gerenciar Esta Publicação ➔
-                </Link>
-              ) : "weightGrams" in selectedItem && !isCarrier ? (
-                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    disabled
-                    className="btn btn--outline"
-                    style={{ opacity: 0.65, cursor: "not-allowed", fontSize: "13px" }}
-                    title="Apenas transportadores cadastrados podem propor frete"
-                  >
-                    🔒 Ofertas Restritas a Transportadores
-                  </button>
-                  <Link
-                    href="/encomendas/publicar"
-                    className="btn btn--primary"
-                    onClick={() => setSelectedItem(null)}
-                    style={{ fontSize: "13px" }}
-                  >
-                    + Publicar Minha Encomenda ➔
-                  </Link>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "16px" }}>✅</span>
+                      <strong style={{ fontSize: "14px", color: "#166534" }}>Sua Proposta Foi Enviada!</strong>
+                      <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: "#FEF3C7", color: "#B45309", padding: "2px 8px", borderRadius: "12px", border: "1px solid #FCD34D" }}>
+                        🟡 Aguardando Aceite do Remetente
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#15803D", marginTop: "4px" }}>
+                      Valor Ofertado: <strong>R$ {(proposalSuccessDetails.amountCents / 100).toFixed(2).replace(".", ",")}</strong> • O remetente foi notificado.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedItem(null); router.push("/propostas"); }}
+                      className="btn btn--primary"
+                      style={{ padding: "8px 14px", fontSize: "12px" }}
+                    >
+                      Acompanhar em Minhas Propostas ➔
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedItem(null); setProposalSuccessDetails(null); }}
+                      className="btn btn--outline"
+                      style={{ padding: "8px 14px", fontSize: "12px" }}
+                    >
+                      Fechar
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  disabled={isSendingProposal}
-                  onClick={async () => {
-                    if (!selectedItem) return;
-                    if (!token || !user) {
-                      alert("Acesse sua conta para enviar propostas ou solicitar frete.");
-                      router.push("/entrar");
-                      return;
-                    }
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItem(null)}
+                    className="btn btn--outline"
+                  >
+                    Voltar
+                  </button>
 
-                    const isShipment = "weightGrams" in selectedItem;
-                    if (isShipment && !isCarrier) {
-                      alert("Apenas usuários cadastrados como Transportador parceiro podem propor transporte para encomendas.");
-                      return;
-                    }
-
-                    setIsSendingProposal(true);
-                    try {
-                      const shipmentId = isShipment ? selectedItem.id : "e0000001-0000-0000-0000-000000000001";
-                      const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (isShipment ? selectedItem.suggestedPriceCents / 100 : 42);
-                      const amountCents = Math.round(numVal * 100);
-                      const minPriceCents = (isShipment && (selectedItem as any).minimumFreightPriceCents > 0) ? (selectedItem as any).minimumFreightPriceCents : 500;
-                      if (isShipment && amountCents < minPriceCents) {
-                        const minFmt = (minPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-                        alert(`O valor da proposta não pode ser inferior ao piso mínimo de ${minFmt} desta encomenda.`);
-                        setIsSendingProposal(false);
-                        return;
-                      }
-                      const tripId = !isShipment ? selectedItem.id : undefined;
-
-                      const apiRes = await createProposalApi({
-                        shipmentId,
-                        tripId,
-                        amountCents,
-                        notes: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem acordada via Feed."
-                      }, token);
-
-                      if (!apiRes.ok) {
-                        if (apiRes.problem?.detail) {
-                          alert(apiRes.problem.detail);
-                          setSelectedItem(null);
-                          router.push("/propostas");
-                          return;
-                        }
-                        // Fallback resiliente para ambiente sem backend dedicado
-                        const ownerSenderName = isShipment ? ((selectedItem as any).senderName || "Remetente") : (user.displayName || user.email || "Remetente");
-                        const driverCarrierName = isShipment ? (user.displayName || "Transportador") : ((selectedItem as any).carrierName || "Transportador Parceiro");
-                        addDemoProposal({
-                          shipmentId,
-                          shipmentTitle: isShipment ? ((selectedItem as any).title || "Encomenda") : `Envio para ${selectedItem.destinationCity}`,
-                          route: `${selectedItem.originCity} ➔ ${selectedItem.destinationCity}`,
-                          senderName: ownerSenderName,
-                          carrierName: driverCarrierName,
-                          originalPriceCents: amountCents,
-                          proposedPriceCents: amountCents,
-                          platformCommissionCents: Math.round(amountCents * (commissionPercent / 100)),
-                          carrierNetCents: amountCents - Math.round(amountCents * (commissionPercent / 100)),
-                          message: isShipment ? "Proposta formal de transporte acordada via Feed." : "Solicitação de frete na viagem.",
-                          isCurrentUserCarrier: isShipment
-                        });
-                      }
-
-                      setSelectedItem(null);
-                      router.push("/propostas");
-                    } catch {
-                      setSelectedItem(null);
-                      router.push("/propostas");
-                    } finally {
-                      setIsSendingProposal(false);
-                    }
-                  }}
-                  className="btn btn--primary"
-                >
-                  {isSendingProposal
-                    ? "Enviando..."
-                    : "weightGrams" in selectedItem
-                    ? "Propor Transporte ➔"
-                    : "Solicitar Envio ➔"}
-                </button>
+                  {Boolean(
+                    user && selectedItem && (
+                      ("carrierName" in selectedItem && (
+                        (user.displayName && selectedItem.carrierName.toLowerCase() === user.displayName.toLowerCase()) ||
+                        (user.email && selectedItem.carrierName.toLowerCase().includes(user.email.toLowerCase())) ||
+                        selectedItem.carrierName === "Transportador Cadastrado"
+                      )) ||
+                      ("senderName" in selectedItem && (
+                        (user.displayName && selectedItem.senderName.toLowerCase() === user.displayName.toLowerCase()) ||
+                        (user.email && selectedItem.senderName.toLowerCase().includes(user.email.toLowerCase())) ||
+                        selectedItem.senderName === "Remetente"
+                      ))
+                    )
+                  ) ? (
+                    <Link
+                      href={"weightGrams" in selectedItem ? "/encomendas" : "/viagens"}
+                      className="btn btn--primary"
+                      onClick={() => setSelectedItem(null)}
+                    >
+                      ✏️ Gerenciar Esta Publicação ➔
+                    </Link>
+                  ) : "weightGrams" in selectedItem && !isCarrier ? (
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        disabled
+                        className="btn btn--outline"
+                        style={{ opacity: 0.65, cursor: "not-allowed", fontSize: "13px" }}
+                        title="Apenas transportadores cadastrados podem propor frete"
+                      >
+                        🔒 Ofertas Restritas a Transportadores
+                      </button>
+                      <Link
+                        href="/encomendas/publicar"
+                        className="btn btn--primary"
+                        onClick={() => setSelectedItem(null)}
+                        style={{ fontSize: "13px" }}
+                      >
+                        + Publicar Minha Encomenda ➔
+                      </Link>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isSendingProposal}
+                      onClick={() => void handlePerformSendProposal()}
+                      className="btn btn--primary"
+                    >
+                      {isSendingProposal
+                        ? "Enviando..."
+                        : "weightGrams" in selectedItem
+                        ? "Propor Transporte ➔"
+                        : "Solicitar Envio ➔"}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>

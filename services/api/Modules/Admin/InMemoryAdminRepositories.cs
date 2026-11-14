@@ -35,7 +35,7 @@ public class InMemoryOperationalSettingsRepository : IOperationalSettingsReposit
             CancellationPenaltyPercent = 10.00m,
             CancellationMinFeeCents = 700,
             CancellationInjuredPartySharePercent = 80.00m,
-            MinimumFreightPriceCents = 500,
+            MinimumFreightPriceCents = 900,
             IsActive = true,
             Justification = "Configurações operacionais padrão da plataforma Topic Log (D03, D04, D16, PR-03, PR-04, PR-05)",
             UpdatedByUserId = Guid.Parse("00000000-0000-0000-0000-000000000001"),

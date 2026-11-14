@@ -202,7 +202,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 $"A encomenda não está disponível para receber propostas. Status atual: {shipment.Status}.");
         }
 
-        long minAllowedCents = shipment.MinimumFreightPriceCents > 0 ? shipment.MinimumFreightPriceCents : 500;
+        long minAllowedCents = shipment.MinimumFreightPriceCents > 0 ? shipment.MinimumFreightPriceCents : 900;
         if (request.AmountCents < minAllowedCents)
         {
             throw new DomainRuleViolationException(
@@ -380,7 +380,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             ?? throw new DomainRuleViolationException("PROPOSAL_NOT_FOUND", "A proposta informada não foi encontrada.", 404);
 
         var shipment = await _shipmentsRepository.GetByIdAsync(proposal.ShipmentId, cancellationToken);
-        long minAllowedCents = (shipment is not null && shipment.MinimumFreightPriceCents > 0) ? shipment.MinimumFreightPriceCents : 500;
+        long minAllowedCents = (shipment is not null && shipment.MinimumFreightPriceCents > 0) ? shipment.MinimumFreightPriceCents : 900;
         if (request.AmountCents < minAllowedCents)
         {
             throw new DomainRuleViolationException(

@@ -234,6 +234,7 @@ export default function PropostasPage(): React.JSX.Element {
   const [selectedProposalForPix, setSelectedProposalForPix] = useState<ProposalDto | null>(null);
   const [selectedContractForPix, setSelectedContractForPix] = useState<ContractDto | null>(null);
   const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+  const [globalMinFreightPriceCents, setGlobalMinFreightPriceCents] = useState<number>(900);
   const [cancelTarget, setCancelTarget] = useState<{
     contract: ContractDto;
     proposal: ProposalDto;
@@ -291,6 +292,9 @@ export default function PropostasPage(): React.JSX.Element {
         if (!active || !res.ok || !res.data) return;
         const pct = Math.min(10, Math.max(0, Number(res.data.cancellationPenaltyPercent ?? 10)));
         setCancellationPenaltyPercent(pct);
+        if (res.data.minimumFreightPriceCents) {
+          setGlobalMinFreightPriceCents(Number(res.data.minimumFreightPriceCents));
+        }
       })
       .catch(() => {
         // fallback 10%
@@ -650,7 +654,7 @@ export default function PropostasPage(): React.JSX.Element {
       return;
     }
     const amountCents = Math.round(cleanNum * 100);
-    const minPriceCents = (proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0) ? proposal.minimumFreightPriceCents : 500;
+    const minPriceCents = (proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0) ? proposal.minimumFreightPriceCents : (globalMinFreightPriceCents || 900);
     if (amountCents < minPriceCents) {
       const minFmt = (minPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       setErrorMessage(`O valor da contraproposta não pode ser inferior ao piso mínimo de ${minFmt} desta negociação.`);
@@ -1639,7 +1643,7 @@ export default function PropostasPage(): React.JSX.Element {
                         Proponha um novo valor de frete (R$):
                       </label>
                       <span style={{ fontSize: "11px", fontWeight: 700, color: "#1D4ED8", backgroundColor: "#DBEAFE", padding: "2px 8px", borderRadius: "4px" }}>
-                        🏷️ Piso Mínimo: {(((proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0 ? proposal.minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        🏷️ Piso Mínimo: {(((proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0 ? proposal.minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </span>
                     </div>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
@@ -1677,7 +1681,7 @@ export default function PropostasPage(): React.JSX.Element {
                       </button>
                     </div>
                     <span style={{ display: "block", fontSize: "11px", color: "#64748B", marginTop: "6px" }}>
-                      ℹ️ O valor deve ser igual ou superior ao piso mínimo ({(((proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0 ? proposal.minimumFreightPriceCents : 500) || 500) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente no início desta negociação.
+                      ℹ️ O valor deve ser igual ou superior ao piso mínimo ({(((proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0 ? proposal.minimumFreightPriceCents : globalMinFreightPriceCents) || 900) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) vigente no início desta negociação.
                     </span>
                   </div>
                 )}

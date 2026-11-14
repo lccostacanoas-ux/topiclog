@@ -76,7 +76,7 @@ public sealed class ShipmentsApplicationService : IShipmentsApplicationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        long minPriceCents = 500;
+        long minPriceCents = 900;
         if (_operationalSettingsRepository != null)
         {
             var opSettings = await _operationalSettingsRepository.GetActiveSettingsAsync(cancellationToken);

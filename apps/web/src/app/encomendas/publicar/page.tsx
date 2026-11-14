@@ -132,7 +132,7 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
 
   // Política de multa de cancelamento e piso mínimo configurados no Console Administrativo
   const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
-  const [minFreightPriceCents, setMinFreightPriceCents] = useState<number>(500);
+  const [minFreightPriceCents, setMinFreightPriceCents] = useState<number>(900);
 
   useEffect(() => {
     let active = true;

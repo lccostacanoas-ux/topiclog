@@ -33,6 +33,8 @@ export interface AsaasPixData {
   marketplaceFee?: number;
   createdAt: string;
   isSandboxSimulator?: boolean;
+  isKeyConfigured?: boolean;
+  environment?: "production" | "sandbox";
 }
 
 export async function createAsaasPix(params: CreateAsaasPixParams): Promise<AsaasPixData> {

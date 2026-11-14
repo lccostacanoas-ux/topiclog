@@ -74,7 +74,7 @@ public sealed class Shipment
     public double DimensionsHeightCm { get; init; }
     public long DeclaredValueCents { get; init; }
     public long SuggestedPriceCents { get; set; }
-    public long MinimumFreightPriceCents { get; set; } = 500;
+    public long MinimumFreightPriceCents { get; set; } = 900;
     public IReadOnlyList<string> SpecialCareNotes { get; set; } = [];
     public ShipmentAddress OriginAddress { get; set; } = default!;
     public ShipmentAddress DestinationAddress { get; set; } = default!;
