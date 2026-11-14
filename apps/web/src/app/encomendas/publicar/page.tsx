@@ -414,10 +414,15 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
 
       const res = await createShipmentApi(apiPayload, token);
       if (!res.ok) {
-        setErrorMsg(
-          res.problem?.detail ||
-            "Não foi possível publicar sua encomenda no servidor oficial da Topic Log. Verifique sua conexão e tente novamente."
-        );
+        if (res.status === 401) {
+          setErrorMsg("Sua sessão expirou ou é inválida. Por favor, refaça o login para publicar.");
+        } else {
+          setErrorMsg(
+            res.problem?.detail ||
+              res.problem?.title ||
+              "Não foi possível publicar sua encomenda no servidor oficial da Topic Log. Verifique sua conexão e tente novamente."
+          );
+        }
         setIsSubmitting(false);
         isSubmittingRef.current = false;
         return;

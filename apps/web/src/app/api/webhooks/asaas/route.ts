@@ -11,6 +11,19 @@ import { NextResponse } from "next/server";
  */
 export async function POST(request: Request) {
   try {
+    // 1. Validação do Token de Autenticação do Webhook Asaas (se configurado no ambiente)
+    const expectedToken = (process.env.ASAAS_WEBHOOK_TOKEN || "").trim();
+    if (expectedToken) {
+      const incomingToken = (request.headers.get("asaas-access-token") || "").trim();
+      if (!incomingToken || incomingToken !== expectedToken) {
+        console.warn("[Asaas Webhook] Tentativa de acesso com token de webhook inválido ou ausente.");
+        return NextResponse.json(
+          { error: "Acesso negado: token de webhook Asaas inválido ou ausente." },
+          { status: 401 }
+        );
+      }
+    }
+
     const rawBody = await request.text();
     if (!rawBody || rawBody.trim().length === 0) {
       return NextResponse.json({ error: "Payload vazio" }, { status: 400 });
