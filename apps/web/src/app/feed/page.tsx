@@ -108,6 +108,29 @@ function FeedContent(): React.JSX.Element {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DemoShipment | DemoTrip | null>(null);
 
+  // Ocultar itens do Feed a pedido do usuário
+  const [hiddenFeedItemIds, setHiddenFeedItemIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!user?.userId) return;
+    try {
+      const stored = localStorage.getItem(`topiclog_hidden_feed_items_${user.userId}`);
+      if (stored) {
+        setHiddenFeedItemIds(JSON.parse(stored));
+      }
+    } catch {}
+  }, [user?.userId]);
+
+  const handleHideFeedItem = (id: string) => {
+    if (!user?.userId) return;
+    const next = Array.from(new Set([...hiddenFeedItemIds, id]));
+    setHiddenFeedItemIds(next);
+    try {
+      localStorage.setItem(`topiclog_hidden_feed_items_${user.userId}`, JSON.stringify(next));
+    } catch {}
+    setSelectedItem(null);
+  };
+
   // Mapeamento de propostas ativas enviadas pelo transportador para travar novas ofertas duplicadas
   const [carrierProposalsByShipmentId, setCarrierProposalsByShipmentId] = useState<Record<string, ProposalDto>>({});
 
@@ -492,6 +515,9 @@ function FeedContent(): React.JSX.Element {
 
   // Filtragem estrita de Encomendas padrão
   const filteredShipments = shipments.filter((s) => {
+    if (hiddenFeedItemIds.includes(s.id)) {
+      return false;
+    }
     if (selectedCategory !== "ALL" && s.category !== selectedCategory) {
       return false;
     }
@@ -509,6 +535,9 @@ function FeedContent(): React.JSX.Element {
 
   // Filtragem estrita de Viagens padrão
   const filteredTrips = trips.filter((t) => {
+    if (hiddenFeedItemIds.includes(t.id)) {
+      return false;
+    }
     if (selectedOrigin !== "ALL" && t.originCity.toLowerCase() !== selectedOrigin.toLowerCase()) {
       return false;
     }
@@ -2045,6 +2074,27 @@ function FeedContent(): React.JSX.Element {
                       className="btn btn--outline"
                     >
                       Voltar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleHideFeedItem(selectedItem.id)}
+                      style={{
+                        padding: "8px 14px",
+                        backgroundColor: "#FFF1F2",
+                        border: "1px solid #FECDD3",
+                        borderRadius: "8px",
+                        color: "#E11D48",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px"
+                      }}
+                      title="Oculta esta oportunidade do seu feed"
+                    >
+                      🗑️ Ocultar do Feed
                     </button>
 
                     {Boolean(

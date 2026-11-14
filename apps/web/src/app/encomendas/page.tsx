@@ -55,6 +55,47 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Controle de ocultação no Feed vs Preservação no Histórico
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [hiddenShipmentIds, setHiddenShipmentIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!user?.userId) return;
+    try {
+      const stored = localStorage.getItem(`topiclog_hidden_shipments_${user.userId}`);
+      if (stored) {
+        setHiddenShipmentIds(JSON.parse(stored));
+      }
+    } catch {}
+  }, [user?.userId]);
+
+  const handleHideShipmentFromFeed = (shipmentId: string) => {
+    if (!user?.userId) return;
+    const next = Array.from(new Set([...hiddenShipmentIds, shipmentId]));
+    setHiddenShipmentIds(next);
+    try {
+      localStorage.setItem(`topiclog_hidden_shipments_${user.userId}`, JSON.stringify(next));
+    } catch {}
+    setSuccessMessage("✓ Encomenda excluída do seu feed ativo. Ela permanece preservada no seu Histórico.");
+  };
+
+  const handleRestoreShipmentToFeed = (shipmentId: string) => {
+    if (!user?.userId) return;
+    const next = hiddenShipmentIds.filter((id) => id !== shipmentId);
+    setHiddenShipmentIds(next);
+    try {
+      localStorage.setItem(`topiclog_hidden_shipments_${user.userId}`, JSON.stringify(next));
+    } catch {}
+    setSuccessMessage("✓ Encomenda restaurada com sucesso ao seu feed ativo!");
+  };
+
+  const hiddenCount = shipments.filter((s) => hiddenShipmentIds.includes(s.id)).length;
+  const visibleShipments = shipments.filter((s) => {
+    const isHidden = hiddenShipmentIds.includes(s.id);
+    if (showHistory) return true;
+    return !isHidden;
+  });
+
   // Estado do Modal de Edição
   const [editingShipment, setEditingShipment] = useState<UnifiedShipment | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -548,6 +589,64 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
           </div>
         )}
 
+        {/* Barra de Filtro entre Feed Ativo e Histórico Completo */}
+        {!loading && shipments.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: "none",
+                  backgroundColor: !showHistory ? "#2563EB" : "#F1F5F9",
+                  color: !showHistory ? "#FFFFFF" : "#475569"
+                }}
+              >
+                📦 Encomendas no Feed ({shipments.length - hiddenCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHistory(true)}
+                title="Visualiza todo o histórico de encomendas, inclusive as excluídas do feed"
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: showHistory ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+                  backgroundColor: showHistory ? "#EFF6FF" : "#FFFFFF",
+                  color: showHistory ? "#1D4ED8" : "#475569",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+              >
+                📜 {showHistory ? "Exibindo Histórico Completo" : "Ver Histórico Completo"} ({shipments.length})
+                {hiddenCount > 0 && (
+                  <span
+                    style={{
+                      backgroundColor: showHistory ? "#2563EB" : "#E2E8F0",
+                      color: showHistory ? "#FFFFFF" : "#475569",
+                      padding: "1px 7px",
+                      borderRadius: "10px",
+                      fontSize: "11px",
+                      fontWeight: 800
+                    }}
+                  >
+                    {hiddenCount} arquivada{hiddenCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Conteúdo / Listagem */}
         {loading ? (
           <div
@@ -589,9 +688,44 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
               Publicar Minha Primeira Encomenda
             </Link>
           </div>
+        ) : visibleShipments.length === 0 ? (
+          <div
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+              padding: "40px 24px",
+              textAlign: "center",
+              border: "1px solid #E2E8F0",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+            }}
+          >
+            <div style={{ fontSize: "36px", marginBottom: "8px" }}>📁</div>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#0F172A", margin: "0 0 6px 0" }}>
+              Todas as suas encomendas anteriores foram arquivadas do feed ativo
+            </h3>
+            <p style={{ fontSize: "13px", color: "#64748B", maxWidth: "420px", margin: "0 auto 16px auto" }}>
+              As encomendas concluídas ou encerradas permanecem salvas no seu Histórico.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowHistory(true)}
+              style={{
+                padding: "8px 18px",
+                backgroundColor: "#2563EB",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              📜 Abrir Histórico Completo ({shipments.length})
+            </button>
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {shipments.map((s) => {
+            {visibleShipments.map((s) => {
               const canEdit = s.status === "PUBLISHED" || s.status === "OPEN" || s.status === "NEGOTIATING" || s.status === "IN_NEGOTIATION";
               return (
                 <div
@@ -746,9 +880,59 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                           </button>
                         </>
                       ) : (
-                        <span style={{ fontSize: "12px", color: "#94A3B8", fontStyle: "italic" }}>
-                          🔒 Edição bloqueada (contratada ou em trânsito)
-                        </span>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "12px", color: "#94A3B8", fontStyle: "italic" }}>
+                            🔒 Edição bloqueada (contratada ou em trânsito)
+                          </span>
+                          {!hiddenShipmentIds.includes(s.id) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleHideShipmentFromFeed(s.id)}
+                              title="Excluir do feed ativo (mantém preservada no histórico)"
+                              style={{
+                                padding: "6px 14px",
+                                backgroundColor: "#FFF1F2",
+                                border: "1px solid #FECDD3",
+                                borderRadius: "8px",
+                                color: "#E11D48",
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px"
+                              }}
+                            >
+                              🗑️ Excluir do Feed
+                            </button>
+                          ) : (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", backgroundColor: "#F1F5F9", padding: "4px 8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}>
+                                📁 Removida do Feed
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreShipmentToFeed(s.id)}
+                                title="Restaurar encomenda no feed ativo"
+                                style={{
+                                  padding: "6px 14px",
+                                  backgroundColor: "#F0FDF4",
+                                  border: "1px solid #BBF7D0",
+                                  borderRadius: "8px",
+                                  color: "#166534",
+                                  fontSize: "13px",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px"
+                                }}
+                              >
+                                ↩️ Restaurar no Feed
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* Botão para ver Propostas */}

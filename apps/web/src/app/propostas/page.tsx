@@ -233,6 +233,38 @@ export default function PropostasPage(): React.JSX.Element {
   const [ordersByShipmentId, setOrdersByShipmentId] = useState<Record<string, DeliveryOrderDto>>({});
   const [orderCodesByOrderId, setOrderCodesByOrderId] = useState<Record<string, OrderCodesDto>>({});
   const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "COMPLETED" | "CANCELLED" | "AWAITING_PAYMENT">("ALL");
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [hiddenProposalIds, setHiddenProposalIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!user?.userId) return;
+    try {
+      const stored = localStorage.getItem(`topiclog_hidden_proposals_${user.userId}`);
+      if (stored) {
+        setHiddenProposalIds(JSON.parse(stored));
+      }
+    } catch {}
+  }, [user?.userId]);
+
+  const handleHideFromFeed = (proposalId: string) => {
+    if (!user?.userId) return;
+    const next = Array.from(new Set([...hiddenProposalIds, proposalId]));
+    setHiddenProposalIds(next);
+    try {
+      localStorage.setItem(`topiclog_hidden_proposals_${user.userId}`, JSON.stringify(next));
+    } catch {}
+    setActionNotice("✓ Proposta excluída do seu feed ativo. Ela permanece preservada no seu Histórico.");
+  };
+
+  const handleRestoreToFeed = (proposalId: string) => {
+    if (!user?.userId) return;
+    const next = hiddenProposalIds.filter((id) => id !== proposalId);
+    setHiddenProposalIds(next);
+    try {
+      localStorage.setItem(`topiclog_hidden_proposals_${user.userId}`, JSON.stringify(next));
+    } catch {}
+    setActionNotice("✓ Proposta restaurada com sucesso ao seu feed ativo!");
+  };
   const [counterProposalId, setCounterProposalId] = useState<string | null>(null);
   const [counterValueInput, setCounterValueInput] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -737,8 +769,14 @@ export default function PropostasPage(): React.JSX.Element {
     );
   }
 
-  // Mantém todo o histórico de viagens e propostas (ativas, concluídas e canceladas)
-  const visibleProposals = proposals;
+  // No feed padrão (showHistory === false), oculta as propostas excluídas do feed pelo usuário.
+  // No modo Histórico Completo (showHistory === true), exibe todas as propostas preservadas no histórico.
+  const hiddenCount = proposals.filter((p) => hiddenProposalIds.includes(p.id)).length;
+  const visibleProposals = proposals.filter((p) => {
+    const isHidden = hiddenProposalIds.includes(p.id);
+    if (showHistory) return true;
+    return !isHidden;
+  });
 
   const isTripCompleted = (p: ProposalDto) => {
     const c = contractsByProposalId[p.id];
@@ -1059,6 +1097,41 @@ export default function PropostasPage(): React.JSX.Element {
           >
             Canceladas ({cancelledCount})
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowHistory(!showHistory)}
+            title="Alterna entre o Feed Ativo e o Histórico Completo com propostas encerradas e arquivadas"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              border: showHistory ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+              backgroundColor: showHistory ? "#EFF6FF" : "#FFFFFF",
+              color: showHistory ? "#1D4ED8" : "#475569",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            📜 {showHistory ? "Exibindo Histórico Completo" : "Ver Histórico Completo"}
+            {hiddenCount > 0 && (
+              <span
+                style={{
+                  backgroundColor: showHistory ? "#2563EB" : "#E2E8F0",
+                  color: showHistory ? "#FFFFFF" : "#475569",
+                  padding: "1px 7px",
+                  borderRadius: "10px",
+                  fontSize: "11px",
+                  fontWeight: 800
+                }}
+              >
+                {hiddenCount} arquivada{hiddenCount > 1 ? "s" : ""}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Controles de Visualização: Cards vs Lista e Recolher/Expandir */}
@@ -1351,6 +1424,46 @@ export default function PropostasPage(): React.JSX.Element {
                           >
                             👁️ Ver Detalhes
                           </button>
+
+                          {(isCompleted || isCancelled) && (
+                            !hiddenProposalIds.includes(proposal.id) ? (
+                              <button
+                                type="button"
+                                onClick={() => handleHideFromFeed(proposal.id)}
+                                title="Excluir do feed ativo (mantém no histórico)"
+                                style={{
+                                  padding: "5px 10px",
+                                  backgroundColor: "#FFF1F2",
+                                  color: "#E11D48",
+                                  border: "1px solid #FECDD3",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                              >
+                                🗑️ Excluir do Feed
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreToFeed(proposal.id)}
+                                title="Restaurar proposta no feed ativo"
+                                style={{
+                                  padding: "5px 10px",
+                                  backgroundColor: "#F0FDF4",
+                                  color: "#166534",
+                                  border: "1px solid #BBF7D0",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  cursor: "pointer"
+                                }}
+                              >
+                                ↩️ Restaurar
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1925,26 +2038,57 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* Botões quando Recusada */}
+                {/* Botões quando Recusada: Excluir do Feed mantendo no Histórico */}
                 {isRejected && (
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => void handleDeleteProposal(proposal.id)}
-                      style={{
-                        padding: "6px 14px",
-                        backgroundColor: "#F8FAFC",
-                        color: "#DC2626",
-                        border: "1px solid #FECACA",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      🗑️ Excluir do Histórico
-                    </button>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                    {!hiddenProposalIds.includes(proposal.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleHideFromFeed(proposal.id)}
+                        title="Oculta esta proposta recusada do seu feed ativo, preservando-a no seu Histórico"
+                        style={{
+                          padding: "6px 14px",
+                          backgroundColor: "#FFF1F2",
+                          color: "#E11D48",
+                          border: "1px solid #FECDD3",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        🗑️ Excluir do Feed
+                      </button>
+                    ) : (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", backgroundColor: "#F1F5F9", padding: "4px 8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}>
+                          📁 Removida do Feed
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreToFeed(proposal.id)}
+                          title="Restaurar no feed ativo"
+                          style={{
+                            padding: "6px 12px",
+                            backgroundColor: "#F0FDF4",
+                            color: "#166534",
+                            border: "1px solid #BBF7D0",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          ↩️ Restaurar no Feed
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2273,6 +2417,60 @@ export default function PropostasPage(): React.JSX.Element {
                     }}
                   >
                     🚫 {contract.cancellation.policyDisclaimer}
+                  </div>
+                )}
+
+                {/* Opção para Excluir do Feed (preservando permanentemente no Histórico) */}
+                {(isCompleted || isCancelled) && (
+                  <div style={{ marginTop: "14px", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px" }}>
+                    {!hiddenProposalIds.includes(proposal.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleHideFromFeed(proposal.id)}
+                        title="Oculta esta proposta do seu feed ativo, mantendo-a preservada no seu Histórico"
+                        style={{
+                          padding: "6px 14px",
+                          backgroundColor: "#FFF1F2",
+                          color: "#E11D48",
+                          border: "1px solid #FECDD3",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px"
+                        }}
+                      >
+                        🗑️ Excluir do Feed
+                      </button>
+                    ) : (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", backgroundColor: "#F1F5F9", padding: "4px 8px", borderRadius: "6px", border: "1px solid #CBD5E1" }}>
+                          📁 Removida do Feed
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreToFeed(proposal.id)}
+                          title="Restaurar para o feed ativo"
+                          style={{
+                            padding: "6px 12px",
+                            backgroundColor: "#F0FDF4",
+                            color: "#166534",
+                            border: "1px solid #BBF7D0",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          ↩️ Restaurar no Feed
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                   </div>
