@@ -321,20 +321,53 @@ export function AsaasPixModal({
           </div>
         </div>
 
-        {/* Erro */}
+        {/* Erro com Botão de Refazer Envio do Pix */}
         {errorMsg && (
           <div
             style={{
               backgroundColor: "#FEF2F2",
               border: "1px solid #FCA5A5",
-              borderRadius: "8px",
-              padding: "10px 12px",
+              borderRadius: "10px",
+              padding: "12px 14px",
               color: "#991B1B",
-              fontSize: "12px",
+              fontSize: "13px",
               marginBottom: "14px"
             }}
           >
-            ⚠️ {errorMsg}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+              <span style={{ fontSize: "16px" }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <div>{errorMsg}</div>
+                {remainingSeconds > 0 ? (
+                  <div style={{ marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => generatePix(selectedAmount)}
+                      disabled={loading}
+                      style={{
+                        backgroundColor: "#DC2626",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "7px 14px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: loading ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}
+                    >
+                      🔄 Refazer Envio do Pix / Tentar Novamente
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: "6px", fontSize: "11px", fontWeight: 700, color: "#991B1B" }}>
+                    ⏰ O prazo programado expirou. A reserva foi cancelada.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -448,24 +481,47 @@ export function AsaasPixModal({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleManualCheck}
-                  disabled={checking}
-                  style={{
-                    width: "100%",
-                    backgroundColor: "#059669",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    cursor: checking ? "not-allowed" : "pointer"
-                  }}
-                >
-                  {checking ? "Verificando no Asaas..." : "Já realizei o pagamento Pix"}
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={handleManualCheck}
+                    disabled={checking || remainingSeconds <= 0}
+                    style={{
+                      flex: 1,
+                      backgroundColor: "#059669",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "10px",
+                      fontWeight: 700,
+                      fontSize: "13px",
+                      cursor: checking || remainingSeconds <= 0 ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    {checking ? "Verificando no Asaas..." : "Já realizei o pagamento Pix"}
+                  </button>
+                  {remainingSeconds > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => generatePix(selectedAmount)}
+                      disabled={loading || checking}
+                      title="Gerar novamente o código Pix caso queira refazer o envio"
+                      style={{
+                        backgroundColor: "#F1F5F9",
+                        color: "#334155",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "8px",
+                        padding: "10px 14px",
+                        fontWeight: 700,
+                        fontSize: "12px",
+                        cursor: loading || checking ? "not-allowed" : "pointer",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      🔄 Refazer Envio
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               /* CENÁRIO B: Chave Asaas ainda não configurada no ambiente da Vercel */
@@ -480,13 +536,37 @@ export function AsaasPixModal({
               >
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
                   <span style={{ fontSize: "22px" }}>⚠️</span>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong style={{ fontSize: "14px", color: "#991B1B" }}>
                       Serviço de pagamento Asaas não configurado no servidor
                     </strong>
                     <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#B91C1C", lineHeight: 1.45 }}>
                       A cobrança Pix não pôde ser gerada. Configure a variável <code>ASAAS_API_KEY</code> no painel da Vercel para habilitar pagamentos bancários reais com split automático.
                     </p>
+                    {remainingSeconds > 0 && (
+                      <div style={{ marginTop: "12px" }}>
+                        <button
+                          type="button"
+                          onClick={() => generatePix(selectedAmount)}
+                          disabled={loading}
+                          style={{
+                            backgroundColor: "#DC2626",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "8px 14px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: loading ? "not-allowed" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px"
+                          }}
+                        >
+                          🔄 Refazer Envio do Pix / Tentar Novamente
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

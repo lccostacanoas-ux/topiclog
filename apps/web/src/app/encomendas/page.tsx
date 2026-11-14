@@ -916,7 +916,31 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                                     {contract.status === "ACTIVE" || contract.status === "COMPLETED"
                                       ? "✓ Pagamento Pix aprovado e retido em custódia segura da TopicLog."
                                       : contract.status === "AWAITING_PAYMENT"
-                                      ? "⏳ Aguardando compensação do pagamento Pix (reserva temporária de 15 min)."
+                                      ? (
+                                          <div>
+                                            <span>⏳ Aguardando compensação do pagamento Pix (reserva temporária de 15 min).</span>
+                                            <div style={{ marginTop: "6px" }}>
+                                              <Link
+                                                href="/propostas"
+                                                style={{
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: "6px",
+                                                  padding: "6px 14px",
+                                                  backgroundColor: "#059669",
+                                                  color: "#FFFFFF",
+                                                  borderRadius: "6px",
+                                                  fontWeight: 700,
+                                                  fontSize: "12px",
+                                                  textDecoration: "none",
+                                                  boxShadow: "0 1px 3px rgba(5, 150, 105, 0.3)"
+                                                }}
+                                              >
+                                                ⚡ Refazer Envio do Pix / Concluir Pagamento
+                                              </Link>
+                                            </div>
+                                          </div>
+                                        )
                                       : contract.status === "CANCELLED_PRE_PICKUP" || contract.status === "CANCELLED_POST_PICKUP"
                                       ? "🚫 Contrato cancelado."
                                       : contract.status === "PAYMENT_EXPIRED"

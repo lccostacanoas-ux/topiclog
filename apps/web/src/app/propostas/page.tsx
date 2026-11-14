@@ -1295,30 +1295,42 @@ export default function PropostasPage(): React.JSX.Element {
                       <td style={{ padding: "12px 16px", textAlign: "center", whiteSpace: "nowrap" }}>
                         <div style={{ display: "inline-flex", gap: "6px", alignItems: "center", justifyContent: "center" }}>
                           {isAwaitingPayment && isSender && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedProposalForPix(proposal);
-                                setSelectedContractForPix(contract || null);
-                                setPixModalOpen(true);
-                              }}
-                              style={{
-                                padding: "6px 12px",
-                                backgroundColor: "#059669",
-                                color: "#FFFFFF",
-                                border: "none",
-                                borderRadius: "6px",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                boxShadow: "0 1px 3px rgba(5, 150, 105, 0.3)"
-                              }}
-                            >
-                              ⚡ Pagar Pix
-                            </button>
+                            (() => {
+                              const effExpiresAt = contract?.paymentExpiresAtUtc || (contract?.contractedAtUtc ? new Date(new Date(contract.contractedAtUtc).getTime() + 15 * 60 * 1000).toISOString() : null);
+                              const isExp = effExpiresAt ? new Date(effExpiresAt).getTime() <= Date.now() : false;
+                              const cd = !isExp ? formatRemainingCountdown(effExpiresAt) : null;
+                              return !isExp ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedProposalForPix(proposal);
+                                    setSelectedContractForPix(contract || null);
+                                    setPixModalOpen(true);
+                                  }}
+                                  title="Refazer envio ou concluir pagamento Pix"
+                                  style={{
+                                    padding: "6px 12px",
+                                    backgroundColor: "#059669",
+                                    color: "#FFFFFF",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    fontSize: "12px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    boxShadow: "0 1px 3px rgba(5, 150, 105, 0.3)"
+                                  }}
+                                >
+                                  ⚡ Refazer Pix {cd ? `(${cd})` : ""}
+                                </button>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "#DC2626", fontWeight: 700 }}>
+                                  ⏰ Expirado
+                                </span>
+                              );
+                            })()
                           )}
                           <button
                             type="button"
@@ -1389,9 +1401,11 @@ export default function PropostasPage(): React.JSX.Element {
             const isAccepted = proposal.status === "ACCEPTED" || isPaid || isCompleted;
             const isRejected = proposal.status === "REJECTED";
 
-            const countdown = isAwaitingPayment
-              ? formatRemainingCountdown(contract?.paymentExpiresAtUtc)
-              : null;
+            const effectiveExpiresAt = contract?.paymentExpiresAtUtc || (contract?.contractedAtUtc ? new Date(new Date(contract.contractedAtUtc).getTime() + 15 * 60 * 1000).toISOString() : null);
+            const isExpired = isAwaitingPayment && effectiveExpiresAt ? new Date(effectiveExpiresAt).getTime() <= Date.now() : false;
+            const countdown = isAwaitingPayment && !isExpired
+              ? formatRemainingCountdown(effectiveExpiresAt)
+              : isExpired ? "Prazo expirado" : null;
             const isUserSender =
               proposal.senderId === user?.userId ||
               (!proposal.senderId && activeTab === "RECEIVED");
@@ -1947,30 +1961,77 @@ export default function PropostasPage(): React.JSX.Element {
                     style={{
                       marginTop: "14px",
                       padding: "12px 14px",
-                      backgroundColor: "#FFFBEB",
-                      border: "1px solid #FDE68A",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      color: "#92400E",
+                      backgroundColor: isExpired ? "#FEF2F2" : "#FFFBEB",
+                      border: `1.5px solid ${isExpired ? "#FCA5A5" : "#FDE68A"}`,
+                      borderRadius: "10px",
+                      fontSize: "13px",
+                      color: isExpired ? "#991B1B" : "#92400E",
                       display: "flex",
-                      alignItems: "center",
-                      gap: "8px"
+                      flexDirection: "column",
+                      gap: "10px"
                     }}
                   >
-                    <span style={{ fontSize: "16px" }}>⏳</span>
-                    <span>
-                      {isUserSender ? (
-                        <>
-                          <strong>Aguardando seu pagamento Pix ({countdown || "15:00"}):</strong>{" "}
-                          Assim que o Pix for pago, a encomenda sairá do mural público e serão liberados o chat privado e os códigos de coleta e entrega.
-                        </>
-                      ) : (
-                        <>
-                          <strong>O remetente aceitou sua proposta!</strong>{" "}
-                          O remetente tem 15 minutos para efetuar o pagamento Pix ({countdown || "em andamento"}). Você receberá um alerta e os endereços completos assim que o pagamento for confirmado.
-                        </>
-                      )}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "18px" }}>{isExpired ? "⏰" : "⏳"}</span>
+                      <div style={{ flex: 1 }}>
+                        {isExpired ? (
+                          <>
+                            <strong>O prazo de 15 minutos para envio do Pix expirou:</strong>{" "}
+                            A reserva temporária foi liberada e a proposta cancelada por decurso de prazo. O transportador está livre para receber novas ofertas.
+                          </>
+                        ) : isUserSender ? (
+                          <>
+                            <strong>Aguardando seu pagamento Pix ({countdown || "15:00"}):</strong>{" "}
+                            O frete está reservado para você. Caso tenha fechado a tela ou precise reenviar o Pix, utilize o botão abaixo para refazer o envio do Pix antes do encerramento do prazo.
+                          </>
+                        ) : (
+                          <>
+                            <strong>O remetente aceitou sua proposta!</strong>{" "}
+                            O remetente tem 15 minutos para efetuar o pagamento Pix ({countdown || "em andamento"}). Você receberá um alerta e os endereços completos assim que o pagamento for confirmado.
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {isUserSender && !isExpired && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleResumePixPayment(
+                              proposal,
+                              contract ||
+                                ({
+                                  id: `contract-${proposal.id}`,
+                                  proposalId: proposal.id,
+                                  shipmentId: proposal.shipmentId,
+                                  senderId: proposal.senderId,
+                                  carrierId: proposal.carrierId,
+                                  amountCents: proposal.amountCents,
+                                  status: "AWAITING_PAYMENT",
+                                  contractedAtUtc: new Date().toISOString()
+                                } as any)
+                            )
+                          }
+                          style={{
+                            padding: "9px 18px",
+                            backgroundColor: "#059669",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)"
+                          }}
+                        >
+                          ⚡ Refazer Envio do Pix • Gerar QR Code ({countdown || "15 min"})
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -2109,45 +2170,51 @@ export default function PropostasPage(): React.JSX.Element {
                   </div>
                 )}
 
-                {/* Botões quando Aceito (e viagem em andamento) */}
-                {isAccepted && !isCompleted && (
+                {/* Botões quando Aguardando Pagamento ou Aceito (e viagem em andamento) */}
+                {((isAccepted || isAwaitingPayment) && !isCompleted) && (
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap", marginTop: "14px" }}>
-                    {isUserSender && (isAwaitingPayment || (!isPaid && proposal.status === "ACCEPTED")) && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleResumePixPayment(
-                            proposal,
-                            contract ||
-                              ({
-                                id: `contract-${proposal.id}`,
-                                proposalId: proposal.id,
-                                shipmentId: proposal.shipmentId,
-                                senderId: proposal.senderId,
-                                carrierId: proposal.carrierId,
-                                amountCents: proposal.amountCents,
-                                status: "AWAITING_PAYMENT",
-                                contractedAtUtc: new Date().toISOString()
-                              } as any)
-                          )
-                        }
-                        style={{
-                          padding: "10px 20px",
-                          backgroundColor: "#059669",
-                          color: "#FFFFFF",
-                          border: "none",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)"
-                        }}
-                      >
-                        ⚡ Pagar Frete com Pix • Gerar QR Code ({countdown || "15 min"})
-                      </button>
+                    {isUserSender && isAwaitingPayment && (
+                      !isExpired ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleResumePixPayment(
+                              proposal,
+                              contract ||
+                                ({
+                                  id: `contract-${proposal.id}`,
+                                  proposalId: proposal.id,
+                                  shipmentId: proposal.shipmentId,
+                                  senderId: proposal.senderId,
+                                  carrierId: proposal.carrierId,
+                                  amountCents: proposal.amountCents,
+                                  status: "AWAITING_PAYMENT",
+                                  contractedAtUtc: new Date().toISOString()
+                                } as any)
+                            )
+                          }
+                          style={{
+                            padding: "10px 20px",
+                            backgroundColor: "#059669",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "14px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)"
+                          }}
+                        >
+                          ⚡ Refazer Envio do Pix • Gerar QR Code ({countdown || "15 min"})
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: "12px", color: "#DC2626", fontWeight: 700, padding: "8px 14px", backgroundColor: "#FEF2F2", borderRadius: "8px", border: "1px solid #FCA5A5" }}>
+                          ⏰ Prazo de pagamento expirado
+                        </span>
+                      )
                     )}
 
                     {isPaid && (
@@ -2235,9 +2302,15 @@ export default function PropostasPage(): React.JSX.Element {
             payerCpfCnpj={(user as any)?.cpfCnpj || (user as any)?.documentNumber || (user as any)?.cpf || undefined}
             orderId={selectedProposalForPix.shipmentId}
             carrierWalletId={effectiveContract?.carrierId}
-            expiresAtUtc={effectiveContract?.paymentExpiresAtUtc}
+            expiresAtUtc={
+              effectiveContract?.paymentExpiresAtUtc ||
+              (effectiveContract?.contractedAtUtc
+                ? new Date(new Date(effectiveContract.contractedAtUtc).getTime() + 15 * 60 * 1000).toISOString()
+                : null)
+            }
             onExpired={() => {
               setPixModalOpen(false);
+              setSelectedProposalForPix(null);
               setSelectedContractForPix(null);
               setErrorMessage("O prazo de 15 minutos para pagamento Pix expirou e a reserva foi liberada.");
               void loadData(true);
