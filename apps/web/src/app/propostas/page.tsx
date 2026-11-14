@@ -33,8 +33,8 @@ import type {
   DeliveryOrderDto,
   OrderCodesDto
 } from "../../lib/types";
-import { MercadoPagoPixModal } from "../../components/MercadoPagoPixModal";
-import type { MercadoPagoPixData } from "../../lib/mercadopago";
+import { AsaasPixModal } from "../../components/AsaasPixModal";
+import type { AsaasPixData } from "../../lib/asaas";
 
 function safeFormatDate(val?: string): string {
   if (!val) return new Date().toLocaleDateString("pt-BR");
@@ -565,8 +565,8 @@ export default function PropostasPage(): React.JSX.Element {
     setPixModalOpen(true);
   };
 
-  // Passo 2 do Remetente: Mercado Pago aprova o Pix -> Confirma pagamento na API (tira do Mural, libera códigos e chat)
-  const handlePixSuccess = async (paymentData: MercadoPagoPixData) => {
+  // Passo 2 do Remetente: Asaas aprova o Pix -> Confirma pagamento na API (tira do Mural, libera códigos e chat)
+  const handlePixSuccess = async (paymentData: AsaasPixData) => {
     if (!token || !selectedProposalForPix) {
       setPixModalOpen(false);
       return;
@@ -581,8 +581,8 @@ export default function PropostasPage(): React.JSX.Element {
       const confirmRes = await confirmContractPaymentApi(
         contract.id,
         {
-          paymentProvider: "mercadopago_pix",
-          paymentReferenceId: String(paymentData.id || `mp-${Date.now()}`)
+          paymentProvider: "asaas_pix",
+          paymentReferenceId: String(paymentData.id || `asaas-${Date.now()}`)
         },
         token
       );
@@ -2206,7 +2206,7 @@ export default function PropostasPage(): React.JSX.Element {
           : Math.round(selectedProposalForPix.amountCents * 0.15) / 100;
 
         return (
-          <MercadoPagoPixModal
+          <AsaasPixModal
             isOpen={pixModalOpen}
             onClose={() => setPixModalOpen(false)}
             amountReais={selectedProposalForPix.amountCents / 100}
@@ -2215,6 +2215,7 @@ export default function PropostasPage(): React.JSX.Element {
             payerEmail={user?.email || "contato@topiclog.com.br"}
             payerName={user?.displayName || "Remetente TopicLog"}
             orderId={selectedProposalForPix.shipmentId}
+            carrierWalletId={effectiveContract?.carrierId}
             expiresAtUtc={effectiveContract?.paymentExpiresAtUtc}
             onExpired={() => {
               setPixModalOpen(false);
