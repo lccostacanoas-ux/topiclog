@@ -401,6 +401,19 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
                 403);
         }
 
+        // Trava absoluta: Códigos só são liberados após pagamento Pix confirmado
+        if (_proposalsRepo is not null)
+        {
+            var contract = await _proposalsRepo.GetContractByIdAsync(order.ContractId, cancellationToken);
+            if (contract is not null && contract.Status != ContractStatus.ACTIVE && contract.Status != ContractStatus.COMPLETED)
+            {
+                throw new DomainRuleViolationException(
+                    "PAYMENT_REQUIRED",
+                    "O código de entrega só é liberado após a confirmação do pagamento Pix.",
+                    402);
+            }
+        }
+
         var challenge = await _fulfillmentRepo.GetActiveChallengeByOrderIdAsync(order.Id, cancellationToken);
         if (challenge == null)
         {
@@ -1170,6 +1183,19 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
                 "FORBIDDEN_CARRIER_CANNOT_VIEW_CODES",
                 "Apenas o remetente pode visualizar os códigos secretos de coleta e entrega.",
                 403);
+        }
+
+        // Trava absoluta: Códigos só são liberados após pagamento Pix confirmado
+        if (_proposalsRepo is not null)
+        {
+            var contract = await _proposalsRepo.GetContractByIdAsync(order.ContractId, cancellationToken);
+            if (contract is not null && contract.Status != ContractStatus.ACTIVE && contract.Status != ContractStatus.COMPLETED)
+            {
+                throw new DomainRuleViolationException(
+                    "PAYMENT_REQUIRED",
+                    "Os códigos de coleta e entrega só são liberados após a confirmação do pagamento Pix.",
+                    402);
+            }
         }
 
         var challenge = await _fulfillmentRepo.GetActiveChallengeByOrderIdAsync(order.Id, cancellationToken)

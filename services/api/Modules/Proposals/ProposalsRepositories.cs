@@ -415,10 +415,11 @@ public sealed class InMemoryProposalsRepository : IProposalsRepository
             var now = DateTimeOffset.UtcNow;
             bool alreadyContracted = _contracts.Values.Any(c =>
                 c.ShipmentId == proposal.ShipmentId &&
+                c.ProposalId != proposal.Id &&
                 (c.Status == ContractStatus.ACTIVE ||
                  c.Status == ContractStatus.COMPLETED ||
                  (c.Status == ContractStatus.AWAITING_PAYMENT && (c.PaymentExpiresAtUtc == null || c.PaymentExpiresAtUtc > now))));
-            if (alreadyContracted || proposal.Status == ProposalStatus.SUPERSEDED)
+            if (alreadyContracted)
             {
                 proposal.Status = ProposalStatus.SUPERSEDED;
                 proposal.UpdatedAtUtc = DateTimeOffset.UtcNow;

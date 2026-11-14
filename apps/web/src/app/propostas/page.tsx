@@ -42,7 +42,7 @@ function safeFormatDate(val?: string): string {
   return isNaN(d.getTime()) ? new Date().toLocaleDateString("pt-BR") : d.toLocaleDateString("pt-BR");
 }
 
-function safeFormatDateTime(val?: string): string {
+function safeFormatDateTime(val?: string | number | Date | null): string {
   if (!val) return "";
   const d = new Date(val);
   if (isNaN(d.getTime())) return "";
@@ -1251,7 +1251,7 @@ export default function PropostasPage(): React.JSX.Element {
                         <span style={{ display: "block", fontSize: "11px", color: "#94A3B8" }}>#{proposal.shipmentId.slice(0, 8)}</span>
                       </td>
                       <td style={{ padding: "12px 16px", color: "#64748B", whiteSpace: "nowrap" }}>
-                        {safeFormatDateTime(proposal.createdAtUtc) || safeFormatDate(proposal.createdAtUtc)}
+                        {safeFormatDateTime(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc) || safeFormatDate(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc)}
                       </td>
                       <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                         {isCompleted && (
@@ -1480,7 +1480,7 @@ export default function PropostasPage(): React.JSX.Element {
                     <span style={{ fontSize: "12px", color: "#64748B", display: "block", marginTop: "2px" }}>
                       ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • {activeTab === "SENT" ? "Enviada em" : "Recebida em"}:{" "}
                       <strong style={{ color: "#1E293B" }}>
-                        {safeFormatDateTime(proposal.createdAtUtc) || safeFormatDate(proposal.createdAtUtc)}
+                        {safeFormatDateTime(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc) || safeFormatDate(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc)}
                       </strong>
                     </span>
 

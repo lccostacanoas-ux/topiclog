@@ -186,21 +186,6 @@ export function AsaasPixModal({
     }
   };
 
-  const handleSimulateInstantPayment = () => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    setIsApproved(true);
-    const successData: AsaasPixData = pixData || {
-      id: `pay_asaas_demo_${Date.now()}`,
-      status: "RECEIVED",
-      statusDetail: "Aprovado em modo de teste Asaas",
-      qrCode: "",
-      transactionAmount: selectedAmount,
-      createdAt: new Date().toISOString(),
-      isSandboxSimulator: true
-    };
-    onPaymentSuccess({ ...successData, status: "RECEIVED" });
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -486,65 +471,23 @@ export function AsaasPixModal({
               /* CENÁRIO B: Chave Asaas ainda não configurada no ambiente da Vercel */
               <div
                 style={{
-                  backgroundColor: "#EFF6FF",
-                  border: "1.5px solid #93C5FD",
+                  backgroundColor: "#FEF2F2",
+                  border: "1.5px solid #FCA5A5",
                   borderRadius: "12px",
                   padding: "16px",
                   marginBottom: "16px"
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "10px" }}>
-                  <span style={{ fontSize: "22px" }}>ℹ️</span>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                  <span style={{ fontSize: "22px" }}>⚠️</span>
                   <div>
-                    <strong style={{ fontSize: "14px", color: "#1E40AF" }}>
-                      Integração Asaas Pronta para Ativação
+                    <strong style={{ fontSize: "14px", color: "#991B1B" }}>
+                      Serviço de pagamento Asaas não configurado no servidor
                     </strong>
-                    <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#1D4ED8", lineHeight: 1.45 }}>
-                      O sistema já está 100% migrado para a arquitetura do <strong>Asaas Split</strong>. Nenhuma cobrança será enviada para o banco legado antigo.
+                    <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#B91C1C", lineHeight: 1.45 }}>
+                      A cobrança Pix não pôde ser gerada. Configure a variável <code>ASAAS_API_KEY</code> no painel da Vercel para habilitar pagamentos bancários reais com split automático.
                     </p>
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    backgroundColor: "#FFFFFF",
-                    border: "1px dashed #BFDBFE",
-                    borderRadius: "8px",
-                    padding: "12px",
-                    fontSize: "12px",
-                    color: "#334155",
-                    marginBottom: "14px",
-                    lineHeight: 1.5
-                  }}
-                >
-                  <strong>Como ativar pagamentos reais via banco:</strong>
-                  <div style={{ marginTop: "4px" }}>
-                    Adicione a variável <code>ASAAS_API_KEY</code> no painel da Vercel (ou no arquivo de ambiente). O sistema detectará automaticamente se a chave é de Produção ou Sandbox e gerará QR Codes oficiais registrados no BACEN.
-                  </div>
-                </div>
-
-                <div style={{ textAlign: "center" }}>
-                  <p style={{ fontSize: "11px", color: "#64748B", margin: "0 0 8px" }}>
-                    Para testar a máquina de estados (reserva, custódia e entrega via PIN) agora mesmo:
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleSimulateInstantPayment}
-                    style={{
-                      width: "100%",
-                      backgroundColor: "#2563EB",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      padding: "11px",
-                      fontWeight: 700,
-                      fontSize: "13px",
-                      cursor: "pointer",
-                      boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)"
-                    }}
-                  >
-                    ⚡ Simular Confirmação Pix (Ambiente de Teste)
-                  </button>
                 </div>
               </div>
             )}

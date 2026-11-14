@@ -187,20 +187,6 @@ export function MercadoPagoPixModal({
     }
   };
 
-  const handleSimulateInstantPayment = () => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    setIsApproved(true);
-    const mockSuccess: MercadoPagoPixData = pixData || {
-      id: Date.now(),
-      status: "approved",
-      statusDetail: "accredited",
-      qrCode: "",
-      transactionAmount: selectedAmount,
-      createdAt: new Date().toISOString()
-    };
-    onPaymentSuccess({ ...mockSuccess, status: "approved" });
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -526,28 +512,6 @@ export function MercadoPagoPixModal({
                     {checking ? "Verificando..." : "🔄 Já paguei / Verificar agora"}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleSimulateInstantPayment}
-                    style={{
-                      width: "100%",
-                      marginTop: "10px",
-                      padding: "8px 14px",
-                      backgroundColor: "#059669",
-                      color: "#FFFFFF",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px"
-                    }}
-                  >
-                    <span>⚡ Simular Pagamento Instantâneo (Ambiente de Testes)</span>
-                  </button>
                 </div>
 
                 {errorMsg && (
@@ -583,14 +547,6 @@ export function MercadoPagoPixModal({
                     style={{ fontSize: "13px", padding: "8px 16px" }}
                   >
                     Tentar Novamente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSimulateInstantPayment}
-                    className="btn btn--primary"
-                    style={{ fontSize: "13px", padding: "8px 16px", backgroundColor: "#059669" }}
-                  >
-                    ⚡ Simular Pagamento Instantâneo
                   </button>
                 </div>
               </div>

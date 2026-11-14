@@ -232,27 +232,33 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
 
         if (!isTest)
         {
-            // Bloqueia duplicidade de proposta ativa pelo mesmo transportador para a mesma encomenda em ambiente operacional
+            // Trava de Proposta Ativa por Transportador:
+            // Bloqueia se o transportador já possui uma proposta ativa (PENDING, COUNTERED ou ACCEPTED)
             var existingShipmentProposals = await _proposalsRepository.ListProposalsByShipmentIdAsync(shipment.Id, cancellationToken).ConfigureAwait(false);
             var activeProposalFromCarrier = existingShipmentProposals.FirstOrDefault(p =>
                 p.CarrierId == carrierId &&
-                (p.Status == ProposalStatus.PENDING || p.Status == ProposalStatus.COUNTERED));
+                (p.Status == ProposalStatus.PENDING || p.Status == ProposalStatus.COUNTERED || p.Status == ProposalStatus.ACCEPTED));
 
             if (activeProposalFromCarrier is not null)
             {
-                if (activeProposalFromCarrier.Status == ProposalStatus.PENDING)
+                bool isContractExpired = false;
+                if (activeProposalFromCarrier.Status == ProposalStatus.ACCEPTED)
                 {
-                    var valFmt = (activeProposalFromCarrier.AmountCents / 100.0m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
-                    throw new DomainRuleViolationException(
-                        "PROPOSAL_ALREADY_EXISTS",
-                        $"Você já possui uma proposta ativa de R$ {valFmt} enviada para esta encomenda. Aguarde a resposta do remetente.",
-                        409);
+                    var contract = await _proposalsRepository.GetContractByIdAsync(activeProposalFromCarrier.Id, cancellationToken).ConfigureAwait(false)
+                                ?? await _proposalsRepository.GetContractByShipmentIdAsync(shipment.Id, cancellationToken).ConfigureAwait(false);
+                    if (contract is not null && (contract.Status == ContractStatus.PAYMENT_EXPIRED || (contract.PaymentExpiresAtUtc.HasValue && contract.PaymentExpiresAtUtc.Value <= DateTimeOffset.UtcNow)))
+                    {
+                        isContractExpired = true;
+                    }
                 }
 
-                throw new DomainRuleViolationException(
-                    "PROPOSAL_ALREADY_EXISTS",
-                    "O remetente já enviou uma contraproposta para esta encomenda. Acesse a aba 'Minhas Propostas' para aceitar ou responder.",
-                    409);
+                if (!isContractExpired)
+                {
+                    throw new DomainRuleViolationException(
+                        "PROPOSAL_ALREADY_EXISTS",
+                        "Você já possui uma proposta ativa para esta encomenda. Aguarde a resposta do remetente.",
+                        400);
+                }
             }
         }
 
@@ -512,10 +518,18 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             expectedVersion,
             async (prop) =>
             {
-                // Validações internas sincronizadas atomicamente
-                if (shipment.Status == ShipmentStatus.CONTRACTED || shipment.Status == ShipmentStatus.DELIVERED || shipment.Status == ShipmentStatus.CLOSED)
+                // Valida concorrência verificando exclusivamente se já existe outra proposta contratada ou em pagamento ativo
+                var existingContracts = await _proposalsRepository.ListAllContractsAsync(cancellationToken).ConfigureAwait(false);
+                bool hasActiveContract = existingContracts.Any(c =>
+                    c.ShipmentId == shipment.Id &&
+                    c.ProposalId != prop.Id &&
+                    (c.Status == ContractStatus.ACTIVE ||
+                     c.Status == ContractStatus.COMPLETED ||
+                     (c.Status == ContractStatus.AWAITING_PAYMENT && (c.PaymentExpiresAtUtc == null || c.PaymentExpiresAtUtc > DateTimeOffset.UtcNow))));
+
+                if (hasActiveContract || shipment.Status == ShipmentStatus.DELIVERED || shipment.Status == ShipmentStatus.CLOSED)
                 {
-                    return (false, "CONCURRENT_ACCEPTANCE_CONFLICT", "A encomenda já se encontra contratada.", null!, null!);
+                    return (false, "CONCURRENT_ACCEPTANCE_CONFLICT", "A encomenda já foi contratada por outra proposta aceita concorrentemente.", null!, null!);
                 }
 
                 // Reserva de Capacidade por Trecho (Legs)
@@ -1814,7 +1828,8 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
         SenderSuggestedPriceCents: senderSuggestedPriceCents,
         LastNegotiationActorId: lastNegotiationActorId,
         NegotiationHistory: negotiationHistory,
-        MinimumFreightPriceCents: minimumFreightPriceCents);
+        MinimumFreightPriceCents: minimumFreightPriceCents,
+        DataEnvio: p.CreatedAtUtc);
 
     private static ContractResponse MapToContractResponse(Contract c) => new(
         Id: c.Id,

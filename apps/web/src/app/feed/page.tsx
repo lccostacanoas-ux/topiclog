@@ -1774,20 +1774,12 @@ function FeedContent(): React.JSX.Element {
                           textAlign: "center"
                         }}
                       >
-                        <div style={{ fontSize: "22px", marginBottom: "4px" }}>🔒</div>
-                        <div style={{ fontSize: "16px", fontWeight: 800, color: "#166534" }}>
-                          Proposta Enviada — Aguardando Resposta do Remetente
-                        </div>
-                        <div style={{ fontSize: "13px", color: "#15803D", marginTop: "4px" }}>
-                          Valor Ofertado: <strong>R$ {(lockedAmountCents / 100).toFixed(2).replace(".", ",")}</strong>
-                          {existingActiveProposal?.createdAtUtc && (
-                            <span style={{ display: "block", fontSize: "12px", color: "#166534", marginTop: "3px" }}>
-                              Enviada em {new Date(existingActiveProposal.createdAtUtc).toLocaleDateString("pt-BR")} às {new Date(existingActiveProposal.createdAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                          )}
+                        <div style={{ fontSize: "20px", marginBottom: "4px" }}>✅</div>
+                        <div style={{ fontSize: "15px", fontWeight: 800, color: "#166534" }}>
+                          Proposta de R$ {(lockedAmountCents / 100).toFixed(2).replace(".", ",")} enviada {existingActiveProposal?.createdAtUtc ? `em ${new Date(existingActiveProposal.createdAtUtc).toLocaleDateString("pt-BR")} às ${new Date(existingActiveProposal.createdAtUtc).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "com sucesso"}! Aguardando resposta do remetente.
                         </div>
                         <div style={{ fontSize: "12px", color: "#475569", marginTop: "8px", lineHeight: "1.4" }}>
-                          Você já possui uma proposta enviada e ativa para esta carga. Para evitar duplicidades, o envio de novas ofertas para esta encomenda fica travado nesta proposta até resposta do remetente ou cancelamento por prazo.
+                          Você já possui uma proposta enviada e ativa para esta carga. O envio de novas ofertas para esta encomenda fica travado nesta proposta até resposta do remetente ou cancelamento por prazo.
                         </div>
                       </div>
                     );

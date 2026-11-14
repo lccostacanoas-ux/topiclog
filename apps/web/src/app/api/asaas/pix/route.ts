@@ -30,32 +30,29 @@ function isValidPixCrc16(payload: string): boolean {
 }
 
 /**
- * Resolução dinâmica do endpoint Asaas (Produção vs Sandbox)
- * Baseado no prefixo oficial da ASAAS_API_KEY:
- * - $aact_prod_ ou $aact_ (sem hmlg) -> https://api.asaas.com/v3
- * - $aact_hmlg_ ou contendo 'hmlg' / 'sandbox' -> https://sandbox.asaas.com/api/v3
+ * Resolução do endpoint Asaas (Produção padrão vs Sandbox)
+ * Suporte a chaves de produção nos formatos UUID e $aact_
+ * Utiliza https://api.asaas.com/v3 como padrão, a menos que ASAAS_API_URL ou ASAAS_ENV=sandbox seja explicitamente definido.
  */
 function resolveAsaasEndpoint(apiKey: string): { baseUrl: string; environment: "production" | "sandbox" } {
-  if (process.env.ASAAS_BASE_URL) {
-    const isSandbox = process.env.ASAAS_BASE_URL.includes("sandbox");
+  const customUrl = process.env.ASAAS_API_URL || process.env.ASAAS_BASE_URL;
+  if (customUrl) {
+    const isSandbox = customUrl.toLowerCase().includes("sandbox");
     return {
-      baseUrl: process.env.ASAAS_BASE_URL.replace(/\/+$/, ""),
+      baseUrl: customUrl.replace(/\/+$/, ""),
       environment: isSandbox ? "sandbox" : "production"
     };
   }
 
+  const envVar = (process.env.ASAAS_ENV || process.env.ASAAS_ENVIRONMENT || "").toLowerCase();
   const trimmedKey = (apiKey || "").trim();
-  if (trimmedKey.startsWith("$aact_hmlg_") || trimmedKey.includes("hmlg") || process.env.ASAAS_ENVIRONMENT === "sandbox") {
+  const isExplicitSandbox = envVar === "sandbox" || trimmedKey.startsWith("$aact_hmlg_") || trimmedKey.includes("hmlg");
+
+  if (isExplicitSandbox) {
     return { baseUrl: "https://sandbox.asaas.com/api/v3", environment: "sandbox" };
   }
 
-  if (trimmedKey.startsWith("$aact_prod_") || (trimmedKey.startsWith("$aact_") && !trimmedKey.includes("hmlg")) || process.env.ASAAS_ENVIRONMENT === "production") {
-    return { baseUrl: "https://api.asaas.com/v3", environment: "production" };
-  }
-
-  return process.env.NODE_ENV === "production" && process.env.ASAAS_ENVIRONMENT !== "sandbox"
-    ? { baseUrl: "https://api.asaas.com/v3", environment: "production" }
-    : { baseUrl: "https://sandbox.asaas.com/api/v3", environment: "sandbox" };
+  return { baseUrl: "https://api.asaas.com/v3", environment: "production" };
 }
 
 export async function POST(request: Request) {
@@ -66,10 +63,19 @@ export async function POST(request: Request) {
     const apiKey = (process.env.ASAAS_API_KEY || "").trim();
     const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
-    // 1. SE A CHAVE DO ASAAS ESTIVER CONFIGURADA: Comunicação direta com a API oficial do Asaas
-    if (isKeyConfigured) {
-      const { baseUrl, environment } = resolveAsaasEndpoint(apiKey);
-      const cleanDoc = (body.payerCpfCnpj || "").replace(/\D/g, "");
+    if (!isKeyConfigured) {
+      console.warn("[Asaas Pix] ASAAS_API_KEY não configurada no servidor.");
+      return NextResponse.json(
+        {
+          error: "Serviço de pagamento Asaas não configurado no servidor",
+          details: "A variável de ambiente ASAAS_API_KEY não foi configurada."
+        },
+        { status: 503 }
+      );
+    }
+
+    const { baseUrl, environment } = resolveAsaasEndpoint(apiKey);
+    const cleanDoc = (body.payerCpfCnpj || "").replace(/\D/g, "");
 
       console.info(`[Asaas Pix] Criando cobrança de R$ ${amount.toFixed(2)} em ${baseUrl} (${environment})`);
 
@@ -260,33 +266,6 @@ export async function POST(request: Request) {
         isKeyConfigured: true,
         environment
       });
-    }
-
-    // 2. SE A CHAVE NÃO ESTIVER CONFIGURADA:
-    // NUNCA montamos string Copia e Cola manualmente (para evitar o erro 2056 no app bancário).
-    // Retornamos status explícito para o frontend orientar o cadastro da chave e permitir teste simulado seguro.
-    const feePercent = 0.20;
-    const marketplaceFee = Math.round(amount * feePercent * 100) / 100;
-    const carrierNet = Math.round((amount - marketplaceFee) * 100) / 100;
-    const simulatedId = `pay_asaas_demo_${Date.now()}`;
-
-    console.warn("[Asaas Pix] Chave ASAAS_API_KEY ausente ou não configurada. Operando em modo de transição segura.");
-
-    return NextResponse.json({
-      id: simulatedId,
-      status: "PENDING",
-      statusDetail: "Chave ASAAS_API_KEY não configurada na Vercel",
-      qrCode: "", // Não envia string falsa para impedir tentativa bancária que causaria Erro 2056
-      qrCodeBase64: "",
-      ticketUrl: "",
-      transactionAmount: amount,
-      carrierNetReceivable: carrierNet,
-      marketplaceFee: marketplaceFee,
-      createdAt: new Date().toISOString(),
-      isSandboxSimulator: true,
-      isKeyConfigured: false,
-      environment: "sandbox"
-    });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("[Asaas Pix] Exceção na rota POST /api/asaas/pix:", errorMsg);

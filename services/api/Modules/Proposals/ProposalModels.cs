@@ -282,7 +282,8 @@ public sealed record ProposalResponse(
     long? SenderSuggestedPriceCents = null,
     Guid? LastNegotiationActorId = null,
     IReadOnlyList<ProposalNegotiationHistoryItem>? NegotiationHistory = null,
-    long? MinimumFreightPriceCents = null);
+    long? MinimumFreightPriceCents = null,
+    DateTimeOffset? DataEnvio = null);
 
 public sealed record ContractResponse(
     Guid Id,
