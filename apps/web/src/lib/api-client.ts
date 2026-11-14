@@ -269,22 +269,36 @@ export type { ApiFetchResult };
 
 export const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
+export const ACTIVE_TUNNEL_URL = "https://parks-avon-sky-fall.trycloudflare.com";
+
 /**
  * URL base da API .NET 10.
  * No navegador, utiliza URL relativa vazia ("") para que todas as requisições /api/... passem
  * de forma transparente pelo proxy rewrite do Next.js, funcionando perfeitamente em localhost,
  * no IP da rede Wi-Fi local para smartphones (ex: 192.168.0.11:3000) e em produção.
- * No servidor (SSR/Node.js), utiliza o endereço local absoluto do backend.
+ * No servidor (SSR/Node.js), utiliza o endereço local absoluto do backend ou túnel ativo.
  */
 export function getApiBaseUrl(): string {
   const configured = process.env["NEXT_PUBLIC_API_BASE_URL"];
   if (configured && configured.trim().length > 0) {
-    return configured.trim().replace(/\/+$/, "");
+    const trimmed = configured.trim().replace(/\/+$/, "");
+    if (!trimmed.includes("helmet-retreat-qui-pursuant")) {
+      return trimmed;
+    }
   }
   if (typeof window !== "undefined") {
     return "";
   }
-  return process.env["API_BASE_URL"] || "http://127.0.0.1:5080";
+  let srv = (process.env["API_BASE_URL"] || "").trim();
+  if (
+    !srv ||
+    srv.includes("helmet-retreat-qui-pursuant") ||
+    srv.includes("127.0.0.1") ||
+    srv.includes("localhost")
+  ) {
+    return ACTIVE_TUNNEL_URL;
+  }
+  return srv.replace(/\/+$/, "");
 }
 
 /**
@@ -371,12 +385,31 @@ export async function apiRequest<T>(
   }
 
   try {
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       method,
       headers,
       body: requestBody,
       cache: "no-store"
     });
+
+    // Se o proxy/rewrite da Vercel falhar (ex: 502 Bad Gateway / 503 / 504) e a chamada original foi relativa
+    // no navegador, efetua retry transparente direto pelo túnel Cloudflare ativo
+    if (!response.ok && response.status >= 500 && typeof window !== "undefined" && url.startsWith("/")) {
+      try {
+        const directUrl = `${ACTIVE_TUNNEL_URL}${endpoint}`;
+        const directResponse = await fetch(directUrl, {
+          method,
+          headers,
+          body: requestBody,
+          cache: "no-store"
+        });
+        if (directResponse.ok) {
+          response = directResponse;
+        }
+      } catch {
+        // Mantém a resposta original
+      }
+    }
 
     const returnedCorrelationId =
       response.headers.get(CORRELATION_ID_HEADER) ?? correlationId;
@@ -421,6 +454,37 @@ export async function apiRequest<T>(
       isFallback: false
     };
   } catch (err) {
+    if (typeof window !== "undefined" && url.startsWith("/")) {
+      try {
+        const directUrl = `${ACTIVE_TUNNEL_URL}${endpoint}`;
+        const directResponse = await fetch(directUrl, {
+          method,
+          headers,
+          body: requestBody,
+          cache: "no-store"
+        });
+        if (directResponse.ok) {
+          if (directResponse.status === 204) {
+            return {
+              ok: true,
+              status: directResponse.status,
+              correlationId,
+              isFallback: false
+            };
+          }
+          const directData = (await directResponse.json()) as T;
+          return {
+            ok: true,
+            status: directResponse.status,
+            data: directData,
+            correlationId,
+            isFallback: false
+          };
+        }
+      } catch {
+        // Mantém tratamento de erro original
+      }
+    }
     const errorMessage = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
