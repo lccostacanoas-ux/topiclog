@@ -17,7 +17,8 @@ import {
   listContractMessagesApi,
   sendContractMessageApi,
   getCancellationPolicyApi,
-  cancelContractBySenderApi
+  cancelContractBySenderApi,
+  listShipmentsApi
 } from "../../lib/api-client";
 import {
   getDemoProposals,
@@ -234,6 +235,11 @@ export default function PropostasPage(): React.JSX.Element {
   const [orderCodesByOrderId, setOrderCodesByOrderId] = useState<Record<string, OrderCodesDto>>({});
   const [filterType, setFilterType] = useState<"ALL" | "PENDING" | "COMPLETED" | "CANCELLED" | "AWAITING_PAYMENT">("ALL");
   const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [showClosedOnly, setShowClosedOnly] = useState<boolean>(false);
+  const [filterDestination, setFilterDestination] = useState<string>("");
+  const [filterDateStart, setFilterDateStart] = useState<string>("");
+  const [filterDateEnd, setFilterDateEnd] = useState<string>("");
+  const [shipmentsById, setShipmentsById] = useState<Record<string, { destinationCity: string; originCity: string; title: string }>>({});
   const [hiddenProposalIds, setHiddenProposalIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -430,6 +436,21 @@ export default function PropostasPage(): React.JSX.Element {
           }
         }
       }
+
+      try {
+        const shipsRes = await listShipmentsApi({}, token);
+        if (shipsRes.ok && shipsRes.data) {
+          const sMap: Record<string, { destinationCity: string; originCity: string; title: string }> = {};
+          for (const s of shipsRes.data) {
+            sMap[s.id] = {
+              destinationCity: s.destinationCity || "",
+              originCity: s.originCity || "",
+              title: s.title || ""
+            };
+          }
+          setShipmentsById(sMap);
+        }
+      } catch {}
     } catch (err) {
       console.warn("Aviso ao buscar propostas da API:", err);
     }
@@ -769,14 +790,40 @@ export default function PropostasPage(): React.JSX.Element {
     );
   }
 
-  // No feed padrão (showHistory === false), oculta as propostas excluídas do feed pelo usuário.
-  // No modo Histórico Completo (showHistory === true), exibe todas as propostas preservadas no histórico.
-  const hiddenCount = proposals.filter((p) => hiddenProposalIds.includes(p.id)).length;
-  const visibleProposals = proposals.filter((p) => {
-    const isHidden = hiddenProposalIds.includes(p.id);
-    if (showHistory) return true;
-    return !isHidden;
-  });
+  const getDestinationOfProposal = (p: ProposalDto): string => {
+    const ship = shipmentsById[p.shipmentId];
+    if (ship?.destinationCity) {
+      return ship.destinationCity;
+    }
+    const order = ordersByShipmentId[p.shipmentId];
+    if (order?.destinationAddressSummary) {
+      return order.destinationAddressSummary;
+    }
+    const rawRoute = (p as any).route || "";
+    if (rawRoute.includes("->")) {
+      const parts = rawRoute.split("->");
+      const last = parts[parts.length - 1];
+      return (last || "").trim();
+    }
+    if (rawRoute.includes("➔")) {
+      const parts = rawRoute.split("➔");
+      const last = parts[parts.length - 1];
+      return (last || "").trim();
+    }
+    if (p.shipmentTitle && (p.shipmentTitle.includes("->") || p.shipmentTitle.includes("➔"))) {
+      const parts = p.shipmentTitle.split(/->|➔/);
+      const last = parts[parts.length - 1];
+      return (last || "").trim();
+    }
+    return ship?.title || p.shipmentTitle || "";
+  };
+
+  const getDateOfProposal = (p: ProposalDto): string => {
+    const raw = p.createdAtUtc || (p as any).dataEnvio || (p as any).created_at || (p as any).createdAt || (p as any).CreatedAtUtc;
+    if (!raw) return "";
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
 
   const isTripCompleted = (p: ProposalDto) => {
     const c = contractsByProposalId[p.id];
@@ -799,6 +846,48 @@ export default function PropostasPage(): React.JSX.Element {
   const isTripPending = (p: ProposalDto) => {
     return !isTripCompleted(p) && !isTripCancelled(p);
   };
+
+  const isTripClosed = (p: ProposalDto) => {
+    return isTripCompleted(p) || isTripCancelled(p) || hiddenProposalIds.includes(p.id);
+  };
+
+  const hiddenCount = proposals.filter((p) => hiddenProposalIds.includes(p.id)).length;
+  const closedCount = proposals.filter(isTripClosed).length;
+
+  const visibleProposals = proposals.filter((p) => {
+    const isHidden = hiddenProposalIds.includes(p.id);
+
+    // Quando o usuário seleciona "Ver Propostas Encerradas"
+    if (showClosedOnly) {
+      if (!isTripClosed(p)) return false;
+
+      // Filtro por local de destino
+      if (filterDestination.trim()) {
+        const dest = getDestinationOfProposal(p).toLowerCase();
+        const query = filterDestination.trim().toLowerCase();
+        const title = (p.shipmentTitle || "").toLowerCase();
+        if (!dest.includes(query) && !title.includes(query)) {
+          return false;
+        }
+      }
+
+      // Filtro por data (De / Até)
+      const pDateStr = getDateOfProposal(p);
+      if (pDateStr) {
+        if (filterDateStart && pDateStr < filterDateStart) {
+          return false;
+        }
+        if (filterDateEnd && pDateStr > filterDateEnd) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    if (showHistory) return true;
+    return !isHidden;
+  });
 
   const completedCount = visibleProposals.filter(isTripCompleted).length;
   const cancelledCount = visibleProposals.filter(isTripCancelled).length;
@@ -1132,6 +1221,47 @@ export default function PropostasPage(): React.JSX.Element {
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const next = !showClosedOnly;
+              setShowClosedOnly(next);
+              if (next) {
+                setShowHistory(false);
+              }
+            }}
+            title="Ver propostas antigas e encerradas filtradas por data e por local de destino"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+              border: showClosedOnly ? "1.5px solid #D97706" : "1px solid #CBD5E1",
+              backgroundColor: showClosedOnly ? "#FEF3C7" : "#FFFFFF",
+              color: showClosedOnly ? "#92400E" : "#475569",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+          >
+            📁 {showClosedOnly ? "Modo Encerradas Ativo" : "Ver Propostas Encerradas"}
+            {closedCount > 0 && (
+              <span
+                style={{
+                  backgroundColor: showClosedOnly ? "#D97706" : "#FEF3C7",
+                  color: showClosedOnly ? "#FFFFFF" : "#92400E",
+                  padding: "1px 7px",
+                  borderRadius: "10px",
+                  fontSize: "11px",
+                  fontWeight: 800
+                }}
+              >
+                {closedCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Controles de Visualização: Cards vs Lista e Recolher/Expandir */}
@@ -1229,11 +1359,145 @@ export default function PropostasPage(): React.JSX.Element {
         </div>
       </div>
 
+      {/* Painel de Filtros Avançados para Propostas Encerradas (Destino e Período de Datas) */}
+      {showClosedOnly && (
+        <div
+          style={{
+            backgroundColor: "#FFFBEB",
+            border: "1.5px solid #FDE68A",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            marginBottom: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px"
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "#92400E", display: "flex", alignItems: "center", gap: "6px" }}>
+              📁 Histórico de Propostas Encerradas & Excluídas do Feed
+            </span>
+            {(filterDestination || filterDateStart || filterDateEnd) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterDestination("");
+                  setFilterDateStart("");
+                  setFilterDateEnd("");
+                }}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "1px solid #D97706",
+                  backgroundColor: "#FFFFFF",
+                  color: "#B45309"
+                }}
+              >
+                Limpar Filtros
+              </button>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                📍 Local de Destino:
+              </label>
+              <input
+                type="text"
+                value={filterDestination}
+                onChange={(e) => setFilterDestination(e.target.value)}
+                placeholder="Ex: São Paulo, Campinas..."
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#0F172A",
+                  outline: "none"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                📅 Data Inicial (De):
+              </label>
+              <input
+                type="date"
+                value={filterDateStart}
+                onChange={(e) => setFilterDateStart(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#0F172A",
+                  outline: "none"
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                📅 Data Final (Até):
+              </label>
+              <input
+                type="date"
+                value={filterDateEnd}
+                onChange={(e) => setFilterDateEnd(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                  backgroundColor: "#FFFFFF",
+                  color: "#0F172A",
+                  outline: "none"
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="card" style={{ textAlign: "center", padding: "40px" }}>
           <p style={{ color: "#64748B" }}>Atualizando negociações...</p>
         </div>
       ) : filteredProposals.length === 0 ? (
+        showClosedOnly ? (
+          <div className="card" style={{ textAlign: "center", padding: "40px", backgroundColor: "#FFFBEB", border: "1px dashed #F59E0B" }}>
+            <div style={{ fontSize: "36px", marginBottom: "12px" }}>📁</div>
+            <h3 style={{ fontSize: "18px", fontWeight: 700, color: "#92400E", margin: "0 0 8px 0" }}>
+              Nenhuma proposta encerrada encontrada
+            </h3>
+            <p style={{ fontSize: "14px", color: "#B45309", margin: "0 0 16px 0" }}>
+              {(filterDestination || filterDateStart || filterDateEnd)
+                ? "Nenhuma proposta encerrada corresponde aos filtros de destino ou data selecionados."
+                : "Você não possui propostas encerradas, canceladas ou excluídas no histórico."}
+            </p>
+            {(filterDestination || filterDateStart || filterDateEnd) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterDestination("");
+                  setFilterDateStart("");
+                  setFilterDateEnd("");
+                }}
+                className="btn btn--secondary"
+                style={{ fontSize: "13px" }}
+              >
+                Limpar Filtros de Busca
+              </button>
+            )}
+          </div>
+        ) : (
         <EmptyState
           icon="📦"
           title={activeTab === "SENT" ? "Nenhuma proposta enviada até o momento" : "Nenhuma proposta recebida para suas encomendas"}
@@ -1245,6 +1509,7 @@ export default function PropostasPage(): React.JSX.Element {
           actionLabel={activeTab === "SENT" ? "Ver Encomendas no Mural" : "Publicar Nova Encomenda"}
           actionHref={activeTab === "SENT" ? "/feed" : "/encomendas/publicar"}
         />
+        )
       ) : viewMode === "LIST" ? (
         /* =========================================================================
            MODO LISTA COMPACTA (ALTA DENSIDADE, TABULAR E RÁPIDA NAVEGAÇÃO)
@@ -1321,6 +1586,11 @@ export default function PropostasPage(): React.JSX.Element {
                       </td>
                       <td style={{ padding: "12px 16px", color: "#475569" }}>
                         <span style={{ fontWeight: 600 }}>{proposal.shipmentTitle || "Carga Geral"}</span>
+                        {getDestinationOfProposal(proposal) && (
+                          <span style={{ display: "block", fontSize: "11px", color: "#0F172A", fontWeight: 600 }}>
+                            📍 {getDestinationOfProposal(proposal)}
+                          </span>
+                        )}
                         <span style={{ display: "block", fontSize: "11px", color: "#94A3B8" }}>#{proposal.shipmentId.slice(0, 8)}</span>
                       </td>
                       <td style={{ padding: "12px 16px", color: "#64748B", whiteSpace: "nowrap" }}>
@@ -1605,7 +1875,11 @@ export default function PropostasPage(): React.JSX.Element {
                     </div>
 
                     <span style={{ fontSize: "12px", color: "#64748B", display: "block", marginTop: "2px" }}>
-                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)} • {activeTab === "SENT" ? "Enviada em" : "Recebida em"}:{" "}
+                      ID Encomenda: #{proposal.shipmentId.slice(0, 8)}
+                      {getDestinationOfProposal(proposal) && (
+                        <span> • 📍 Destino: <strong style={{ color: "#0F172A" }}>{getDestinationOfProposal(proposal)}</strong></span>
+                      )}
+                      {" "}• {activeTab === "SENT" ? "Enviada em" : "Recebida em"}:{" "}
                       <strong style={{ color: "#1E293B" }}>
                         {safeFormatDateTime(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc) || safeFormatDate(proposal.createdAtUtc || (proposal as any).dataEnvio || (proposal as any).created_at || (proposal as any).CreatedAtUtc)}
                       </strong>

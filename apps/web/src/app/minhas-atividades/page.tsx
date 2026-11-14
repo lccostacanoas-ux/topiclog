@@ -1257,29 +1257,33 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
               aria-label="Fechar modal de avaliação"
               style={{
                 position: "absolute",
-                top: "16px",
-                right: "16px",
-                width: "36px",
-                height: "36px",
+                top: "14px",
+                right: "14px",
+                width: "40px",
+                height: "40px",
                 borderRadius: "50%",
-                backgroundColor: "#F1F5F9",
-                border: "none",
-                color: "#64748B",
-                fontSize: "16px",
-                fontWeight: 700,
+                backgroundColor: "#F8FAFC",
+                border: "1.5px solid #CBD5E1",
+                color: "#334155",
+                fontSize: "18px",
+                fontWeight: 800,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "background-color 0.15s ease, color 0.15s ease"
+                zIndex: 10,
+                boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                transition: "all 0.15s ease"
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = "#E2E8F0";
                 e.currentTarget.style.color = "#0F172A";
+                e.currentTarget.style.borderColor = "#94A3B8";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#F1F5F9";
-                e.currentTarget.style.color = "#64748B";
+                e.currentTarget.style.backgroundColor = "#F8FAFC";
+                e.currentTarget.style.color = "#334155";
+                e.currentTarget.style.borderColor = "#CBD5E1";
               }}
             >
               ✕

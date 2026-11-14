@@ -57,6 +57,10 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
 
   // Controle de ocultação no Feed vs Preservação no Histórico
   const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [showClosedOnly, setShowClosedOnly] = useState<boolean>(false);
+  const [filterDestination, setFilterDestination] = useState<string>("");
+  const [filterDateStart, setFilterDateStart] = useState<string>("");
+  const [filterDateEnd, setFilterDateEnd] = useState<string>("");
   const [hiddenShipmentIds, setHiddenShipmentIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -89,9 +93,60 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     setSuccessMessage("✓ Encomenda restaurada com sucesso ao seu feed ativo!");
   };
 
+  const isShipmentClosed = (s: UnifiedShipment) => {
+    const c = contractsByShipmentId[s.id];
+    const contractClosed =
+      c?.status === "COMPLETED" ||
+      c?.status === "CANCELLED_PRE_PICKUP" ||
+      c?.status === "CANCELLED_POST_PICKUP" ||
+      c?.status === "PAYMENT_EXPIRED";
+    return (
+      s.status === "DELIVERED" ||
+      s.status === "CLOSED" ||
+      s.status === "CANCELLED" ||
+      contractClosed ||
+      hiddenShipmentIds.includes(s.id)
+    );
+  };
+
+  const getDateOfShipment = (s: UnifiedShipment): string => {
+    if (!s.createdAt) return "";
+    const d = new Date(s.createdAt);
+    return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
+
   const hiddenCount = shipments.filter((s) => hiddenShipmentIds.includes(s.id)).length;
+  const closedCount = shipments.filter(isShipmentClosed).length;
+
   const visibleShipments = shipments.filter((s) => {
     const isHidden = hiddenShipmentIds.includes(s.id);
+
+    if (showClosedOnly) {
+      if (!isShipmentClosed(s)) return false;
+
+      if (filterDestination.trim()) {
+        const destCity = (s.destinationCity || "").toLowerCase();
+        const destNeigh = (s.destinationNeighborhood || "").toLowerCase();
+        const title = (s.title || "").toLowerCase();
+        const query = filterDestination.trim().toLowerCase();
+        if (!destCity.includes(query) && !destNeigh.includes(query) && !title.includes(query)) {
+          return false;
+        }
+      }
+
+      const sDateStr = getDateOfShipment(s);
+      if (sDateStr) {
+        if (filterDateStart && sDateStr < filterDateStart) {
+          return false;
+        }
+        if (filterDateEnd && sDateStr > filterDateEnd) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
     if (showHistory) return true;
     return !isHidden;
   });
@@ -595,7 +650,10 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <button
                 type="button"
-                onClick={() => setShowHistory(false)}
+                onClick={() => {
+                  setShowClosedOnly(false);
+                  setShowHistory(false);
+                }}
                 style={{
                   padding: "8px 16px",
                   borderRadius: "8px",
@@ -603,15 +661,18 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                   fontWeight: 700,
                   cursor: "pointer",
                   border: "none",
-                  backgroundColor: !showHistory ? "#2563EB" : "#F1F5F9",
-                  color: !showHistory ? "#FFFFFF" : "#475569"
+                  backgroundColor: !showHistory && !showClosedOnly ? "#2563EB" : "#F1F5F9",
+                  color: !showHistory && !showClosedOnly ? "#FFFFFF" : "#475569"
                 }}
               >
                 📦 Encomendas no Feed ({shipments.length - hiddenCount})
               </button>
               <button
                 type="button"
-                onClick={() => setShowHistory(true)}
+                onClick={() => {
+                  setShowClosedOnly(false);
+                  setShowHistory(true);
+                }}
                 title="Visualiza todo o histórico de encomendas, inclusive as excluídas do feed"
                 style={{
                   padding: "8px 16px",
@@ -619,20 +680,20 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                   fontSize: "13px",
                   fontWeight: 700,
                   cursor: "pointer",
-                  border: showHistory ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
-                  backgroundColor: showHistory ? "#EFF6FF" : "#FFFFFF",
-                  color: showHistory ? "#1D4ED8" : "#475569",
+                  border: showHistory && !showClosedOnly ? "1.5px solid #2563EB" : "1px solid #CBD5E1",
+                  backgroundColor: showHistory && !showClosedOnly ? "#EFF6FF" : "#FFFFFF",
+                  color: showHistory && !showClosedOnly ? "#1D4ED8" : "#475569",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px"
                 }}
               >
-                📜 {showHistory ? "Exibindo Histórico Completo" : "Ver Histórico Completo"} ({shipments.length})
+                📜 {showHistory && !showClosedOnly ? "Exibindo Histórico Completo" : "Ver Histórico Completo"} ({shipments.length})
                 {hiddenCount > 0 && (
                   <span
                     style={{
-                      backgroundColor: showHistory ? "#2563EB" : "#E2E8F0",
-                      color: showHistory ? "#FFFFFF" : "#475569",
+                      backgroundColor: showHistory && !showClosedOnly ? "#2563EB" : "#E2E8F0",
+                      color: showHistory && !showClosedOnly ? "#FFFFFF" : "#475569",
                       padding: "1px 7px",
                       borderRadius: "10px",
                       fontSize: "11px",
@@ -643,6 +704,153 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                   </span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !showClosedOnly;
+                  setShowClosedOnly(next);
+                  if (next) {
+                    setShowHistory(false);
+                  }
+                }}
+                title="Ver encomendas antigas e encerradas filtradas por data e por local de destino"
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: showClosedOnly ? "1.5px solid #D97706" : "1px solid #CBD5E1",
+                  backgroundColor: showClosedOnly ? "#FEF3C7" : "#FFFFFF",
+                  color: showClosedOnly ? "#92400E" : "#475569",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+              >
+                📁 {showClosedOnly ? "Modo Encerradas Ativo" : "Ver Encomendas Encerradas"}
+                {closedCount > 0 && (
+                  <span
+                    style={{
+                      backgroundColor: showClosedOnly ? "#D97706" : "#FEF3C7",
+                      color: showClosedOnly ? "#FFFFFF" : "#92400E",
+                      padding: "1px 7px",
+                      borderRadius: "10px",
+                      fontSize: "11px",
+                      fontWeight: 800
+                    }}
+                  >
+                    {closedCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Painel de Filtros Avançados para Encomendas Encerradas (Destino e Período de Datas) */}
+        {!loading && showClosedOnly && (
+          <div
+            style={{
+              backgroundColor: "#FFFBEB",
+              border: "1.5px solid #FDE68A",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              marginBottom: "20px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <span style={{ fontSize: "14px", fontWeight: 700, color: "#92400E", display: "flex", alignItems: "center", gap: "6px" }}>
+                📁 Histórico de Encomendas Encerradas & Excluídas do Feed
+              </span>
+              {(filterDestination || filterDateStart || filterDateEnd) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDestination("");
+                    setFilterDateStart("");
+                    setFilterDateEnd("");
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: "1px solid #D97706",
+                    backgroundColor: "#FFFFFF",
+                    color: "#B45309"
+                  }}
+                >
+                  Limpar Filtros
+                </button>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                  📍 Local de Destino (Cidade / Bairro):
+                </label>
+                <input
+                  type="text"
+                  value={filterDestination}
+                  onChange={(e) => setFilterDestination(e.target.value)}
+                  placeholder="Ex: São Paulo, Campinas..."
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "13px",
+                    backgroundColor: "#FFFFFF",
+                    color: "#0F172A",
+                    outline: "none"
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                  📅 Data Inicial (De):
+                </label>
+                <input
+                  type="date"
+                  value={filterDateStart}
+                  onChange={(e) => setFilterDateStart(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "13px",
+                    backgroundColor: "#FFFFFF",
+                    color: "#0F172A",
+                    outline: "none"
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#78350F", marginBottom: "4px" }}>
+                  📅 Data Final (Até):
+                </label>
+                <input
+                  type="date"
+                  value={filterDateEnd}
+                  onChange={(e) => setFilterDateEnd(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "13px",
+                    backgroundColor: "#FFFFFF",
+                    color: "#0F172A",
+                    outline: "none"
+                  }}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -689,6 +897,42 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
             </Link>
           </div>
         ) : visibleShipments.length === 0 ? (
+          showClosedOnly ? (
+            <div
+              style={{
+                backgroundColor: "#FFFBEB",
+                borderRadius: "16px",
+                padding: "40px 24px",
+                textAlign: "center",
+                border: "1.5px dashed #F59E0B",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+              }}
+            >
+              <div style={{ fontSize: "36px", marginBottom: "8px" }}>📁</div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#92400E", margin: "0 0 6px 0" }}>
+                Nenhuma encomenda encerrada encontrada
+              </h3>
+              <p style={{ fontSize: "13px", color: "#B45309", maxWidth: "420px", margin: "0 auto 16px auto" }}>
+                {(filterDestination || filterDateStart || filterDateEnd)
+                  ? "Nenhuma encomenda encerrada corresponde aos filtros de destino ou data informados."
+                  : "Você não possui encomendas encerradas ou canceladas no histórico."}
+              </p>
+              {(filterDestination || filterDateStart || filterDateEnd) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterDestination("");
+                    setFilterDateStart("");
+                    setFilterDateEnd("");
+                  }}
+                  className="btn btn--secondary"
+                  style={{ fontSize: "13px" }}
+                >
+                  Limpar Filtros de Busca
+                </button>
+              )}
+            </div>
+          ) : (
           <div
             style={{
               backgroundColor: "#FFFFFF",
@@ -723,6 +967,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
               📜 Abrir Histórico Completo ({shipments.length})
             </button>
           </div>
+          )
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {visibleShipments.map((s) => {
