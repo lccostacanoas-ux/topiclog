@@ -97,7 +97,7 @@ const FAQ_ITEMS: readonly FaqItem[] = [
 export default function HomePage(): React.JSX.Element {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
-  const displayName = user?.displayName ? user.displayName.split(" ")[0] : null;
+  const displayName = user?.displayName?.trim() ? (user.displayName.trim().split(" ")[0] || null) : null;
   const [, setRecentShipments] = useState<ShipmentSummaryDto[]>([]);
   const [ratingsSummary, setRatingsSummary] = useState<RatingsSummary>({
     carrierCount: 0,

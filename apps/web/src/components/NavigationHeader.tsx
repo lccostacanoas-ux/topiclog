@@ -12,6 +12,19 @@ import { useAuth } from "../lib/auth-context";
 import { playNotificationSound } from "../lib/notification-sound";
 import type { UserNotificationDto } from "../lib/types";
 
+function safeFormatNotificationDate(val?: string | null): string {
+  if (!val) return "Hoje";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "Hoje";
+  try {
+    const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return `${dt} às ${hr}`;
+  } catch {
+    return "Hoje";
+  }
+}
+
 export function NavigationHeader(): React.JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
@@ -22,7 +35,7 @@ export function NavigationHeader(): React.JSX.Element {
   const [unreadCount, setUnreadCount] = useState(0);
   const prevUnreadCountRef = useRef<number | null>(null);
   const [activePopupNotification, setActivePopupNotification] = useState<UserNotificationDto | null>(null);
-  const [dismissedPopupIds, setDismissedPopupIds] = useState<Record<string, boolean>>({});
+  const dismissedPopupIdsRef = useRef<Record<string, boolean>>({});
 
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated || !token) {
@@ -31,36 +44,53 @@ export function NavigationHeader(): React.JSX.Element {
       setActivePopupNotification(null);
       return;
     }
-    const res = await getNotificationsApi(token);
-    if (res.ok && res.data) {
-      const items = res.data.items;
-      if (prevUnreadCountRef.current !== null && res.data.unreadCount > prevUnreadCountRef.current) {
-        playNotificationSound();
-      }
-      prevUnreadCountRef.current = res.data.unreadCount;
-      setNotifications(items);
-      setUnreadCount(res.data.unreadCount);
+    try {
+      const res = await getNotificationsApi(token);
+      if (res.ok && res.data) {
+        const raw = res.data as any;
+        const items: readonly UserNotificationDto[] = Array.isArray(raw?.items)
+          ? raw.items
+          : Array.isArray(raw)
+            ? raw
+            : [];
+        const count = typeof raw?.unreadCount === "number"
+          ? raw.unreadCount
+          : items.filter((n) => Boolean(n) && !n.isRead).length;
 
-      // Pop-up na tela: localiza o aviso não lido mais recente que ainda não foi dispensado
-      const unreadItem = items.find((n) => !n.isRead && !dismissedPopupIds[n.id]);
-      if (unreadItem) {
-        setActivePopupNotification(unreadItem);
-      } else {
-        setActivePopupNotification(null);
+        if (prevUnreadCountRef.current !== null && count > prevUnreadCountRef.current) {
+          try {
+            playNotificationSound();
+          } catch {}
+        }
+        prevUnreadCountRef.current = count;
+        setNotifications(items);
+        setUnreadCount(count);
+
+        // Pop-up na tela: localiza o aviso não lido mais recente que ainda não foi dispensado
+        const unreadItem = items.find((n) => Boolean(n) && !n.isRead && !dismissedPopupIdsRef.current[n.id]);
+        if (unreadItem) {
+          setActivePopupNotification(unreadItem);
+        } else {
+          setActivePopupNotification(null);
+        }
       }
+    } catch (err) {
+      console.warn("Aviso ao buscar notificações no header:", err);
     }
-  }, [isAuthenticated, token, dismissedPopupIds]);
+  }, [isAuthenticated, token]);
 
   const handleDismissPopup = async (item: UserNotificationDto, openLink: boolean = true) => {
-    setDismissedPopupIds((prev) => ({ ...prev, [item.id]: true }));
-    setActivePopupNotification(null);
-    if (token && !item.isRead) {
-      await markNotificationReadApi(item.id, token);
-      void loadNotifications();
-    }
-    if (openLink && item.href) {
-      router.push(item.href);
-    }
+    try {
+      dismissedPopupIdsRef.current = { ...dismissedPopupIdsRef.current, [item.id]: true };
+      setActivePopupNotification(null);
+      if (token && !item.isRead) {
+        await markNotificationReadApi(item.id, token);
+        void loadNotifications();
+      }
+      if (openLink && item.href) {
+        router.push(item.href);
+      }
+    } catch {}
   };
 
   useEffect(() => {
@@ -227,7 +257,7 @@ export function NavigationHeader(): React.JSX.Element {
                       boxShadow: "0 2px 8px rgba(0,0,0,0.3)"
                     }}
                   >
-                    {user.displayName.charAt(0).toUpperCase()}
+                    {(user.displayName || user.email || "U").charAt(0).toUpperCase()}
                   </div>
                 </Link>
               </>
@@ -627,10 +657,10 @@ export function NavigationHeader(): React.JSX.Element {
                     justifyContent: "center"
                   }}
                 >
-                  {user.displayName.charAt(0).toUpperCase()}
+                  {user?.displayName ? user.displayName.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() || "U")}
                 </div>
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "#FFFFFF" }}>
-                  {user.displayName.split(" ")[0]}
+                  {user?.displayName ? (user.displayName.split(" ")[0] || "Usuário") : (user?.email?.split("@")[0] || "Usuário")}
                 </span>
                 {user.kycStatus === "VERIFIED" && (
                   <span style={{ color: "#10B981", fontSize: "13px", fontWeight: 800 }} title="KYC Aprovado">
@@ -779,12 +809,7 @@ export function NavigationHeader(): React.JSX.Element {
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", paddingTop: "8px", borderTop: "1px solid rgba(255, 255, 255, 0.12)" }}>
             <span style={{ fontSize: "11px", color: "#94A3B8" }}>
-              📅 {(() => {
-                const d = new Date(activePopupNotification.createdAtUtc);
-                const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-                const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-                return `${dt} às ${hr}`;
-              })()}
+              📅 {safeFormatNotificationDate(activePopupNotification.createdAtUtc)}
             </span>
             <span
               style={{
@@ -888,12 +913,7 @@ export function NavigationHeader(): React.JSX.Element {
                         {!n.isRead ? "● " : ""}{n.title}
                       </span>
                       <span style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap" }}>
-                        {(() => {
-                          const d = new Date(n.createdAtUtc);
-                          const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-                          const hr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-                          return `${dt} às ${hr}`;
-                        })()}
+                        {safeFormatNotificationDate(n.createdAtUtc)}
                       </span>
                     </div>
                     <div style={{ fontSize: "12px", color: "#CBD5E1", lineHeight: 1.4 }}>{n.message}</div>
