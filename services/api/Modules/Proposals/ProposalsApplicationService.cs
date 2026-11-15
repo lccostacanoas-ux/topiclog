@@ -1354,7 +1354,7 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
                 410);
         }
 
-        if (contract.Status != ContractStatus.AWAITING_PAYMENT)
+        if (contract.Status != ContractStatus.AWAITING_PAYMENT && contract.Status != ContractStatus.PAYMENT_EXPIRED)
         {
             throw new DomainRuleViolationException(
                 "CONTRACT_INVALID_PAYMENT_STATUS",
