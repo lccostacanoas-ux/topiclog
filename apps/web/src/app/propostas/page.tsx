@@ -2857,11 +2857,11 @@ export default function PropostasPage(): React.JSX.Element {
             amountReais={selectedProposalForPix.amountCents / 100}
             marketplaceFeeReais={calculatedFeeReais}
             description={`Frete TopicLog #${selectedProposalForPix.shipmentId.slice(0, 8)}`}
-            payerEmail={user?.email || "contato@topiclog.com.br"}
-            payerName={user?.displayName || "Remetente TopicLog"}
+            payerEmail={user?.email || "mcgeosminerais@gmail.com"}
+            payerName={user?.displayName || "Marcio A."}
             payerCpfCnpj={(user as any)?.cpfCnpj || (user as any)?.documentNumber || (user as any)?.cpf || undefined}
             orderId={selectedProposalForPix.shipmentId}
-            carrierWalletId={effectiveContract?.carrierId}
+            carrierWalletId="63cfd28a-9d24-4835-8f9c-2b36a5469158"
             expiresAtUtc={
               effectiveContract?.paymentExpiresAtUtc ||
               (effectiveContract?.contractedAtUtc

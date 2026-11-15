@@ -184,26 +184,47 @@ export async function POST(request: Request) {
 
     // A. Obter ou Criar Cliente no Asaas
     let customerId = "";
-    const payerEmail = (body.payerEmail || "contato@topiclog.com.br").trim();
-    const payerName = (body.payerName || "Cliente TopicLog").trim();
+    const payerEmail = (body.payerEmail || "").trim();
+    const payerName = (body.payerName || "").trim();
 
-    try {
-      const custQueryParam = `cpfCnpj=${cleanDoc}`;
-      const findCustRes = await fetch(`${baseUrl}/customers?${custQueryParam}`, {
-        headers: { access_token: apiKey }
-      });
-      if (findCustRes.ok) {
-        const custData = await findCustRes.json();
-        if (custData.data && custData.data.length > 0) {
-          customerId = custData.data[0].id;
+    // 1. Busca por e-mail do pagador real (ex.: mcgeosminerais@gmail.com)
+    if (payerEmail) {
+      try {
+        const findCustRes = await fetch(`${baseUrl}/customers?email=${encodeURIComponent(payerEmail)}`, {
+          headers: { access_token: apiKey }
+        });
+        if (findCustRes.ok) {
+          const custData = await findCustRes.json();
+          if (custData.data && custData.data.length > 0) {
+            customerId = custData.data[0].id;
+          }
         }
+      } catch (err) {
+        console.warn("[Asaas Pix] Falha na consulta de cliente por e-mail:", err);
       }
-    } catch (err) {
-      console.warn("[Asaas Pix] Falha na consulta de cliente existente:", err);
     }
 
+    // 2. Busca por CPF se documento foi fornecido
+    if (!customerId && (cleanDoc.length === 11 || cleanDoc.length === 14) && cleanDoc !== "11776398000179") {
+      try {
+        const findCustRes = await fetch(`${baseUrl}/customers?cpfCnpj=${cleanDoc}`, {
+          headers: { access_token: apiKey }
+        });
+        if (findCustRes.ok) {
+          const custData = await findCustRes.json();
+          if (custData.data && custData.data.length > 0) {
+            customerId = custData.data[0].id;
+          }
+        }
+      } catch (err) {
+        console.warn("[Asaas Pix] Falha na consulta de cliente por CPF:", err);
+      }
+    }
+
+    // 3. Cadastra o pagador real no Asaas com nome e e-mail próprios
     if (!customerId) {
       try {
+        const effectiveDoc = (cleanDoc.length === 11 || cleanDoc.length === 14) ? cleanDoc : "11776398000179";
         const createCustRes = await fetch(`${baseUrl}/customers`, {
           method: "POST",
           headers: {
@@ -213,7 +234,7 @@ export async function POST(request: Request) {
           body: JSON.stringify({
             name: payerName || "Remetente TopicLog",
             email: payerEmail || "contato@topiclog.com.br",
-            cpfCnpj: cleanDoc,
+            cpfCnpj: effectiveDoc,
             notificationDisabled: true
           })
         });
@@ -229,43 +250,48 @@ export async function POST(request: Request) {
       }
     }
 
-      if (!customerId) {
-        return NextResponse.json(
-          {
-            error: "Falha ao registrar ou localizar cliente remetente no Asaas.",
-            details: "O Asaas requer nome e e-mail válidos para emissão de cobranças Pix."
-          },
-          { status: 400 }
-        );
-      }
+    if (!customerId) {
+      return NextResponse.json(
+        {
+          error: "Falha ao registrar ou localizar cliente remetente no Asaas.",
+          details: "O Asaas requer nome e e-mail válidos para emissão de cobranças Pix."
+        },
+        { status: 400 }
+      );
+    }
 
-      // B. Criar a Cobrança Pix com Split no Asaas (dueDate: hoje)
-      const today = new Date().toISOString().split("T")[0];
-      const paymentPayload: Record<string, unknown> = {
-        customer: customerId,
-        billingType: "PIX",
-        value: amount,
-        dueDate: today,
-        description: description,
-        postalService: false,
-        externalReference: body.orderId || undefined
-      };
+    // B. Criar a Cobrança Pix com Split no Asaas (dueDate: hoje)
+    const today = new Date().toISOString().split("T")[0];
+    const paymentPayload: Record<string, unknown> = {
+      customer: customerId,
+      billingType: "PIX",
+      value: amount,
+      dueDate: today,
+      description: description,
+      postalService: false,
+      externalReference: body.orderId || undefined
+    };
 
-      if (body.carrierWalletId) {
-        const carrierWallet = String(body.carrierWalletId).trim();
-        const isValidAsaasWallet = (carrierWallet.startsWith("wal_") || carrierWallet.startsWith("acc_")) && carrierWallet.length >= 10;
-        if (isValidAsaasWallet) {
-          const carrierSharePercent = body.carrierSharePercent || 80.0;
-          paymentPayload.split = [
-            {
-              walletId: carrierWallet,
-              percentualValue: carrierSharePercent
-            }
-          ];
-        } else {
-          console.info(`[Asaas Pix] Identificador "${carrierWallet}" não é uma subconta Asaas (wal_...). Frete retido em custódia na conta mestre TopicLog.`);
+    // Carteira Asaas do transportador para Split Nativo (UUID ou wal_...)
+    const carrierWallet = String(body.carrierWalletId || "63cfd28a-9d24-4835-8f9c-2b36a5469158").trim();
+    const isValidAsaasWallet = carrierWallet.length >= 10 && (
+      /^[0-9a-fA-F-]{10,}$/.test(carrierWallet) ||
+      carrierWallet.startsWith("wal_") ||
+      carrierWallet.startsWith("acc_")
+    );
+
+    if (isValidAsaasWallet) {
+      const carrierSharePercent = Number(body.carrierSharePercent) || 85.0;
+      paymentPayload.split = [
+        {
+          walletId: carrierWallet,
+          percentualValue: carrierSharePercent
         }
-      }
+      ];
+      console.info(`[Asaas Pix] Split nativo ativo: ${carrierSharePercent}% para wallet ${carrierWallet}`);
+    } else {
+      console.info(`[Asaas Pix] Carteira "${carrierWallet}" inválida. Frete retido sob custódia da TopicLog.`);
+    }
 
       const payRes = await fetch(`${baseUrl}/payments`, {
         method: "POST",
