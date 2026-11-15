@@ -3,7 +3,7 @@
    Política Estrita de Cache Seguro e Proteção Contra Exposição Offline
    ============================================================================ */
 
-const CACHE_NAME = "topiclog-static-v1.0.2";
+const CACHE_NAME = "topiclog-static-v1.0.3";
 
 // Recursos estáticos seguros para pre-cache
 const STATIC_PRECACHE = [
