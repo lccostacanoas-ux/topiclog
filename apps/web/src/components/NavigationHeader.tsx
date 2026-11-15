@@ -10,6 +10,7 @@ import {
 } from "../lib/api-client";
 import { useAuth } from "../lib/auth-context";
 import { playNotificationSound } from "../lib/notification-sound";
+import { InstallPwaButton } from "./InstallPwaButton";
 import type { UserNotificationDto } from "../lib/types";
 
 function safeFormatNotificationDate(val?: string | null): string {
@@ -1157,6 +1158,9 @@ export function NavigationHeader(): React.JSX.Element {
               >
                 🚪 Sair da Conta
               </button>
+              <div style={{ padding: "8px 0 4px 0" }}>
+                <InstallPwaButton variant="menu" onInstalled={() => setMobileMenuOpen(false)} />
+              </div>
               <div style={{ paddingTop: "8px", display: "flex", gap: "10px" }}>
                 <Link
                   href="/encomendas/publicar"
@@ -1194,6 +1198,9 @@ export function NavigationHeader(): React.JSX.Element {
               >
                 ✨ Criar Conta Gratuita
               </Link>
+              <div style={{ paddingTop: "8px" }}>
+                <InstallPwaButton variant="menu" onInstalled={() => setMobileMenuOpen(false)} />
+              </div>
             </div>
           )}
         </div>

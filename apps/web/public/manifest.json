@@ -1,0 +1,75 @@
+{
+  "name": "TopicLog — Logística e Fretes",
+  "short_name": "TopicLog",
+  "description": "Plataforma inteligente de transporte, encomendas e fretes com custódia protegida.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#1E3A8A",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Minhas Atividades",
+      "short_name": "Atividades",
+      "description": "Acompanhe e rastreie suas viagens e entregas",
+      "url": "/minhas-atividades",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mural de Encomendas",
+      "short_name": "Mural",
+      "description": "Veja o feed de encomendas e oportunidades de frete",
+      "url": "/feed",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Publicar Carga",
+      "short_name": "Publicar",
+      "description": "Anuncie uma nova encomenda para transporte",
+      "url": "/encomendas/publicar",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["logistics", "transportation", "business", "productivity"],
+  "lang": "pt-BR"
+}

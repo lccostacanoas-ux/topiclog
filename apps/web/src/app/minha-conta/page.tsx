@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { AlertBanner } from "../../components/AlertBanner";
 import { StatusPill } from "../../components/StatusPill";
 import { StarRatingDisplay } from "../../components/StarRatingDisplay";
+import { InstallPwaButton } from "../../components/InstallPwaButton";
 import { changePasswordApi, getPublicUserCardApi, updatePrivateProfileApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
@@ -1401,6 +1402,11 @@ export default function MyAccountPage(): React.JSX.Element {
             </button>
           </div>
         </form>
+      </section>
+
+      {/* Card PWA de Instalação do Aplicativo no Celular */}
+      <section style={{ marginTop: "24px", maxWidth: "520px" }}>
+        <InstallPwaButton variant="card" />
       </section>
     </main>
   );

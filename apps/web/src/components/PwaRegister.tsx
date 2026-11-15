@@ -27,7 +27,7 @@ export function PwaRegister(): null {
         return;
       }
 
-      window.addEventListener("load", () => {
+      const registerSw = () => {
         navigator.serviceWorker
           .register("/sw.js")
           .then((registration) => {
@@ -38,7 +38,14 @@ export function PwaRegister(): null {
           .catch((error) => {
             console.warn("[PWA] Falha ao registrar Service Worker:", error);
           });
-      });
+      };
+
+      if (document.readyState === "complete") {
+        registerSw();
+      } else {
+        window.addEventListener("load", registerSw);
+        return () => window.removeEventListener("load", registerSw);
+      }
     }
   }, []);
 
