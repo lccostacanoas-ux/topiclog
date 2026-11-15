@@ -38,6 +38,18 @@ export function NavigationHeader(): React.JSX.Element {
   const [activePopupNotification, setActivePopupNotification] = useState<UserNotificationDto | null>(null);
   const dismissedPopupIdsRef = useRef<Record<string, boolean>>({});
 
+  const getDeletedNotificationIds = useCallback((): Set<string> => {
+    if (!user?.userId) return new Set();
+    try {
+      const stored = localStorage.getItem(`topiclog_deleted_notifications_${user.userId}`);
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch {}
+    return new Set();
+  }, [user?.userId]);
+
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated || !token) {
       setNotifications([]);
@@ -49,14 +61,14 @@ export function NavigationHeader(): React.JSX.Element {
       const res = await getNotificationsApi(token);
       if (res.ok && res.data) {
         const raw = res.data as any;
-        const items: readonly UserNotificationDto[] = Array.isArray(raw?.items)
+        const rawItems: readonly UserNotificationDto[] = Array.isArray(raw?.items)
           ? raw.items
           : Array.isArray(raw)
             ? raw
             : [];
-        const count = typeof raw?.unreadCount === "number"
-          ? raw.unreadCount
-          : items.filter((n) => Boolean(n) && !n.isRead).length;
+        const deletedIds = getDeletedNotificationIds();
+        const items = rawItems.filter((n) => Boolean(n) && !deletedIds.has(n.id));
+        const count = items.filter((n) => !n.isRead).length;
 
         if (prevUnreadCountRef.current !== null && count > prevUnreadCountRef.current) {
           try {
@@ -78,7 +90,36 @@ export function NavigationHeader(): React.JSX.Element {
     } catch (err) {
       console.warn("Aviso ao buscar notificações no header:", err);
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, getDeletedNotificationIds]);
+
+  const handleDeleteNotification = (notificationId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!user?.userId) return;
+    try {
+      const key = `topiclog_deleted_notifications_${user.userId}`;
+      const stored = localStorage.getItem(key);
+      const curr: string[] = stored ? JSON.parse(stored) : [];
+      const next = Array.from(new Set([...curr, notificationId]));
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {}
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleClearAllNotifications = () => {
+    if (!user?.userId) return;
+    if (notifications.length === 0) return;
+    try {
+      const key = `topiclog_deleted_notifications_${user.userId}`;
+      const stored = localStorage.getItem(key);
+      const curr: string[] = stored ? JSON.parse(stored) : [];
+      const next = Array.from(new Set([...curr, ...notifications.map((n) => n.id)]));
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {}
+    setNotifications([]);
+    setUnreadCount(0);
+    setActivePopupNotification(null);
+  };
 
   const handleDismissPopup = async (item: UserNotificationDto, openLink: boolean = true) => {
     try {
@@ -913,9 +954,27 @@ export function NavigationHeader(): React.JSX.Element {
                       <span style={{ fontSize: "13px", fontWeight: 700, color: "#FFFFFF" }}>
                         {!n.isRead ? "● " : ""}{n.title}
                       </span>
-                      <span style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap" }}>
-                        {safeFormatNotificationDate(n.createdAtUtc)}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap" }}>
+                          {safeFormatNotificationDate(n.createdAtUtc)}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          title="Excluir notificação"
+                          onClick={(e) => handleDeleteNotification(n.id, e)}
+                          style={{
+                            color: "#94A3B8",
+                            fontSize: "12px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            backgroundColor: "rgba(255,255,255,0.08)",
+                            cursor: "pointer"
+                          }}
+                        >
+                          ✕
+                        </span>
+                      </div>
                     </div>
                     <div style={{ fontSize: "12px", color: "#CBD5E1", lineHeight: 1.4 }}>{n.message}</div>
                   </button>
@@ -923,24 +982,42 @@ export function NavigationHeader(): React.JSX.Element {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleMarkAllRead()}
-              style={{
-                width: "100%",
-                marginTop: "16px",
-                backgroundColor: "#2563EB",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "10px",
-                padding: "10px",
-                fontWeight: 600,
-                fontSize: "14px",
-                cursor: "pointer"
-              }}
-            >
-              Marcar Todas como Lidas
-            </button>
+            <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+              <button
+                type="button"
+                onClick={() => void handleMarkAllRead()}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#2563EB",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "10px",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer"
+                }}
+              >
+                Marcar Lidas
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllNotifications}
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(239, 68, 68, 0.15)",
+                  color: "#FCA5A5",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: "10px",
+                  padding: "10px",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer"
+                }}
+              >
+                🗑️ Limpar Todas
+              </button>
+            </div>
           </div>
         </div>
       )}

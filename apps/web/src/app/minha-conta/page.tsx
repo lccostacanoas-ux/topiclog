@@ -1115,7 +1115,7 @@ export default function MyAccountPage(): React.JSX.Element {
             Como outros usuários veem você (Perfil Público)
           </h2>
           <p style={{ color: "var(--color-muted)", fontSize: "13px", marginBottom: "16px" }}>
-            Para garantir sua privacidade conforme a LGPD, seu e-mail, telefone particular e CPF <strong>nunca são exibidos</strong> publicamente. Apenas seu primeiro nome, cidade e reputação ficam visíveis.
+            Seus dados foram cadastrados e estão protegidos pela LGPD (Lei Geral de Proteção de Dados).
           </p>
 
           {publicCard ? (

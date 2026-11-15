@@ -241,6 +241,7 @@ export default function PropostasPage(): React.JSX.Element {
   const [filterDateEnd, setFilterDateEnd] = useState<string>("");
   const [shipmentsById, setShipmentsById] = useState<Record<string, { destinationCity: string; originCity: string; title: string }>>({});
   const [hiddenProposalIds, setHiddenProposalIds] = useState<string[]>([]);
+  const [deletedProposalIds, setDeletedProposalIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user?.userId) return;
@@ -248,6 +249,12 @@ export default function PropostasPage(): React.JSX.Element {
       const stored = localStorage.getItem(`topiclog_hidden_proposals_${user.userId}`);
       if (stored) {
         setHiddenProposalIds(JSON.parse(stored));
+      }
+    } catch {}
+    try {
+      const storedDeleted = localStorage.getItem(`topiclog_deleted_proposals_${user.userId}`);
+      if (storedDeleted) {
+        setDeletedProposalIds(JSON.parse(storedDeleted));
       }
     } catch {}
   }, [user?.userId]);
@@ -259,6 +266,7 @@ export default function PropostasPage(): React.JSX.Element {
     try {
       localStorage.setItem(`topiclog_hidden_proposals_${user.userId}`, JSON.stringify(next));
     } catch {}
+    setProposals((prev) => prev.filter((p) => p.id !== proposalId));
     setActionNotice("✓ Proposta excluída do seu feed ativo. Ela permanece preservada no seu Histórico.");
   };
 
@@ -537,7 +545,20 @@ export default function PropostasPage(): React.JSX.Element {
       }
     }
 
-    setProposals(unifiedList);
+    let deletedSet = new Set<string>();
+    if (user?.userId) {
+      try {
+        const stored = localStorage.getItem(`topiclog_deleted_proposals_${user.userId}`);
+        if (stored) {
+          const arr = JSON.parse(stored);
+          if (Array.isArray(arr)) {
+            deletedSet = new Set(arr);
+          }
+        }
+      } catch {}
+    }
+    const filteredUnifiedList = unifiedList.filter((p) => !deletedSet.has(p.id));
+    setProposals(filteredUnifiedList);
     setLoading(false);
   }, [token, user, activeTab, isCarrier, isSender]);
 
@@ -701,9 +722,19 @@ export default function PropostasPage(): React.JSX.Element {
   // Excluir Proposta do Histórico
   const handleDeleteProposal = async (proposalId: string) => {
     if (!window.confirm("Deseja realmente remover esta proposta do seu histórico?")) return;
+    if (user?.userId) {
+      try {
+        const key = `topiclog_deleted_proposals_${user.userId}`;
+        const stored = localStorage.getItem(key);
+        const curr = stored ? JSON.parse(stored) : [];
+        const next = Array.from(new Set([...curr, proposalId]));
+        localStorage.setItem(key, JSON.stringify(next));
+        setDeletedProposalIds(next);
+      } catch {}
+    }
     removeDemoProposal(proposalId);
-    setActionNotice("Proposta removida do seu histórico.");
-    await loadData();
+    setProposals((prev) => prev.filter((p) => p.id !== proposalId));
+    setActionNotice("✓ Proposta removida do seu histórico.");
   };
 
   // Enviar Contraproposta
@@ -715,6 +746,10 @@ export default function PropostasPage(): React.JSX.Element {
       return;
     }
     const amountCents = Math.round(cleanNum * 100);
+    if (amountCents === proposal.amountCents) {
+      setErrorMessage("Informe um valor diferente do valor atual da proposta para contrapropor.");
+      return;
+    }
     const minPriceCents = (proposal.minimumFreightPriceCents && proposal.minimumFreightPriceCents > 0) ? proposal.minimumFreightPriceCents : (globalMinFreightPriceCents || 900);
     if (amountCents < minPriceCents) {
       const minFmt = (minPriceCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -855,6 +890,7 @@ export default function PropostasPage(): React.JSX.Element {
   const closedCount = proposals.filter(isTripClosed).length;
 
   const visibleProposals = proposals.filter((p) => {
+    if (deletedProposalIds.includes(p.id)) return false;
     const isHidden = hiddenProposalIds.includes(p.id);
 
     // Quando o usuário seleciona "Ver Propostas Encerradas"
@@ -2017,7 +2053,14 @@ export default function PropostasPage(): React.JSX.Element {
 
                     {proposal.negotiationHistory && proposal.negotiationHistory.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        {proposal.negotiationHistory.map((item, idx) => {
+                        {proposal.negotiationHistory
+                          .filter((item, idx, arr) => {
+                            if (idx === 0) return true;
+                            const prev = arr[idx - 1];
+                            if (!prev) return true;
+                            return !(prev.actorRole === item.actorRole && prev.amountCents === item.amountCents);
+                          })
+                          .map((item, idx) => {
                           const isInitial = item.eventType === "PROPOSAL_CREATED";
                           const roleLabel = item.actorRole === "SENDER" ? "Remetente" : "Transportador";
                           return (

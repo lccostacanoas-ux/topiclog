@@ -397,7 +397,7 @@ export default function MensagensPage(): React.JSX.Element {
               </div>
             </div>
             <span style={{ fontSize: "11px", color: "#94A3B8", marginTop: "6px", display: "block" }}>
-              🔒 Seus dados cadastrais são protegidos conforme a LGPD. A senha do usuário não é exposta nem solicitada.
+              🔒 Seus dados foram cadastrados e estão protegidos pela LGPD (Lei Geral de Proteção de Dados).
             </span>
           </div>
 
