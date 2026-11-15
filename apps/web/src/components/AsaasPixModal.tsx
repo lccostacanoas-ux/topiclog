@@ -426,7 +426,7 @@ export function AsaasPixModal({
                   }}
                 >
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#EFF6FF", color: "#1D4ED8", padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, marginBottom: "10px" }}>
-                    ⚡ Chave Pix CNPJ: 11.776.398/0001-79 • Custódia TopicLog
+                    ⚡ Banco Asaas (Instituição 461) • Chave EVP: 363d99be-f8bf-4fbc-ad9e-c7a55be149be • Custódia TopicLog
                   </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img

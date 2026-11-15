@@ -1343,8 +1343,9 @@ public sealed class ProposalsApplicationService : IProposalsApplicationService
             return MapToContractResponse(contract);
         }
 
-        if (contract.Status == ContractStatus.PAYMENT_EXPIRED ||
+        if ((contract.Status == ContractStatus.PAYMENT_EXPIRED ||
             (contract.Status == ContractStatus.AWAITING_PAYMENT && contract.PaymentExpiresAtUtc.HasValue && contract.PaymentExpiresAtUtc.Value <= DateTimeOffset.UtcNow))
+            && string.IsNullOrWhiteSpace(request?.PaymentReferenceId))
         {
             await ExpireContractReservationInternalAsync(contract, cancellationToken);
             throw new DomainRuleViolationException(
