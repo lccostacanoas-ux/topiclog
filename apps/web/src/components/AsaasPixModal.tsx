@@ -437,7 +437,7 @@ export function AsaasPixModal({
                   }}
                 >
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#EFF6FF", color: "#1D4ED8", padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, marginBottom: "10px" }}>
-                    ⚡ Banco Asaas (Instituição 461) • Chave EVP: 363d99be-f8bf-4fbc-ad9e-c7a55be149be • Custódia TopicLog
+                    ⚡ Favorecido: Luiz C Costa (CNPJ: 11.776.398/0001-79) • Custódia TopicLog
                   </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -507,17 +507,17 @@ export function AsaasPixModal({
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
                     <span style={{ fontSize: "11px", fontWeight: 700, color: "#334155" }}>
-                      🔑 Chave Pix Direta (Banco Asaas 461):
+                      🔑 Chave Pix Direta (CNPJ da Plataforma):
                     </span>
                     <span style={{ fontSize: "10px", color: "#64748B" }}>
-                      Tipo: Chave Aleatória (EVP)
+                      Tipo: CNPJ (11.776.398/0001-79)
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: "6px" }}>
                     <input
                       type="text"
                       readOnly
-                      value={pixData.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be"}
+                      value={pixData.pixKey || "11776398000179"}
                       style={{
                         flex: 1,
                         fontSize: "11px",
@@ -532,7 +532,7 @@ export function AsaasPixModal({
                     />
                     <button
                       type="button"
-                      onClick={() => handleCopyKey(pixData.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be")}
+                      onClick={() => handleCopyKey(pixData.pixKey || "11776398000179")}
                       style={{
                         backgroundColor: copiedKey ? "#16A34A" : "#475569",
                         color: "#FFFFFF",
@@ -549,7 +549,7 @@ export function AsaasPixModal({
                     </button>
                   </div>
                   <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
-                    Dica: Se o seu banco indicar &quot;QR Code Inválido&quot;, transfira direto para a chave acima no valor exato de <strong>R$ {selectedAmount.toFixed(2).replace(".", ",")}</strong>.
+                    Favorecido: <strong>Luiz C Costa</strong> • Valor exato: <strong>R$ {selectedAmount.toFixed(2).replace(".", ",")}</strong>.
                   </div>
                 </div>
 

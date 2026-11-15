@@ -68,8 +68,7 @@ function getAsaasApiKey(): string {
 
 /**
  * Geração de Payload Pix padrão BACEN (EMV QRCPS-MPM) com CRC16 rigoroso.
- * Conta e Chave Oficial TopicLog no Banco Asaas (Instituição 461):
- * Chave EVP: 363d99be-f8bf-4fbc-ad9e-c7a55be149be (LUIZ C COSTA LTDA / TOPICLOG CUSTODIA)
+ * Favorecido: Luiz C Costa (CNPJ: 11.776.398/0001-79) - Banco Asaas S.A. (461)
  */
 function computeCrc16(payload: string): string {
   let crc = 0xFFFF;
@@ -90,16 +89,16 @@ function generateTopicLogPixPayload(amount: number, txid = "***", customKey?: st
   const p00 = "000201";
   const p01 = "010211"; // Point of Initiation Method: 11 (Static QR Code - Padrão Obrigatório BACEN BR Code)
 
-  // Chave EVP oficial registrada no Banco Asaas S.A. (461)
-  const key = (customKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be").trim();
-  const merchantAccount = "0014br.gov.bcb.pix" + "01" + key.length.toString().padStart(2, "0") + key;
+  // Chave Pix Oficial da Plataforma TopicLog: CNPJ 11776398000179 (Luiz C Costa)
+  const rawKey = (customKey || "11776398000179").trim().replace(/[^a-zA-Z0-9-]/g, "");
+  const merchantAccount = "0014br.gov.bcb.pix" + "01" + rawKey.length.toString().padStart(2, "0") + rawKey;
   const p26 = "26" + merchantAccount.length.toString().padStart(2, "0") + merchantAccount;
   const p52 = "52040000";
   const p53 = "5303986";
   const amtStr = Number(amount).toFixed(2);
   const p54 = "54" + amtStr.length.toString().padStart(2, "0") + amtStr;
   const p58 = "5802BR";
-  const cleanName = "TOPICLOG CUSTODIA";
+  const cleanName = "LUIZ C COSTA";
   const p59 = "59" + cleanName.length.toString().padStart(2, "0") + cleanName;
   const cleanCity = "BELO HORIZONTE";
   const p60 = "60" + cleanCity.length.toString().padStart(2, "0") + cleanCity;
@@ -130,8 +129,8 @@ export async function POST(request: Request) {
 
     // Se a chave Asaas não estiver presente na Vercel, gera o Pix oficial em regime de custódia TopicLog no Banco Asaas
     if (!isKeyConfigured) {
-      const asaasPixKey = (body.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be").trim();
-      console.info(`[Asaas Pix] ASAAS_API_KEY não configurada no servidor. Gerando Pix oficial com conta/chave Banco Asaas (EVP: ${asaasPixKey}).`);
+      const asaasPixKey = (body.pixKey || "11776398000179").trim();
+      console.info(`[Asaas Pix] ASAAS_API_KEY não configurada no servidor. Gerando Pix oficial com conta/chave Banco Asaas (CNPJ: ${asaasPixKey}).`);
       const simulatedId = `pay_topiclog_${Date.now()}`;
       const pixPayload = generateTopicLogPixPayload(amount, "***", asaasPixKey);
 
@@ -149,7 +148,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         id: simulatedId,
         status: "PENDING",
-        statusDetail: "Aguardando pagamento Pix (Banco Asaas 461 • Chave EVP: 363d99be-f8bf-4fbc-ad9e-c7a55be149be)",
+        statusDetail: "Aguardando pagamento Pix (Chave CNPJ: 11.776.398/0001-79 • Favorecido: Luiz C Costa • Banco Asaas 461)",
         qrCode: pixPayload,
         qrCodeBase64: qrCodeBase64,
         ticketUrl: `https://topiclog-web.vercel.app/pix/${simulatedId}`,
@@ -354,6 +353,7 @@ export async function POST(request: Request) {
         createdAt: payData.dateCreated || new Date().toISOString(),
         isSandboxSimulator: false,
         isKeyConfigured: true,
+        pixKey: "11776398000179",
         environment
       });
   } catch (err: unknown) {
