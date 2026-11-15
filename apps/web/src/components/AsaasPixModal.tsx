@@ -437,7 +437,7 @@ export function AsaasPixModal({
                   }}
                 >
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#EFF6FF", color: "#1D4ED8", padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, marginBottom: "10px" }}>
-                    ⚡ Favorecido: Luiz C Costa (CNPJ: 11.776.398/0001-79) • Custódia TopicLog
+                    ⚡ Banco Asaas (461) • LUIZ C COSTA LTDA (Ag: 0001 Conta: 8310731-8) • Custódia TopicLog
                   </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -507,17 +507,17 @@ export function AsaasPixModal({
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
                     <span style={{ fontSize: "11px", fontWeight: 700, color: "#334155" }}>
-                      🔑 Chave Pix Direta (CNPJ da Plataforma):
+                      🔑 Chave Pix Oficial (Banco Asaas 461):
                     </span>
                     <span style={{ fontSize: "10px", color: "#64748B" }}>
-                      Tipo: CNPJ (11.776.398/0001-79)
+                      Tipo: Chave Aleatória (EVP)
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: "6px" }}>
                     <input
                       type="text"
                       readOnly
-                      value={pixData.pixKey || "11776398000179"}
+                      value={pixData.pixKey || "84c18bef-7fe9-4783-a5b2-5d38384dfbad"}
                       style={{
                         flex: 1,
                         fontSize: "11px",
@@ -532,7 +532,7 @@ export function AsaasPixModal({
                     />
                     <button
                       type="button"
-                      onClick={() => handleCopyKey(pixData.pixKey || "11776398000179")}
+                      onClick={() => handleCopyKey(pixData.pixKey || "84c18bef-7fe9-4783-a5b2-5d38384dfbad")}
                       style={{
                         backgroundColor: copiedKey ? "#16A34A" : "#475569",
                         color: "#FFFFFF",
@@ -549,7 +549,7 @@ export function AsaasPixModal({
                     </button>
                   </div>
                   <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
-                    Favorecido: <strong>Luiz C Costa</strong> • Valor exato: <strong>R$ {selectedAmount.toFixed(2).replace(".", ",")}</strong>.
+                    Favorecido: <strong>LUIZ C COSTA LTDA</strong> • Banco: <strong>461 - Asaas</strong> • Ag: <strong>0001</strong> • Conta: <strong>8310731-8</strong> • Valor exato: <strong>R$ {selectedAmount.toFixed(2).replace(".", ",")}</strong>.
                   </div>
                 </div>
 
