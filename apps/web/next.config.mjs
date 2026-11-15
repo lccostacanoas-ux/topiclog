@@ -3,7 +3,7 @@ const isVercel = Boolean(process.env.VERCEL);
 const isExport = !isVercel && (process.env.NEXT_EXPORT === "true" || process.env.NETLIFY === "true");
 
 // URL ativa do túnel Cloudflare que conecta a Vercel à API local (.NET 10 na porta 5080)
-const ACTIVE_TUNNEL_URL = "https://restricted-shower-positioning-heat.trycloudflare.com";
+const ACTIVE_TUNNEL_URL = "https://collaboration-magazines-weeks-gas.trycloudflare.com";
 
 let apiBaseUrl = (process.env.API_BASE_URL || "").trim();
 // Se não configurado, ou se estiver apontando para o túnel antigo expirado ou localhost na Vercel:
