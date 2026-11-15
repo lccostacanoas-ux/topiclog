@@ -19,6 +19,10 @@ apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  env: {
+    ASAAS_ENVIRONMENT: process.env.ASAAS_ENVIRONMENT || "production",
+    ASAAS_API_URL: process.env.ASAAS_API_URL || "https://api.asaas.com/v3"
+  },
   eslint: {
     ignoreDuringBuilds: true
   },
