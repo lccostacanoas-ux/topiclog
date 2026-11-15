@@ -62,6 +62,26 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const [filterDateStart, setFilterDateStart] = useState<string>("");
   const [filterDateEnd, setFilterDateEnd] = useState<string>("");
   const [hiddenShipmentIds, setHiddenShipmentIds] = useState<string[]>([]);
+  const [deletedShipmentIds, setDeletedShipmentIds] = useState<string[]>([]);
+
+  // Estado do Modal de Edição
+  const [editingShipment, setEditingShipment] = useState<UnifiedShipment | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Cancelamento de Viagem pelo Remetente
+  const [contractsByShipmentId, setContractsByShipmentId] = useState<Record<string, ContractDto>>({});
+  const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
+  const [cancelContractTarget, setCancelContractTarget] = useState<{
+    shipment: UnifiedShipment;
+    contract: ContractDto;
+  } | null>(null);
+  const [cancelJustification, setCancelJustification] = useState<string>("");
+  const [cancelReopen, setCancelReopen] = useState<boolean>(true);
+  const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user?.userId) return;
@@ -69,6 +89,12 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       const stored = localStorage.getItem(`topiclog_hidden_shipments_${user.userId}`);
       if (stored) {
         setHiddenShipmentIds(JSON.parse(stored));
+      }
+    } catch {}
+    try {
+      const storedDeleted = localStorage.getItem(`topiclog_deleted_shipments_${user.userId}`);
+      if (storedDeleted) {
+        setDeletedShipmentIds(JSON.parse(storedDeleted));
       }
     } catch {}
   }, [user?.userId]);
@@ -80,6 +106,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     try {
       localStorage.setItem(`topiclog_hidden_shipments_${user.userId}`, JSON.stringify(next));
     } catch {}
+    setShipments((prev) => prev.filter((s) => s.id !== shipmentId));
     setSuccessMessage("✓ Encomenda excluída do seu feed ativo. Ela permanece preservada no seu Histórico.");
   };
 
@@ -94,7 +121,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   };
 
   const isShipmentClosed = (s: UnifiedShipment) => {
-    const c = contractsByShipmentId[s.id];
+    const c = contractsByShipmentId ? contractsByShipmentId[s.id] : undefined;
     const contractClosed =
       c?.status === "COMPLETED" ||
       c?.status === "CANCELLED_PRE_PICKUP" ||
@@ -105,7 +132,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       s.status === "CLOSED" ||
       s.status === "CANCELLED" ||
       contractClosed ||
-      hiddenShipmentIds.includes(s.id)
+      (hiddenShipmentIds ? hiddenShipmentIds.includes(s.id) : false)
     );
   };
 
@@ -119,6 +146,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   const closedCount = shipments.filter(isShipmentClosed).length;
 
   const visibleShipments = shipments.filter((s) => {
+    if (deletedShipmentIds.includes(s.id)) return false;
     const isHidden = hiddenShipmentIds.includes(s.id);
 
     if (showClosedOnly) {
@@ -150,25 +178,6 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     if (showHistory) return true;
     return !isHidden;
   });
-
-  // Estado do Modal de Edição
-  const [editingShipment, setEditingShipment] = useState<UnifiedShipment | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editPrice, setEditPrice] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Cancelamento de Viagem pelo Remetente
-  const [contractsByShipmentId, setContractsByShipmentId] = useState<Record<string, ContractDto>>({});
-  const [cancellationPenaltyPercent, setCancellationPenaltyPercent] = useState<number>(10);
-  const [cancelContractTarget, setCancelContractTarget] = useState<{
-    shipment: UnifiedShipment;
-    contract: ContractDto;
-  } | null>(null);
-  const [cancelJustification, setCancelJustification] = useState<string>("");
-  const [cancelReopen, setCancelReopen] = useState<boolean>(true);
-  const [submittingCancel, setSubmittingCancel] = useState<boolean>(false);
-  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({});
 
   const loadShipments = useCallback(async () => {
     if (!isAuthenticated || !token) {
@@ -268,9 +277,23 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       }
     }
 
+    let deletedSet = new Set<string>();
+    if (user?.userId) {
+      try {
+        const stored = localStorage.getItem(`topiclog_deleted_shipments_${user.userId}`);
+        if (stored) {
+          const arr = JSON.parse(stored);
+          if (Array.isArray(arr)) {
+            deletedSet = new Set(arr);
+          }
+        }
+      } catch {}
+    }
+
     setShipments(
       unifiedList.filter(
         (s) =>
+          !deletedSet.has(s.id) &&
           s.status !== "DELIVERED" &&
           s.status !== "CLOSED" &&
           s.status !== "CANCELLED" &&
@@ -353,16 +376,25 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     if (!window.confirm("Deseja realmente excluir/cancelar esta encomenda publicada?")) {
       return;
     }
+    if (user?.userId) {
+      try {
+        const key = `topiclog_deleted_shipments_${user.userId}`;
+        const stored = localStorage.getItem(key);
+        const curr = stored ? JSON.parse(stored) : [];
+        const next = Array.from(new Set([...curr, s.id]));
+        localStorage.setItem(key, JSON.stringify(next));
+        setDeletedShipmentIds(next);
+      } catch {}
+    }
+    setShipments((prev) => prev.filter((item) => item.id !== s.id));
+    setSuccessMessage("✓ Encomenda excluída com sucesso!");
     try {
       if (s.isBackend && token) {
         await deleteShipmentApi(s.id, token);
       }
       removeDemoShipment(s.id);
-      setSuccessMessage("✓ Encomenda excluída com sucesso!");
-      await loadShipments();
     } catch {
       removeDemoShipment(s.id);
-      await loadShipments();
     }
   };
 
