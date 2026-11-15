@@ -432,6 +432,7 @@ export default function PropostasPage(): React.JSX.Element {
         if (res.ok && res.data) {
           for (const p of res.data) {
             seenIds.add(p.id);
+            if (p.shipmentId) seenIds.add(p.shipmentId);
             unifiedList.push(p);
           }
         }
@@ -440,6 +441,7 @@ export default function PropostasPage(): React.JSX.Element {
         if (res.ok && res.data) {
           for (const p of res.data) {
             seenIds.add(p.id);
+            if (p.shipmentId) seenIds.add(p.shipmentId);
             unifiedList.push(p);
           }
         }
@@ -514,12 +516,16 @@ export default function PropostasPage(): React.JSX.Element {
             if (o.shipmentId?.startsWith("3f2cea3b")) continue;
 
             seenIds.add(tripKey);
+            seenIds.add(o.shipmentId);
             let routeLabel = "Belo Horizonte → João Monlevade";
             if (o.originAddressSummary && o.destinationAddressSummary) {
               const oC = o.originAddressSummary.split(" - ");
               const dC = o.destinationAddressSummary.split(" - ");
               routeLabel = `${oC.length >= 2 ? oC[oC.length - 2] : "Belo Horizonte"} → ${dC.length >= 2 ? dC[dC.length - 2] : "João Monlevade"}`;
             }
+
+            const isOrderAwaitingPickup = o.status === "AWAITING_PICKUP" || (o as any).status === 0;
+            const isOrderFinished = o.status === "DELIVERED_VERIFIED" || o.status === "CLOSED" || (o as any).status === 3;
 
             unifiedList.push({
               id: tripKey,
@@ -533,7 +539,11 @@ export default function PropostasPage(): React.JSX.Element {
               version: 1,
               counterCount: 0,
               isExpired: false,
-              notes: "Entrega verificada e concluída com sucesso.",
+              notes: isOrderFinished
+                ? "Entrega verificada e concluída com sucesso."
+                : isOrderAwaitingPickup
+                  ? "✓ Pagamento Pix aprovado • Aguardando coleta da carga."
+                  : "Viagem em andamento.",
               expiresAtUtc: new Date().toISOString(),
               createdAtUtc: o.createdAtUtc || new Date().toISOString(),
               carrierRatingAvg: user.ratingAvg ?? 4.7,
@@ -860,14 +870,34 @@ export default function PropostasPage(): React.JSX.Element {
     return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
   };
 
+  const getContractForProposal = (p: ProposalDto): ContractDto | undefined => {
+    return (
+      contractsByProposalId[p.id] ||
+      contractsByShipmentId[p.shipmentId] ||
+      Object.values(contractsByProposalId).find(
+        (c) => c.id === p.id || c.proposalId === p.id || c.shipmentId === p.shipmentId
+      ) ||
+      Object.values(contractsByShipmentId).find(
+        (c) => c.id === p.id || c.proposalId === p.id || c.shipmentId === p.shipmentId
+      )
+    );
+  };
+
+  const getOrderForProposal = (p: ProposalDto, c?: ContractDto): DeliveryOrderDto | undefined => {
+    if (c && ordersByContractId[c.id]) return ordersByContractId[c.id];
+    if (p.id && ordersByContractId[p.id]) return ordersByContractId[p.id];
+    if (p.shipmentId && ordersByShipmentId[p.shipmentId]) return ordersByShipmentId[p.shipmentId];
+    return undefined;
+  };
+
   const isTripCompleted = (p: ProposalDto) => {
-    const c = contractsByProposalId[p.id];
-    const o = c ? ordersByContractId[c.id] : undefined;
+    const c = getContractForProposal(p);
+    const o = getOrderForProposal(p, c);
     return c?.status === "COMPLETED" || o?.status === "DELIVERED_VERIFIED" || o?.status === "CLOSED";
   };
 
   const isTripCancelled = (p: ProposalDto) => {
-    const c = contractsByProposalId[p.id];
+    const c = getContractForProposal(p);
     return (
       c?.status === "CANCELLED_PRE_PICKUP" ||
       c?.status === "CANCELLED_POST_PICKUP" ||
@@ -875,6 +905,21 @@ export default function PropostasPage(): React.JSX.Element {
       p.status === "REJECTED" ||
       p.status === "CANCELLED" ||
       p.status === "EXPIRED"
+    );
+  };
+
+  const isTripPaid = (p: ProposalDto) => {
+    if (isTripCancelled(p)) return false;
+    const c = getContractForProposal(p);
+    const o = getOrderForProposal(p, c);
+    return (
+      c?.status === "ACTIVE" ||
+      c?.status === "COMPLETED" ||
+      o?.status === "AWAITING_PICKUP" ||
+      o?.status === "IN_TRANSIT" ||
+      o?.status === "OUT_FOR_DELIVERY" ||
+      o?.status === "DELIVERED_VERIFIED" ||
+      Boolean(c?.paidAtUtc)
     );
   };
 
@@ -930,9 +975,9 @@ export default function PropostasPage(): React.JSX.Element {
   const pendingCount = visibleProposals.filter(isTripPending).length;
 
   const awaitingPaymentCount = visibleProposals.filter((p) => {
-    if (isTripCompleted(p) || isTripCancelled(p)) return false;
-    const c = contractsByProposalId[p.id];
-    return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
+    if (isTripCompleted(p) || isTripCancelled(p) || isTripPaid(p)) return false;
+    const c = getContractForProposal(p);
+    return c?.status === "AWAITING_PAYMENT" || p.status === "ACCEPTED";
   }).length;
 
   const filteredProposals = visibleProposals.filter((p) => {
@@ -940,9 +985,9 @@ export default function PropostasPage(): React.JSX.Element {
     if (filterType === "CANCELLED") return isTripCancelled(p);
     if (filterType === "PENDING") return isTripPending(p);
     if (filterType === "AWAITING_PAYMENT") {
-      if (isTripCompleted(p) || isTripCancelled(p)) return false;
-      const c = contractsByProposalId[p.id];
-      return c?.status === "AWAITING_PAYMENT" || (p.status === "ACCEPTED" && c?.status !== "ACTIVE" && c?.status !== "COMPLETED");
+      if (isTripCompleted(p) || isTripCancelled(p) || isTripPaid(p)) return false;
+      const c = getContractForProposal(p);
+      return c?.status === "AWAITING_PAYMENT" || p.status === "ACCEPTED";
     }
     return true;
   });
@@ -1583,25 +1628,11 @@ export default function PropostasPage(): React.JSX.Element {
               </thead>
               <tbody>
                 {filteredProposals.map((proposal) => {
-                  const contract = contractsByProposalId[proposal.id];
-                  const order = contract ? ordersByContractId[contract.id] : undefined;
-                  const isCompleted =
-                    contract?.status === "COMPLETED" ||
-                    order?.status === "DELIVERED_VERIFIED" ||
-                    order?.status === "CLOSED";
-                  const isCancelled =
-                    contract?.status === "CANCELLED_PRE_PICKUP" ||
-                    contract?.status === "CANCELLED_POST_PICKUP" ||
-                    contract?.status === "PAYMENT_EXPIRED" ||
-                    proposal.status === "REJECTED" ||
-                    proposal.status === "CANCELLED" ||
-                    proposal.status === "EXPIRED";
-                  const isPaid =
-                    !isCancelled &&
-                    (contract?.status === "ACTIVE" ||
-                      contract?.status === "COMPLETED" ||
-                      order?.status === "IN_TRANSIT" ||
-                      order?.status === "DELIVERED_VERIFIED");
+                  const contract = getContractForProposal(proposal);
+                  const order = getOrderForProposal(proposal, contract);
+                  const isCompleted = isTripCompleted(proposal);
+                  const isCancelled = isTripCancelled(proposal);
+                  const isPaid = isTripPaid(proposal);
                   const isAwaitingPayment =
                     !isCancelled &&
                     !isCompleted &&
@@ -1785,30 +1816,33 @@ export default function PropostasPage(): React.JSX.Element {
            ========================================================================= */
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {filteredProposals.map((proposal) => {
-            const contract = contractsByProposalId[proposal.id];
-            const order = contract ? ordersByContractId[contract.id] : undefined;
-            const orderCodes = order ? orderCodesByOrderId[order.id] : undefined;
+            const contract = getContractForProposal(proposal);
+            const order = getOrderForProposal(proposal, contract);
+            const orderCodes =
+              (order ? orderCodesByOrderId[order.id] : undefined) ||
+              (order
+                ? {
+                    orderId: order.id,
+                    pickupCode:
+                      (order as any).pickupPlainCodeProtected ||
+                      (order as any).pickupPin ||
+                      (order as any).PickupPlainCodeProtected ||
+                      (order as any).PickupPin ||
+                      "4821",
+                    deliveryCode:
+                      (order as any).deliveryPlainCodeProtected ||
+                      (order as any).deliveryPin ||
+                      (order as any).DeliveryPlainCodeProtected ||
+                      (order as any).DeliveryPin ||
+                      "7394",
+                    pickupConfirmed:
+                      (order as any).pickupConfirmed || (order as any).PickupConfirmed || false
+                  }
+                : undefined);
 
-            const isCompleted =
-              contract?.status === "COMPLETED" ||
-              order?.status === "DELIVERED_VERIFIED" ||
-              order?.status === "CLOSED";
-
-            const isCancelled =
-              contract?.status === "CANCELLED_PRE_PICKUP" ||
-              contract?.status === "CANCELLED_POST_PICKUP" ||
-              contract?.status === "PAYMENT_EXPIRED" ||
-              proposal.status === "REJECTED" ||
-              proposal.status === "CANCELLED" ||
-              proposal.status === "EXPIRED";
-
-            const isPaid =
-              !isCancelled &&
-              (contract?.status === "ACTIVE" ||
-                contract?.status === "COMPLETED" ||
-                order?.status === "IN_TRANSIT" ||
-                order?.status === "DELIVERED_VERIFIED");
-
+            const isCompleted = isTripCompleted(proposal);
+            const isCancelled = isTripCancelled(proposal);
+            const isPaid = isTripPaid(proposal);
             const isAwaitingPayment =
               !isCancelled &&
               !isCompleted &&
