@@ -43,6 +43,7 @@ export function AsaasPixModal({
   const [loading, setLoading] = useState<boolean>(false);
   const [checking, setChecking] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [copiedKey, setCopiedKey] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState<boolean>(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(15 * 60);
@@ -183,6 +184,16 @@ export function AsaasPixModal({
       setTimeout(() => setCopied(false), 3000);
     } catch {
       setCopied(true);
+    }
+  };
+
+  const handleCopyKey = async (rawKey: string) => {
+    try {
+      await navigator.clipboard.writeText(rawKey.trim());
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 3000);
+    } catch {
+      setCopiedKey(true);
     }
   };
 
@@ -481,6 +492,64 @@ export function AsaasPixModal({
                     >
                       {copied ? "✓ Código Copiado!" : "Copiar Código Pix"}
                     </button>
+                  </div>
+                </div>
+
+                {/* Opção Alternativa: Chave Pix Direta (Caso o app do banco rejeite Copia e Cola) */}
+                <div
+                  style={{
+                    backgroundColor: "#F8FAFC",
+                    border: "1px dashed #94A3B8",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    marginBottom: "14px"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#334155" }}>
+                      🔑 Chave Pix Direta (Banco Asaas 461):
+                    </span>
+                    <span style={{ fontSize: "10px", color: "#64748B" }}>
+                      Tipo: Chave Aleatória (EVP)
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      readOnly
+                      value={pixData.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be"}
+                      style={{
+                        flex: 1,
+                        fontSize: "11px",
+                        fontFamily: "monospace",
+                        padding: "6px 8px",
+                        backgroundColor: "#FFFFFF",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "6px",
+                        color: "#0F172A"
+                      }}
+                      onClick={(e) => (e.target as HTMLInputElement).select()}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCopyKey(pixData.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be")}
+                      style={{
+                        backgroundColor: copiedKey ? "#16A34A" : "#475569",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "0 10px",
+                        fontWeight: 700,
+                        fontSize: "11px",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {copiedKey ? "✓ Chave Copiada!" : "Copiar Chave"}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
+                    Dica: Se o seu banco indicar &quot;QR Code Inválido&quot;, transfira direto para a chave acima no valor exato de <strong>R$ {selectedAmount.toFixed(2).replace(".", ",")}</strong>.
                   </div>
                 </div>
 

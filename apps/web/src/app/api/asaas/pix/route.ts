@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import QRCode from "qrcode";
 
 /**
  * Validação rigorosa de CRC16-CCITT para strings Pix (EMV QRCPS-MPM).
@@ -87,24 +88,30 @@ function computeCrc16(payload: string): string {
 
 function generateTopicLogPixPayload(amount: number, txid = "***", customKey?: string): string {
   const p00 = "000201";
+  const p01 = "010211"; // Point of Initiation Method: 11 (Static QR Code - Padrão Obrigatório BACEN BR Code)
+
   // Chave EVP oficial registrada no Banco Asaas S.A. (461)
   const key = (customKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be").trim();
   const merchantAccount = "0014br.gov.bcb.pix" + "01" + key.length.toString().padStart(2, "0") + key;
   const p26 = "26" + merchantAccount.length.toString().padStart(2, "0") + merchantAccount;
   const p52 = "52040000";
   const p53 = "5303986";
-  const amtStr = amount.toFixed(2);
+  const amtStr = Number(amount).toFixed(2);
   const p54 = "54" + amtStr.length.toString().padStart(2, "0") + amtStr;
   const p58 = "5802BR";
-  const cleanName = "TOPICLOG ASAAS";
+  const cleanName = "TOPICLOG CUSTODIA";
   const p59 = "59" + cleanName.length.toString().padStart(2, "0") + cleanName;
   const cleanCity = "BELO HORIZONTE";
   const p60 = "60" + cleanCity.length.toString().padStart(2, "0") + cleanCity;
-  const cleanTxid = (txid || "***").slice(0, 25);
+
+  // No QR Code estático sem cobrança prévia registrada no PSP, o BACEN estipula txid '***'
+  const cleanTxid = (txid && txid !== "***" && !txid.startsWith("pay_"))
+    ? txid.replace(/[^a-zA-Z0-9*]/g, "").slice(0, 25)
+    : "***";
   const txField = "05" + cleanTxid.length.toString().padStart(2, "0") + cleanTxid;
   const p62 = "62" + txField.length.toString().padStart(2, "0") + txField;
 
-  const raw = p00 + p26 + p52 + p53 + p54 + p58 + p59 + p60 + p62 + "6304";
+  const raw = p00 + p01 + p26 + p52 + p53 + p54 + p58 + p59 + p60 + p62 + "6304";
   const crc = computeCrc16(raw);
   return raw + crc;
 }
@@ -126,13 +133,25 @@ export async function POST(request: Request) {
       const asaasPixKey = (body.pixKey || "363d99be-f8bf-4fbc-ad9e-c7a55be149be").trim();
       console.info(`[Asaas Pix] ASAAS_API_KEY não configurada no servidor. Gerando Pix oficial com conta/chave Banco Asaas (EVP: ${asaasPixKey}).`);
       const simulatedId = `pay_topiclog_${Date.now()}`;
-      const pixPayload = generateTopicLogPixPayload(amount, simulatedId.slice(-10), asaasPixKey);
+      const pixPayload = generateTopicLogPixPayload(amount, "***", asaasPixKey);
+
+      let qrCodeBase64 = "";
+      try {
+        qrCodeBase64 = await QRCode.toDataURL(pixPayload, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 300
+        });
+      } catch (qrErr) {
+        console.warn("[Asaas Pix] Falha ao gerar QR Code base64 localmente:", qrErr);
+      }
+
       return NextResponse.json({
         id: simulatedId,
         status: "PENDING",
         statusDetail: "Aguardando pagamento Pix (Banco Asaas 461 • Chave EVP: 363d99be-f8bf-4fbc-ad9e-c7a55be149be)",
         qrCode: pixPayload,
-        qrCodeBase64: "",
+        qrCodeBase64: qrCodeBase64,
         ticketUrl: `https://topiclog-web.vercel.app/pix/${simulatedId}`,
         transactionAmount: amount,
         carrierNetReceivable: body.carrierWalletId ? amount * 0.8 : amount,
@@ -140,7 +159,7 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
         isSandboxSimulator: true,
         isKeyConfigured: true,
-        pixKey: "363d99be-f8bf-4fbc-ad9e-c7a55be149be (Banco Asaas)",
+        pixKey: asaasPixKey,
         environment: "production"
       });
     }

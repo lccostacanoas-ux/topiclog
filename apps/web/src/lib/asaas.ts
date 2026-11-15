@@ -39,6 +39,7 @@ export interface AsaasPixData {
   createdAt: string;
   isSandboxSimulator?: boolean;
   isKeyConfigured?: boolean;
+  pixKey?: string;
   environment?: "production" | "sandbox";
 }
 
