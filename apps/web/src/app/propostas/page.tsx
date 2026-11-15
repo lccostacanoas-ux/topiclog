@@ -597,7 +597,7 @@ export default function PropostasPage(): React.JSX.Element {
         return;
       }
 
-      const existingContract = contractsByProposalId[proposal.id] || contractsByShipmentId[proposal.shipmentId];
+      const existingContract = contractsByProposalId[proposal.id] || (proposal.status === "ACCEPTED" ? contractsByShipmentId[proposal.shipmentId] : undefined);
       if (existingContract && existingContract.status === "AWAITING_PAYMENT") {
         setSelectedProposalForPix(proposal);
         setSelectedContractForPix(existingContract);
@@ -871,16 +871,26 @@ export default function PropostasPage(): React.JSX.Element {
   };
 
   const getContractForProposal = (p: ProposalDto): ContractDto | undefined => {
-    return (
-      contractsByProposalId[p.id] ||
-      contractsByShipmentId[p.shipmentId] ||
-      Object.values(contractsByProposalId).find(
-        (c) => c.id === p.id || c.proposalId === p.id || c.shipmentId === p.shipmentId
-      ) ||
-      Object.values(contractsByShipmentId).find(
-        (c) => c.id === p.id || c.proposalId === p.id || c.shipmentId === p.shipmentId
-      )
-    );
+    if (!p) return undefined;
+    // 1. Contrato estritamente vinculado ao ID desta proposta
+    if (contractsByProposalId[p.id]) return contractsByProposalId[p.id];
+    const matchByProp = Object.values(contractsByProposalId).find((c) => c.proposalId === p.id);
+    if (matchByProp) return matchByProp;
+
+    // 2. Se a proposta foi aceita, associa a contrato ativo/em pagamento deste shipment (nunca expirado/cancelado)
+    if (p.status === "ACCEPTED") {
+      const shipMatch = contractsByShipmentId[p.shipmentId];
+      if (
+        shipMatch &&
+        shipMatch.status !== "PAYMENT_EXPIRED" &&
+        shipMatch.status !== "CANCELLED_PRE_PICKUP" &&
+        shipMatch.status !== "CANCELLED_POST_PICKUP"
+      ) {
+        return shipMatch;
+      }
+    }
+
+    return undefined;
   };
 
   const getOrderForProposal = (p: ProposalDto, c?: ContractDto): DeliveryOrderDto | undefined => {
@@ -2256,10 +2266,11 @@ export default function PropostasPage(): React.JSX.Element {
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: "6px"
+                        gap: "6px",
+                        boxShadow: "0 2px 4px rgba(5, 150, 105, 0.25)"
                       }}
                     >
-                      ⚡ Aceitar Proposta & Gerar Pix
+                      ⚡ Aceitar Proposta & Fazer Pix (R$ {(proposal.amountCents / 100).toFixed(2).replace(".", ",")})
                     </button>
 
                     <button

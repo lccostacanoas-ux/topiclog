@@ -121,12 +121,15 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   };
 
   const isShipmentClosed = (s: UnifiedShipment) => {
+    // Se a encomenda estiver como PUBLISHED ou NEGOTIATING, ela está ativa (mesmo que um contrato anterior tenha expirado)
+    if (s.status === "PUBLISHED" || s.status === "NEGOTIATING" || s.status === "ACCEPTED") {
+      return hiddenShipmentIds ? hiddenShipmentIds.includes(s.id) : false;
+    }
     const c = contractsByShipmentId ? contractsByShipmentId[s.id] : undefined;
     const contractClosed =
       c?.status === "COMPLETED" ||
       c?.status === "CANCELLED_PRE_PICKUP" ||
-      c?.status === "CANCELLED_POST_PICKUP" ||
-      c?.status === "PAYMENT_EXPIRED";
+      c?.status === "CANCELLED_POST_PICKUP";
     return (
       s.status === "DELIVERED" ||
       s.status === "CLOSED" ||
@@ -1360,13 +1363,37 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
 
                           {(() => {
                             const contract = contractsByShipmentId[s.id];
-                            if (!contract) {
+                            if (
+                              !contract ||
+                              ((contract.status === "PAYMENT_EXPIRED" || contract.status === "CANCELLED_PRE_PICKUP") &&
+                                (s.status === "PUBLISHED" || s.status === "NEGOTIATING"))
+                            ) {
                               return (
                                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                                   <span style={{ color: "#3B82F6", fontSize: "14px" }}>●</span>
                                   <div>
                                     <strong style={{ color: "#0F172A" }}>Status Atual:</strong>{" "}
-                                    <span>Disponível no mural público para envio de propostas por transportadores.</span>
+                                    <span>Disponível no mural público • Negociação ativa com transportadores.</span>
+                                    <div style={{ marginTop: "6px" }}>
+                                      <Link
+                                        href="/propostas"
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "6px",
+                                          padding: "6px 14px",
+                                          backgroundColor: "#2563EB",
+                                          color: "#FFFFFF",
+                                          borderRadius: "6px",
+                                          fontWeight: 700,
+                                          fontSize: "12px",
+                                          textDecoration: "none",
+                                          boxShadow: "0 1px 3px rgba(37, 99, 235, 0.3)"
+                                        }}
+                                      >
+                                        📬 Ver Propostas Recebidas & Fazer Pix ➔
+                                      </Link>
+                                    </div>
                                   </div>
                                 </div>
                               );
