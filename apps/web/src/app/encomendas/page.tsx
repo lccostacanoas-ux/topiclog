@@ -176,7 +176,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
     }
 
     if (showHistory) return true;
-    return !isHidden;
+    return !isShipmentClosed(s) && !isHidden;
   });
 
   const loadShipments = useCallback(async () => {
@@ -290,16 +290,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       } catch {}
     }
 
-    setShipments(
-      unifiedList.filter(
-        (s) =>
-          !deletedSet.has(s.id) &&
-          s.status !== "DELIVERED" &&
-          s.status !== "CLOSED" &&
-          s.status !== "CANCELLED" &&
-          s.status !== "CANCELED"
-      )
-    );
+    setShipments(unifiedList.filter((s) => !deletedSet.has(s.id)));
     setLoading(false);
   }, [isAuthenticated, token, user]);
 
@@ -373,7 +364,7 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
   };
 
   const handleDeleteShipment = async (s: UnifiedShipment) => {
-    if (!window.confirm("Deseja realmente excluir/cancelar esta encomenda publicada?")) {
+    if (!window.confirm("Deseja realmente remover esta encomenda da sua tela?")) {
       return;
     }
     if (user?.userId) {
@@ -387,9 +378,9 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
       } catch {}
     }
     setShipments((prev) => prev.filter((item) => item.id !== s.id));
-    setSuccessMessage("✓ Encomenda excluída com sucesso!");
+    setSuccessMessage("✓ Encomenda removida da sua tela com sucesso!");
     try {
-      if (s.isBackend && token) {
+      if ((s.status === "PUBLISHED" || s.status === "OPEN" || s.status === "NEGOTIATING") && s.isBackend && token) {
         await deleteShipmentApi(s.id, token);
       }
       removeDemoShipment(s.id);
@@ -1209,6 +1200,27 @@ export default function MinhasEncomendasPage(): React.JSX.Element {
                               </button>
                             </div>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteShipment(s)}
+                            title="Remover definitivamente esta encomenda da sua tela"
+                            style={{
+                              padding: "6px 14px",
+                              backgroundColor: "#FEF2F2",
+                              border: "1px solid #FECACA",
+                              borderRadius: "8px",
+                              color: "#DC2626",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px"
+                            }}
+                          >
+                            🗑️ Excluir da Tela
+                          </button>
                         </div>
                       )}
 

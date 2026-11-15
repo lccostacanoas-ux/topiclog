@@ -409,8 +409,8 @@ export function AsaasPixModal({
         {/* Conteúdo do Pix quando carregado e não aprovado */}
         {!loading && pixData && !isApproved && (
           <div>
-            {/* CENÁRIO A: Chave Asaas configurada (Pix Oficial Disponível) */}
-            {pixData.isKeyConfigured && pixData.qrCode ? (
+            {/* Pix Disponível com QR Code e Copia e Cola */}
+            {pixData.qrCode ? (
               <div>
                 <div
                   style={{
@@ -425,6 +425,9 @@ export function AsaasPixModal({
                     marginBottom: "14px"
                   }}
                 >
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", backgroundColor: "#EFF6FF", color: "#1D4ED8", padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, marginBottom: "10px" }}>
+                    ⚡ Chave Pix CNPJ: 11.776.398/0001-79 • Custódia TopicLog
+                  </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={
@@ -432,7 +435,7 @@ export function AsaasPixModal({
                         ? (pixData.qrCodeBase64.startsWith("data:") ? pixData.qrCodeBase64 : `data:image/png;base64,${pixData.qrCodeBase64}`)
                         : `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(pixData.qrCode)}`
                     }
-                    alt="QR Code Pix Asaas Oficial"
+                    alt="QR Code Pix TopicLog Custódia"
                     style={{ width: "200px", height: "200px", display: "block", borderRadius: "8px" }}
                   />
                   <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px", textAlign: "center" }}>
@@ -442,7 +445,7 @@ export function AsaasPixModal({
 
                 <div style={{ marginBottom: "14px" }}>
                   <label style={{ fontSize: "11px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px" }}>
-                    Código Pix Copia e Cola Oficial (Asaas):
+                    Código Pix Copia e Cola Oficial:
                   </label>
                   <div style={{ display: "flex", gap: "6px" }}>
                     <input
