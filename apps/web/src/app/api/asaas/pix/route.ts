@@ -213,7 +213,8 @@ export async function POST(request: Request) {
           body: JSON.stringify({
             name: payerName || "Remetente TopicLog",
             email: payerEmail || "contato@topiclog.com.br",
-            cpfCnpj: cleanDoc
+            cpfCnpj: cleanDoc,
+            notificationDisabled: true
           })
         });
         if (createCustRes.ok) {
@@ -246,7 +247,8 @@ export async function POST(request: Request) {
         value: amount,
         dueDate: today,
         description: description,
-        postalService: false
+        postalService: false,
+        externalReference: body.orderId || undefined
       };
 
       if (body.carrierWalletId) {
