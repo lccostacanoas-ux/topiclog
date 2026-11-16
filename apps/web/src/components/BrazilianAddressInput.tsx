@@ -1205,37 +1205,6 @@ export default function BrazilianAddressInput({
               }}
             />
           </div>
-
-          {/* Botão discreto de atualização 🔄 (não obrigatório para o usuário clicar) */}
-          <div style={{ display: "flex", alignItems: "flex-end" }}>
-            <button
-              type="button"
-              onClick={() => executeLocate(streetQuery, houseNumber, neighborhood, city, stateUf, true)}
-              disabled={isLoading}
-              style={{
-                width: "100%",
-                minHeight: "44px",
-                backgroundColor: "#0F172A",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "8px",
-                padding: "0 12px",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: isLoading ? "wait" : "pointer",
-                whiteSpace: "nowrap",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "5px",
-                opacity: isLoading ? 0.7 : 1
-              }}
-              title="Atualizar localização no mapa"
-            >
-              <span style={{ fontSize: "14px" }}>{isLoading ? "⏳" : "🔄"}</span>
-              <span style={{ fontSize: "12px" }}>{isLoading ? "Buscando..." : "Atualizar"}</span>
-            </button>
-          </div>
         </div>
 
         {/* Dropdown de sugestões do endereço */}
