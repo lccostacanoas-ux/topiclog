@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useId } from "react";
+import React, { useState, useEffect, useRef, useId, useCallback } from "react";
 
 export interface ConfirmedAddress {
   rawInput: string;
@@ -159,38 +159,73 @@ export function buildFormattedAddress(
   return parts.join(" - ");
 }
 
-// Motor unificado de geocodificação brasileira (Photon + Nominatim + Centróides)
-export async function geocodeBrazilianAddress(
+// Timeout helper para chamadas de rede com AbortController
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 7000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
+export interface GeocodeDetailedResult {
+  status: "SUCCESS" | "NOT_FOUND" | "NETWORK_ERROR";
+  results: ConfirmedAddress[];
+  errorMessage?: string;
+}
+
+// Motor detalhado de geocodificação brasileira (Photon + Nominatim com status de erro explícito)
+export async function geocodeBrazilianAddressDetailed(
   street: string,
   number: string,
   neighborhood: string,
   city: string,
   stateUf: string
-): Promise<ConfirmedAddress[]> {
+): Promise<GeocodeDetailedResult> {
   const cleanStreet = (street || "").trim();
   const cleanNumber = (number || "").trim();
   const cleanNeigh = (neighborhood || "").trim();
   const cleanCity = (city || "").trim();
   const cleanState = (stateUf || "").trim().toUpperCase();
 
-  if (!cleanStreet && !cleanCity) return [];
+  if (!cleanStreet && !cleanCity) {
+    return { status: "NOT_FOUND", results: [] };
+  }
 
   const streetFull = cleanNumber ? `${cleanStreet}, ${cleanNumber}` : cleanStreet;
   const queryParts = [streetFull, cleanNeigh, cleanCity, cleanState, "Brasil"].filter(Boolean);
   const fullQuery = queryParts.join(", ");
-  const results: ConfirmedAddress[] = [];
+  const fallbackQuery = [cleanStreet, cleanNeigh, cleanCity, cleanState, "Brasil"].filter(Boolean).join(", ");
 
-  // 1. Tentar Photon (Komoot OpenStreetMap)
+  const results: ConfirmedAddress[] = [];
+  let photonFailed = false;
+  let nominatimFailed = false;
+
+  // 1. Tentar Photon (Komoot OpenStreetMap) com fullQuery
   try {
     const normCity = cleanCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const cityCoords = CITY_CENTROIDS[normCity];
     const biasParam = cityCoords ? `&lat=${cityCoords.lat}&lon=${cityCoords.lon}` : "";
 
-    const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullQuery)}&limit=6${biasParam}`;
-    const res = await fetch(photonUrl, { headers: { Accept: "application/json" } });
+    let photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(fullQuery)}&limit=6${biasParam}`;
+    let res = await fetchWithTimeout(photonUrl, { headers: { Accept: "application/json" } });
 
     if (res.ok) {
-      const data = await res.json();
+      let data = await res.json();
+      // Se não encontrou com número específico, tenta sem o número
+      if ((!data?.features || data.features.length === 0) && cleanNumber && fallbackQuery !== fullQuery) {
+        photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(fallbackQuery)}&limit=6${biasParam}`;
+        res = await fetchWithTimeout(photonUrl, { headers: { Accept: "application/json" } });
+        if (res.ok) {
+          data = await res.json();
+        }
+      }
+
       if (data && Array.isArray(data.features)) {
         for (const feat of data.features) {
           const props = feat.properties || {};
@@ -228,21 +263,33 @@ export async function geocodeBrazilianAddress(
           });
         }
       }
+    } else {
+      photonFailed = true;
     }
-  } catch (err) {
-    console.warn("Photon lookup error:", err);
+  } catch {
+    photonFailed = true;
   }
 
-  // 2. Se Photon não retornou resultados, tentar Nominatim
+  // 2. Se Photon não retornou resultados ou falhou, tentar Nominatim
   if (results.length === 0) {
     try {
-      const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=br&addressdetails=1&limit=6`;
-      const res = await fetch(nominatimUrl, {
+      let nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=br&addressdetails=1&limit=6`;
+      let res = await fetchWithTimeout(nominatimUrl, {
         headers: { "User-Agent": "TopicLog/1.0", Accept: "application/json" }
       });
 
       if (res.ok) {
-        const data = await res.json();
+        let data = await res.json();
+        if ((!Array.isArray(data) || data.length === 0) && cleanNumber && fallbackQuery !== fullQuery) {
+          nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fallbackQuery)}&countrycodes=br&addressdetails=1&limit=6`;
+          res = await fetchWithTimeout(nominatimUrl, {
+            headers: { "User-Agent": "TopicLog/1.0", Accept: "application/json" }
+          });
+          if (res.ok) {
+            data = await res.json();
+          }
+        }
+
         if (Array.isArray(data)) {
           for (const item of data) {
             const lat = parseFloat(item.lat);
@@ -278,35 +325,46 @@ export async function geocodeBrazilianAddress(
             });
           }
         }
+      } else {
+        nominatimFailed = true;
       }
-    } catch (err) {
-      console.warn("Nominatim lookup error:", err);
+    } catch {
+      nominatimFailed = true;
     }
   }
 
-  // 3. Fallback: Centróide do Município caso a rua não tenha sido mapeada
-  if (results.length === 0 && cleanCity) {
-    const normCity = cleanCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const hub = CITY_CENTROIDS[normCity];
-    if (hub) {
-      const formatted = buildFormattedAddress(cleanStreet, cleanNumber, cleanNeigh, cleanCity, hub.uf);
-      results.push({
-        rawInput: formatted,
-        formattedAddress: formatted,
-        street: cleanStreet || undefined,
-        number: cleanNumber || undefined,
-        neighborhood: cleanNeigh || undefined,
-        city: cleanCity,
-        stateUf: hub.uf,
-        lat: hub.lat,
-        lon: hub.lon,
-        isConfirmed: true,
-        provider: "Catálogo Nacional TopicLog (Centro da Cidade)"
-      });
-    }
+  // Se foram encontradas coordenadas válidas
+  if (results.length > 0) {
+    return { status: "SUCCESS", results };
   }
 
-  return results;
+  // Se ambos os serviços de mapa falharam por rede/timeout/cota
+  if (photonFailed && nominatimFailed) {
+    return {
+      status: "NETWORK_ERROR",
+      results: [],
+      errorMessage: "Não foi possível carregar o mapa ou validar a rota no momento. Verifique sua conexão e tente novamente."
+    };
+  }
+
+  // Se os serviços responderam normalmente mas não encontraram o endereço
+  return {
+    status: "NOT_FOUND",
+    results: [],
+    errorMessage: "Endereço não encontrado no mapa. Verifique o nome da rua, número e cidade."
+  };
+}
+
+// Wrapper retrocompatível
+export async function geocodeBrazilianAddress(
+  street: string,
+  number: string,
+  neighborhood: string,
+  city: string,
+  stateUf: string
+): Promise<ConfirmedAddress[]> {
+  const res = await geocodeBrazilianAddressDetailed(street, number, neighborhood, city, stateUf);
+  return res.results;
 }
 
 interface BrazilianAddressInputProps {
@@ -323,6 +381,8 @@ interface BrazilianAddressInputProps {
   placeholder?: string;
   required?: boolean;
 }
+
+type GeocodeStatus = "idle" | "locating" | "success" | "not_found" | "network_error";
 
 export default function BrazilianAddressInput({
   id,
@@ -341,7 +401,7 @@ export default function BrazilianAddressInput({
   const componentInstanceId = useId();
   const datalistId = `cities-list-${id}-${componentInstanceId}`;
 
-  // Estados locais dos campos decompostos (Todo o Brasil, sem cidade travada)
+  // Estados locais dos campos decompostos
   const [postalCode, setPostalCode] = useState(value.postalCode || "");
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [stateUf, setStateUf] = useState(value.stateUf || "");
@@ -354,7 +414,24 @@ export default function BrazilianAddressInput({
   const [suggestions, setSuggestions] = useState<ConfirmedAddress[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [geocodeStatus, setGeocodeStatus] = useState<GeocodeStatus>(() => {
+    return value.isConfirmed && value.lat && value.lon ? "success" : "idle";
+  });
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastGeocodedKeyRef = useRef<string>("");
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Sincroniza estados internos quando as props mudam
   useEffect(() => {
@@ -391,6 +468,15 @@ export default function BrazilianAddressInput({
     setComplement(value.complement || "");
   }, [value.complement]);
 
+  // Se o valor externo estiver confirmado (ex: via GPS), reflete status success
+  useEffect(() => {
+    if (value.isConfirmed && value.lat && value.lon) {
+      setGeocodeStatus("success");
+      const key = [value.street, value.number, value.neighborhood, value.city, value.stateUf].filter(Boolean).join(", ");
+      lastGeocodedKeyRef.current = key;
+    }
+  }, [value.isConfirmed, value.lat, value.lon, value.street, value.number, value.neighborhood, value.city, value.stateUf]);
+
   // Fechar dropdown de sugestões ao clicar fora
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -402,43 +488,174 @@ export default function BrazilianAddressInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Busca assíncrona ao digitar a rua (debounce 350ms)
-  useEffect(() => {
-    const cleanStreet = streetQuery.trim();
-    if (cleanStreet.length < 3 || value.isConfirmed || !city.trim()) {
-      setSuggestions([]);
-      setIsOpen(false);
-      return;
-    }
+  // Função centralizada para executar a localização e validação no mapa
+  const executeLocate = useCallback(
+    async (
+      overrideStreet?: string,
+      overrideNumber?: string,
+      overrideNeigh?: string,
+      overrideCity?: string,
+      overrideUf?: string,
+      force = false
+    ) => {
+      if (!isMountedRef.current) return;
 
-    let isMounted = true;
-    const timer = setTimeout(async () => {
+      const s = (overrideStreet ?? streetQuery).trim();
+      const num = (overrideNumber ?? houseNumber).trim();
+      const neigh = (overrideNeigh ?? neighborhood).trim();
+      const c = (overrideCity ?? city).trim();
+      const uf = (overrideUf ?? stateUf).trim().toUpperCase();
+
+      const fullKey = [s, num, neigh, c, uf].filter(Boolean).join(", ");
+
+      // Requisito: mínimo 8 caracteres no endereço e cidade válida
+      if (fullKey.length < 8 || s.length < 3 || c.length < 2) {
+        if (!force) {
+          setGeocodeStatus("idle");
+          return;
+        }
+      }
+
+      // Evita requisição duplicada idêntica se já confirmado
+      if (!force && fullKey === lastGeocodedKeyRef.current && value.isConfirmed && value.lat && value.lon) {
+        setGeocodeStatus("success");
+        return;
+      }
+
       setIsLoading(true);
+      setGeocodeStatus("locating");
+
       try {
-        const results = await geocodeBrazilianAddress(
-          cleanStreet,
-          houseNumber,
-          neighborhood,
-          city,
-          stateUf
-        );
-        if (isMounted) {
-          setSuggestions(results);
-          setIsOpen(results.length > 0);
-          setIsLoading(false);
+        const res = await geocodeBrazilianAddressDetailed(s, num, neigh, c, uf);
+
+        if (!isMountedRef.current) return;
+
+        if (res.status === "SUCCESS" && res.results.length > 0 && res.results[0]) {
+          const best = res.results[0];
+          lastGeocodedKeyRef.current = fullKey;
+          setSuggestions(res.results);
+          setGeocodeStatus("success");
+
+          const finalStreet = best.street || s;
+          const finalNumber = num || best.number || "";
+          const finalNeigh = best.neighborhood || neigh || "";
+          const finalCity = best.city || c;
+          const finalState = best.stateUf || uf;
+          const formatted = buildFormattedAddress(finalStreet, finalNumber, finalNeigh, finalCity, finalState);
+
+          onChange({
+            ...best,
+            street: finalStreet,
+            number: finalNumber || undefined,
+            neighborhood: finalNeigh || undefined,
+            city: finalCity,
+            stateUf: finalState,
+            formattedAddress: formatted,
+            rawInput: formatted,
+            complement,
+            lat: best.lat,
+            lon: best.lon,
+            isConfirmed: true
+          });
+        } else if (res.status === "NOT_FOUND") {
+          lastGeocodedKeyRef.current = "";
+          setSuggestions([]);
+          setGeocodeStatus("not_found");
+
+          // Invalida/limpa as coordenadas anteriores do ponto
+          const formatted = buildFormattedAddress(s, num, neigh, c, uf);
+          onChange({
+            ...value,
+            street: s,
+            number: num || undefined,
+            neighborhood: neigh || undefined,
+            city: c,
+            stateUf: uf,
+            formattedAddress: formatted,
+            rawInput: formatted,
+            lat: null,
+            lon: null,
+            isConfirmed: false
+          });
+        } else if (res.status === "NETWORK_ERROR") {
+          lastGeocodedKeyRef.current = "";
+          setGeocodeStatus("network_error");
+
+          // Invalida/limpa as coordenadas anteriores do ponto
+          const formatted = buildFormattedAddress(s, num, neigh, c, uf);
+          onChange({
+            ...value,
+            street: s,
+            number: num || undefined,
+            neighborhood: neigh || undefined,
+            city: c,
+            stateUf: uf,
+            formattedAddress: formatted,
+            rawInput: formatted,
+            lat: null,
+            lon: null,
+            isConfirmed: false
+          });
         }
       } catch {
-        if (isMounted) setIsLoading(false);
+        if (!isMountedRef.current) return;
+        lastGeocodedKeyRef.current = "";
+        setGeocodeStatus("network_error");
+        onChange({
+          ...value,
+          lat: null,
+          lon: null,
+          isConfirmed: false
+        });
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
-    }, 350);
+    },
+    [streetQuery, houseNumber, neighborhood, city, stateUf, value, complement, onChange]
+  );
 
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [streetQuery, houseNumber, neighborhood, city, stateUf, value.isConfirmed]);
+  // Gatilho inteligente com debounce de 1000ms (1 segundo)
+  const scheduleDebounceLocate = useCallback(
+    (nextStreet: string, nextNum: string, nextNeigh: string, nextCity: string, nextUf: string) => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
 
-  // Manipulador de CEP com preenchimento automático via ViaCEP (editável pelo usuário)
+      const fullKey = [nextStreet.trim(), nextNum.trim(), nextNeigh.trim(), nextCity.trim(), nextUf.trim()]
+        .filter(Boolean)
+        .join(", ");
+
+      if (fullKey.length >= 8 && nextStreet.trim().length >= 3 && nextCity.trim().length >= 2) {
+        setGeocodeStatus("locating");
+        debounceTimerRef.current = setTimeout(() => {
+          executeLocate(nextStreet, nextNum, nextNeigh, nextCity, nextUf);
+        }, 1000);
+      } else {
+        setGeocodeStatus("idle");
+      }
+    },
+    [executeLocate]
+  );
+
+  // Manipulador de saída do campo (onBlur): valida imediatamente se atingiu tamanho mínimo
+  const handleFieldBlur = useCallback(() => {
+    const fullKey = [streetQuery.trim(), houseNumber.trim(), neighborhood.trim(), city.trim(), stateUf.trim()]
+      .filter(Boolean)
+      .join(", ");
+
+    if (fullKey.length >= 8 && streetQuery.trim().length >= 3 && city.trim().length >= 2) {
+      if (fullKey !== lastGeocodedKeyRef.current || !value.isConfirmed || !value.lat || !value.lon) {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+        executeLocate();
+      }
+    }
+  }, [streetQuery, houseNumber, neighborhood, city, stateUf, value.isConfirmed, value.lat, value.lon, executeLocate]);
+
+  // Manipulador de CEP com preenchimento automático via ViaCEP
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
     const formattedCep = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
@@ -463,6 +680,7 @@ export default function BrazilianAddressInput({
             const nextNeigh = (data.bairro || neighborhood).trim();
             const nextCity = data.localidade.trim();
             const nextUf = data.uf.trim().toUpperCase();
+
             setStreetQuery(nextStreet);
             setNeighborhood(nextNeigh);
             setCity(nextCity);
@@ -479,8 +697,15 @@ export default function BrazilianAddressInput({
               stateUf: nextUf,
               formattedAddress: formattedAddr,
               rawInput: formattedAddr,
+              lat: null,
+              lon: null,
               isConfirmed: false
             });
+
+            // Dispara localização automática com os novos dados do CEP
+            if (nextStreet.length >= 3 && nextCity.length >= 2) {
+              executeLocate(nextStreet, houseNumber, nextNeigh, nextCity, nextUf);
+            }
             setIsCepLoading(false);
             return;
           }
@@ -498,7 +723,7 @@ export default function BrazilianAddressInput({
     });
   };
 
-  // Manipulador de troca de Estado (UF) sem impor município fixo
+  // Manipulador de troca de Estado (UF)
   const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newUf = e.target.value;
     setStateUf(newUf);
@@ -509,8 +734,12 @@ export default function BrazilianAddressInput({
       stateUf: newUf,
       city,
       formattedAddress: formatted,
+      lat: null,
+      lon: null,
       isConfirmed: false
     });
+
+    scheduleDebounceLocate(streetQuery, houseNumber, neighborhood, city, newUf);
   };
 
   // Manipulador de troca de Cidade
@@ -518,22 +747,21 @@ export default function BrazilianAddressInput({
     const newCity = e.target.value;
     setCity(newCity);
 
-    const norm = newCity.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const hub = CITY_CENTROIDS[norm];
     const formatted = buildFormattedAddress(streetQuery, houseNumber, neighborhood, newCity, stateUf);
-
     onChange({
       ...value,
       city: newCity,
       stateUf,
       formattedAddress: formatted,
-      lat: hub ? hub.lat : value.lat,
-      lon: hub ? hub.lon : value.lon,
+      lat: null,
+      lon: null,
       isConfirmed: false
     });
+
+    scheduleDebounceLocate(streetQuery, houseNumber, neighborhood, newCity, stateUf);
   };
 
-  // Manipulador da Rua / Logradouro
+  // Manipulador da Rua / Logradouro (Debounce 1s)
   const handleStreetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     setStreetQuery(text);
@@ -544,11 +772,15 @@ export default function BrazilianAddressInput({
       street: text,
       formattedAddress: formatted,
       rawInput: formatted,
+      lat: null,
+      lon: null,
       isConfirmed: false
     });
+
+    scheduleDebounceLocate(text, houseNumber, neighborhood, city, stateUf);
   };
 
-  // Manipulador do Número da Casa
+  // Manipulador do Número da Casa (Debounce 1s)
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const num = e.target.value;
     setHouseNumber(num);
@@ -558,11 +790,16 @@ export default function BrazilianAddressInput({
       ...value,
       number: num,
       formattedAddress: formatted,
-      rawInput: formatted
+      rawInput: formatted,
+      lat: null,
+      lon: null,
+      isConfirmed: false
     });
+
+    scheduleDebounceLocate(streetQuery, num, neighborhood, city, stateUf);
   };
 
-  // Manipulador do Bairro
+  // Manipulador do Bairro (Debounce 1s)
   const handleNeighborhoodChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const neigh = e.target.value;
     setNeighborhood(neigh);
@@ -572,8 +809,13 @@ export default function BrazilianAddressInput({
       ...value,
       neighborhood: neigh,
       formattedAddress: formatted,
-      rawInput: formatted
+      rawInput: formatted,
+      lat: null,
+      lon: null,
+      isConfirmed: false
     });
+
+    scheduleDebounceLocate(streetQuery, houseNumber, neigh, city, stateUf);
   };
 
   // Selecionar sugestão do dropdown
@@ -592,6 +834,8 @@ export default function BrazilianAddressInput({
     setIsOpen(false);
 
     const formatted = buildFormattedAddress(finalStreet, finalNumber, finalNeigh, finalCity, finalState);
+    lastGeocodedKeyRef.current = [finalStreet, finalNumber, finalNeigh, finalCity, finalState].filter(Boolean).join(", ");
+    setGeocodeStatus("success");
 
     onChange({
       ...sug,
@@ -603,62 +847,19 @@ export default function BrazilianAddressInput({
       formattedAddress: formatted,
       rawInput: formatted,
       complement,
+      lat: sug.lat,
+      lon: sug.lon,
       isConfirmed: true
     });
   };
 
-  // Localizar no mapa imediatamente (botão ou Enter)
-  const handleDirectLocate = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-
-    try {
-      if (suggestions.length > 0 && suggestions[0]) {
-        handleSelectSuggestion(suggestions[0]);
-        setIsLoading(false);
-        return;
-      }
-
-      const results = await geocodeBrazilianAddress(
-        streetQuery,
-        houseNumber,
-        neighborhood,
-        city,
-        stateUf
-      );
-
-      if (results.length > 0 && results[0]) {
-        handleSelectSuggestion(results[0]);
-      } else {
-        // Fallback: se não achou a rua exata, posiciona no centróide da cidade
-        const norm = city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const hub = CITY_CENTROIDS[norm];
-        const formatted = buildFormattedAddress(streetQuery, houseNumber, neighborhood, city, stateUf);
-
-        onChange({
-          ...value,
-          street: streetQuery,
-          number: houseNumber || undefined,
-          neighborhood: neighborhood || undefined,
-          formattedAddress: formatted,
-          rawInput: formatted,
-          city,
-          stateUf,
-          lat: hub ? hub.lat : -19.9167,
-          lon: hub ? hub.lon : -43.9345,
-          isConfirmed: true,
-          provider: "Ponto Aproximado (Centro da Cidade)"
-        });
-      }
-    } catch (err) {
-      console.warn("Direct locate error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const isOrigin = badgeType === "origin";
-  const isSameCityAsOrigin = !isOrigin && originCity && originStateUf && city.toLowerCase() === originCity.toLowerCase() && stateUf.toUpperCase() === originStateUf.toUpperCase();
+  const isSameCityAsOrigin =
+    !isOrigin &&
+    originCity &&
+    originStateUf &&
+    city.toLowerCase() === originCity.toLowerCase() &&
+    stateUf.toUpperCase() === originStateUf.toUpperCase();
   const popularCities = POPULAR_CITIES_BY_UF[stateUf] || [];
 
   return (
@@ -675,7 +876,16 @@ export default function BrazilianAddressInput({
       }}
     >
       {/* Cabeçalho do Endereço */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "12px",
+          flexWrap: "wrap",
+          gap: "8px"
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span
             style={{
@@ -732,8 +942,8 @@ export default function BrazilianAddressInput({
           )}
 
           {/* Indicação e ação de mesma cidade no Destino */}
-          {!isOrigin && (
-            isSameCityAsOrigin ? (
+          {!isOrigin &&
+            (isSameCityAsOrigin ? (
               <span
                 style={{
                   fontSize: "11px",
@@ -765,8 +975,7 @@ export default function BrazilianAddressInput({
               >
                 ↩ Mesma cidade da retirada
               </button>
-            ) : null
-          )}
+            ) : null)}
         </div>
       </div>
 
@@ -793,6 +1002,7 @@ export default function BrazilianAddressInput({
             maxLength={9}
             value={postalCode}
             onChange={handleCepChange}
+            onBlur={handleFieldBlur}
             placeholder="00000-000"
             style={{
               width: "100%",
@@ -827,6 +1037,7 @@ export default function BrazilianAddressInput({
             id={`state-select-${id}`}
             value={stateUf}
             onChange={handleStateChange}
+            onBlur={handleFieldBlur}
             style={{
               width: "100%",
               minHeight: "42px",
@@ -870,6 +1081,7 @@ export default function BrazilianAddressInput({
             list={datalistId}
             value={city}
             onChange={handleCityChange}
+            onBlur={handleFieldBlur}
             placeholder="Digite qualquer cidade do Brasil..."
             style={{
               width: "100%",
@@ -892,7 +1104,7 @@ export default function BrazilianAddressInput({
         </div>
       </div>
 
-      {/* Linha 2: Rua / Logradouro + Número da Casa + Botão Localizar */}
+      {/* Linha 2: Rua / Logradouro + Número da Casa + Botão Discreto de Atualização */}
       <div style={{ marginBottom: "10px" }}>
         <div className="address-grid-street">
           <div>
@@ -915,10 +1127,11 @@ export default function BrazilianAddressInput({
               required={required}
               value={streetQuery}
               onChange={handleStreetChange}
+              onBlur={handleFieldBlur}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleDirectLocate();
+                  executeLocate(streetQuery, houseNumber, neighborhood, city, stateUf, true);
                 }
               }}
               onFocus={() => {
@@ -934,7 +1147,15 @@ export default function BrazilianAddressInput({
                 fontWeight: 600,
                 color: "#0F172A",
                 backgroundColor: value.isConfirmed ? "#FFFFFF" : "#FFFBEB",
-                border: `1.5px solid ${value.isConfirmed ? "#10B981" : "#F59E0B"}`,
+                border: `1.5px solid ${
+                  geocodeStatus === "not_found"
+                    ? "#EF4444"
+                    : geocodeStatus === "network_error"
+                    ? "#F59E0B"
+                    : value.isConfirmed
+                    ? "#10B981"
+                    : "#F59E0B"
+                }`,
                 borderRadius: "8px",
                 outline: "none"
               }}
@@ -961,10 +1182,11 @@ export default function BrazilianAddressInput({
               required={required}
               value={houseNumber}
               onChange={handleNumberChange}
+              onBlur={handleFieldBlur}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleDirectLocate();
+                  executeLocate(streetQuery, houseNumber, neighborhood, city, stateUf, true);
                 }
               }}
               placeholder="1200 ou S/N"
@@ -984,10 +1206,11 @@ export default function BrazilianAddressInput({
             />
           </div>
 
+          {/* Botão discreto de atualização 🔄 (não obrigatório para o usuário clicar) */}
           <div style={{ display: "flex", alignItems: "flex-end" }}>
             <button
               type="button"
-              onClick={handleDirectLocate}
+              onClick={() => executeLocate(streetQuery, houseNumber, neighborhood, city, stateUf, true)}
               disabled={isLoading}
               style={{
                 width: "100%",
@@ -996,24 +1219,26 @@ export default function BrazilianAddressInput({
                 color: "#FFFFFF",
                 border: "none",
                 borderRadius: "8px",
-                padding: "0 14px",
+                padding: "0 12px",
                 fontSize: "13px",
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: isLoading ? "wait" : "pointer",
                 whiteSpace: "nowrap",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: "4px"
+                gap: "5px",
+                opacity: isLoading ? 0.7 : 1
               }}
-              title="Localizar endereço e marcar ponto exato no mapa"
+              title="Atualizar localização no mapa"
             >
-              {isLoading ? "Buscando..." : "🔍 Localizar"}
+              <span style={{ fontSize: "14px" }}>{isLoading ? "⏳" : "🔄"}</span>
+              <span style={{ fontSize: "12px" }}>{isLoading ? "Buscando..." : "Atualizar"}</span>
             </button>
           </div>
         </div>
 
-        {/* Painel em fluxo (sem sobrepor campos no celular) com botão Fechar */}
+        {/* Dropdown de sugestões do endereço */}
         {isOpen && suggestions.length > 0 && (
           <div
             style={{
@@ -1089,7 +1314,8 @@ export default function BrazilianAddressInput({
                       {sug.street || sug.formattedAddress}
                     </strong>
                     <span style={{ fontSize: "11px", color: "#64748B" }}>
-                      {sug.neighborhood ? `${sug.neighborhood} • ` : ""}{sug.city} - {sug.stateUf}
+                      {sug.neighborhood ? `${sug.neighborhood} • ` : ""}
+                      {sug.city} - {sug.stateUf}
                     </span>
                   </div>
                   <span
@@ -1133,6 +1359,7 @@ export default function BrazilianAddressInput({
             type="text"
             value={neighborhood}
             onChange={handleNeighborhoodChange}
+            onBlur={handleFieldBlur}
             placeholder="Ex.: Centro, Savassi, Funcionários..."
             style={{
               width: "100%",
@@ -1190,16 +1417,104 @@ export default function BrazilianAddressInput({
         </div>
       </div>
 
-      {/* Status da confirmação geográfica no mapa */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-        {value.isConfirmed && value.lat && value.lon ? (
-          <span style={{ fontSize: "11px", color: "#059669", fontWeight: 700, display: "flex", alignItems: "center", gap: "4px" }}>
-            ✓ Localizado no mapa ({value.lat.toFixed(4)}, {value.lon.toFixed(4)}) • {value.formattedAddress}
-          </span>
-        ) : (
-          <span style={{ fontSize: "11px", color: "#D97706", fontWeight: 600 }}>
-            ⚠️ Informe a rua e número e clique em &quot;🔍 Localizar&quot; para posicionar o ponto no mapa.
-          </span>
+      {/* Alertas e status de validação no mapa (automático) */}
+      <div style={{ marginTop: "6px" }}>
+        {geocodeStatus === "locating" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 10px",
+              backgroundColor: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "#1E40AF",
+              fontWeight: 600
+            }}
+          >
+            <span>📍</span>
+            <span>Localizando endereço no mapa...</span>
+          </div>
+        )}
+
+        {geocodeStatus === "not_found" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 10px",
+              backgroundColor: "#FEF2F2",
+              border: "1.5px solid #FCA5A5",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "#991B1B",
+              fontWeight: 600
+            }}
+          >
+            <span>⚠️</span>
+            <span>Endereço não encontrado no mapa. Verifique o nome da rua, número e cidade.</span>
+          </div>
+        )}
+
+        {geocodeStatus === "network_error" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 10px",
+              backgroundColor: "#FFFBEB",
+              border: "1.5px solid #FCD34D",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "#92400E",
+              fontWeight: 600
+            }}
+          >
+            <span>⚠️</span>
+            <span>Não foi possível carregar o mapa ou validar a rota no momento. Verifique sua conexão e tente novamente.</span>
+          </div>
+        )}
+
+        {geocodeStatus === "success" && value.isConfirmed && value.lat && value.lon && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 10px",
+              backgroundColor: "#F0FDF4",
+              border: "1.5px solid #86EFAC",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "#166534",
+              fontWeight: 700
+            }}
+          >
+            <span>✅</span>
+            <span>
+              Endereço localizado no mapa ({value.lat.toFixed(4)}, {value.lon.toFixed(4)}) • {value.formattedAddress}
+            </span>
+          </div>
+        )}
+
+        {geocodeStatus === "idle" && (!value.isConfirmed || !value.lat || !value.lon) && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              color: "#64748B",
+              padding: "2px 4px"
+            }}
+          >
+            <span>📍</span>
+            <span>Digite a rua, número e cidade. A localização no mapa é realizada automaticamente.</span>
+          </div>
         )}
       </div>
     </div>

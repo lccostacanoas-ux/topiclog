@@ -325,8 +325,8 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
       return;
     }
 
-    if (!origin.isConfirmed || !destination.isConfirmed) {
-      setErrorMsg("Confirme a localização dos endereços de retirada e entrega clicando em '🔍 Localizar' em cada campo.");
+    if (!origin.isConfirmed || !destination.isConfirmed || !origin.lat || !origin.lon || !destination.lat || !destination.lon) {
+      setErrorMsg("Aguarde a localização automática no mapa ou verifique os endereços de retirada e entrega antes de publicar.");
       return;
     }
 
@@ -1140,12 +1140,12 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
               <button
                 type="submit"
                 className="uber-btn-primary"
-                disabled={isSubmitting || !acceptedTerms || !origin.isConfirmed || !destination.isConfirmed}
+                disabled={isSubmitting || !acceptedTerms || !origin.isConfirmed || !destination.isConfirmed || !origin.lat || !origin.lon || !destination.lat || !destination.lon}
                 style={{
                   padding: "14px 28px",
                   fontSize: "16px",
                   fontWeight: 800,
-                  opacity: (!acceptedTerms || !origin.isConfirmed || !destination.isConfirmed) ? 0.65 : 1
+                  opacity: (!acceptedTerms || !origin.isConfirmed || !destination.isConfirmed || !origin.lat || !origin.lon || !destination.lat || !destination.lon) ? 0.65 : 1
                 }}
               >
                 {isSubmitting ? "Publicando Encomenda..." : "Publicar Encomenda ➔"}
