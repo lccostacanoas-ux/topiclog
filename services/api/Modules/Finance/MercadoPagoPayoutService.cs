@@ -89,7 +89,7 @@ public sealed class MercadoPagoPayoutService : IMercadoPagoPayoutService
             value = valorLiquido,
             pixAddressKey = pixAddressKey,
             pixAddressKeyType = pixType,
-            description = $"Repasse frete TopicLog #{request.OrderId.ToString()[..8]}",
+            description = $"Repasse Líquido Frete TopicLog - Pedido #{request.OrderId.ToString()[..8]} (Descontada Taxa de Intermediação)",
             operationType = "PIX"
         };
 
