@@ -130,7 +130,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const amount = Math.max(1.0, Math.round(Number(body.amountReais || 1.0) * 100) / 100);
-    const description = (body.description || "Frete TopicLog via Asaas").trim();
+    const rawOrderId = String(body.orderId || "").trim();
+    let orderId = rawOrderId ? (rawOrderId.length > 8 ? rawOrderId.slice(0, 8) : rawOrderId) : "";
+    if (!orderId && body.description && String(body.description).includes("#")) {
+      orderId = String(body.description).split("#")[1]?.trim() || "";
+    }
+    const orderIdDisplay = orderId || "GERAL";
+    const description = `Intermediação e Custódia de Transporte - Pedido #${orderIdDisplay} (Repasse ao Transportador + Taxa Plataforma)`;
     const apiKey = getAsaasApiKey();
     const isKeyConfigured = apiKey.length > 10 && apiKey !== "SANDBOX_KEY_NOT_CONFIGURED";
 
