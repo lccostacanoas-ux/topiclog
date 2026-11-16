@@ -84,14 +84,21 @@ public sealed class MercadoPagoPayoutService : IMercadoPagoPayoutService
         decimal valorLiquido = Math.Round(request.NetAmountCents / 100m, 2, MidpointRounding.AwayFromZero);
 
         // Payload oficial conforme especificação técnica Asaas v3: POST /v3/transfers
-        var transferPayload = new
-        {
-            value = valorLiquido,
-            pixAddressKey = pixAddressKey,
-            pixAddressKeyType = pixType,
-            description = $"Repasse Líquido Frete TopicLog - Pedido #{request.OrderId.ToString()[..8]} (Descontada Taxa de Intermediação)",
-            operationType = "PIX"
-        };
+        object transferPayload = pixType == "WALLET_ID"
+            ? new
+            {
+                value = valorLiquido,
+                walletId = pixAddressKey,
+                description = $"Repasse Líquido Frete TopicLog - Pedido #{request.OrderId.ToString()[..8]} (Descontada Taxa de Intermediação)"
+            }
+            : new
+            {
+                value = valorLiquido,
+                pixAddressKey = pixAddressKey,
+                pixAddressKeyType = pixType,
+                description = $"Repasse Líquido Frete TopicLog - Pedido #{request.OrderId.ToString()[..8]} (Descontada Taxa de Intermediação)",
+                operationType = "PIX"
+            };
 
         try
         {
@@ -197,33 +204,45 @@ public sealed class MercadoPagoPayoutService : IMercadoPagoPayoutService
         string digitsOnly = new(key.Where(char.IsDigit).ToArray());
         string t = (rawType ?? string.Empty).Trim().ToUpperInvariant();
 
-        // Se o tipo for CPF mas tiver 14 dígitos, converte para CNPJ
-        if ((t == "CPF" || string.IsNullOrWhiteSpace(t)) && digitsOnly.Length == 14)
-        {
-            return ("CNPJ", digitsOnly);
-        }
-
-        if (t == "CNPJ" || digitsOnly.Length == 14)
-        {
-            return ("CNPJ", digitsOnly);
-        }
-
-        if (t == "CPF" || (string.IsNullOrWhiteSpace(t) && digitsOnly.Length == 11 && !key.Contains('@')))
-        {
-            return ("CPF", digitsOnly);
-        }
-
-        if (t is "TELEFONE" or "PHONE")
-        {
-            return ("PHONE", digitsOnly);
-        }
-
+        // 1. E-mail (contém @)
         if (t == "EMAIL" || key.Contains('@'))
         {
             return ("EMAIL", key.ToLowerInvariant());
         }
 
-        return ("EVP", key);
+        // 2. CNPJ (14 dígitos numéricos)
+        if (t == "CNPJ" || digitsOnly.Length == 14)
+        {
+            return ("CNPJ", digitsOnly);
+        }
+
+        // 3. Telefone celular (10 ou 11 dígitos, remove DDI 55 se enviado)
+        if (t is "TELEFONE" or "PHONE")
+        {
+            if (digitsOnly.StartsWith("55", StringComparison.Ordinal) && (digitsOnly.Length == 12 || digitsOnly.Length == 13))
+            {
+                digitsOnly = digitsOnly[2..];
+            }
+            return ("PHONE", digitsOnly);
+        }
+
+        // 4. CPF (11 dígitos numéricos) - Auto-detecta CPF mesmo se o usuário selecionou ALEATORIA por engano
+        if (t == "CPF" || digitsOnly.Length == 11)
+        {
+            return ("CPF", digitsOnly);
+        }
+
+        // 5. Asaas Wallet ID ou Chave Aleatória EVP (UUID de 36 caracteres)
+        if (Guid.TryParse(key, out _))
+        {
+            if (t is "WALLET_ID" or "WALLET" or "SUBACCOUNT")
+            {
+                return ("WALLET_ID", key);
+            }
+            return ("EVP", key);
+        }
+
+        return (string.IsNullOrWhiteSpace(t) ? "EVP" : t, key);
     }
 
     private static string ExtractAsaasErrorMessage(string body)

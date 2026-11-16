@@ -926,9 +926,16 @@ export default function MyAccountPage(): React.JSX.Element {
                               : "Chave aleatória gerada no seu banco"
                       }
                       value={editPixKey}
-                      onChange={e =>
-                        setEditPixKey(editPixKeyType === "CPF" ? formatCpf(e.target.value) : e.target.value)
-                      }
+                      onChange={e => {
+                        const val = e.target.value;
+                        const digits = val.replace(/\D/g, "");
+                        if (digits.length === 11 && editPixKeyType === "ALEATORIA") {
+                          setEditPixKeyType("CPF");
+                          setEditPixKey(formatCpf(val));
+                        } else {
+                          setEditPixKey(editPixKeyType === "CPF" ? formatCpf(val) : val);
+                        }
+                      }}
                       disabled={isSaving}
                       required
                     />
