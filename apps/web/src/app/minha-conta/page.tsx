@@ -58,42 +58,6 @@ export default function MyAccountPage(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [problem, setProblem] = useState<ProblemDetailsDto | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [localMpSeller, setLocalMpSeller] = useState<{ connected: boolean; userId: string; connectedAt?: string } | null>(null);
-
-  // Escuta retorno ou inicialização da Subconta Asaas
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const asaasOauth = params.get("asaas_oauth") || params.get("mp_oauth");
-    const asaasUserId = params.get("asaas_user_id") || params.get("mp_user_id");
-
-    if (user?.userId) {
-      const stored = localStorage.getItem(`topiclog_mp_connected_${user.userId}`);
-      if (stored) {
-        try {
-          setLocalMpSeller(JSON.parse(stored));
-        } catch {}
-      }
-    }
-
-    if (asaasOauth === "success") {
-      const sellerData = {
-        connected: true,
-        userId: asaasUserId || "subconta_asaas_ativa",
-        connectedAt: new Date().toISOString()
-      };
-      setLocalMpSeller(sellerData);
-      if (user?.userId) {
-        localStorage.setItem(`topiclog_mp_connected_${user.userId}`, JSON.stringify(sellerData));
-      }
-      setSuccessMessage(`🎉 Subconta Asaas vinculada com sucesso! Você agora recebe fretes com Split Nativo e Custódia Segura.`);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (asaasOauth === "error") {
-      const msg = params.get("msg");
-      setCarrierValidationMsg(`Não foi possível ativar a subconta Asaas: ${msg || "Operação cancelada"}`);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, [user?.userId]);
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -447,124 +411,48 @@ export default function MyAccountPage(): React.JSX.Element {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ fontSize: "18px" }}>⚡</span>
-                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>Recebimento de Fretes • Asaas (Split Nativo & Custódia Segura)</strong>
+                      <strong style={{ fontSize: "14px", color: "#0F172A" }}>Recebimento de Fretes • Transferência Pix Direta</strong>
                     </div>
                     <span style={{ fontSize: "11px", fontWeight: 700, backgroundColor: "#DCFCE7", color: "#15803D", padding: "2px 8px", borderRadius: "12px", border: "1px solid #86EFAC" }}>
-                      Custódia Protegida
+                      Custódia Conta Mestre + Pix na Entrega
                     </span>
                   </div>
 
-                  {/* Bloco de Integração Subconta Asaas (Split) */}
-                  {(user.mpSellerConnected || localMpSeller?.connected) ? (
-                    <div style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontSize: "20px" }}>✅</span>
+                  {/* Informações de Chave Pix para Recebimento Automático */}
+                  <div style={{ backgroundColor: "#F0FDF4", border: "1.5px solid #86EFAC", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                      <span style={{ fontSize: "22px", lineHeight: 1 }}>💸</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 800, fontSize: "13px", color: "#166534" }}>
+                          Repasse Automático via Pix após a Confirmação da Entrega
+                        </div>
+                        <p style={{ margin: "4px 0 8px 0", fontSize: "12px", color: "#15803D", lineHeight: 1.4 }}>
+                          Durante o trajeto, o valor integral do frete fica retido em custódia na Conta Mestre da TopicLog. Assim que você confirmar o <strong>código de entrega de 4 dígitos</strong> fornecido pelo destinatário, o repasse líquido é transferido automaticamente via Pix (<code>POST /v3/transfers</code>) para a sua chave Pix cadastrada abaixo.
+                        </p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", fontSize: "12px", color: "#166534", backgroundColor: "#DCFCE7", padding: "8px 12px", borderRadius: "6px" }}>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: "13px", color: "#166534" }}>
-                              Subconta Asaas Conectada para Split Automático
-                            </div>
-                            <div style={{ fontSize: "12px", color: "#15803D", marginTop: "2px" }}>
-                              Identificador da Carteira: <code>{user.mpSellerUserId || localMpSeller?.userId || "Subconta Ativa"}</code> • Split nativo habilitado
-                            </div>
+                            <strong>Chave Pix:</strong>{" "}
+                            <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#0F172A" }}>
+                              {user.pixKey || "⚠️ Nenhuma chave cadastrada"}
+                            </span>
                           </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm("Deseja desconectar sua subconta Asaas?")) {
-                              if (user?.userId) {
-                                localStorage.removeItem(`topiclog_mp_connected_${user.userId}`);
-                              }
-                              setLocalMpSeller(null);
-                              setSuccessMessage("Subconta Asaas desconectada. Você pode reconectar a qualquer momento.");
-                            }
-                          }}
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            color: "#DC2626",
-                            backgroundColor: "#FEF2F2",
-                            border: "1px solid #FCA5A5",
-                            padding: "4px 10px",
-                            borderRadius: "6px",
-                            cursor: "pointer"
-                          }}
-                        >
-                          Desconectar
-                        </button>
-                      </div>
-                      <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px dashed #BBF7D0", fontSize: "11px", color: "#166534", lineHeight: 1.4 }}>
-                        ✓ Quando você concluir uma viagem com o código de segurança, o valor líquido do frete é liberado imediatamente na sua carteira Asaas para saque Pix.
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ backgroundColor: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: "10px", padding: "14px", marginBottom: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
-                        <div style={{ maxWidth: "520px" }}>
-                          <div style={{ fontWeight: 800, fontSize: "13px", color: "#1E40AF" }}>
-                            Vincule sua Subconta Asaas para Receber com Split Automático
+                          <div>
+                            <strong>Tipo:</strong> <span>{user.pixKeyType || "CPF"}</span>
                           </div>
-                          <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#1D4ED8", lineHeight: 1.4 }}>
-                            Ao vincular seus dados do Asaas, o valor líquido dos fretes concluídos entra em custódia segura e é liberado diretamente para saque via Pix após a validação da entrega.
-                          </p>
-                          {user.mpAccountEmail && (
-                            <div style={{ marginTop: "6px", fontSize: "11px", color: "#1E40AF", fontWeight: 600 }}>
-                              Conta identificada: <code>{user.mpAccountEmail}</code>
+                          {user.bankName && (
+                            <div>
+                              <strong>Banco:</strong> <span>{user.bankName}</span>
                             </div>
                           )}
                         </div>
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          {user.mpAccountEmail && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const sellerData = {
-                                  connected: true,
-                                  userId: "wal_asaas_active (LUIZ C COSTA)",
-                                  email: user.mpAccountEmail,
-                                  connectedAt: new Date().toISOString()
-                                };
-                                setLocalMpSeller(sellerData);
-                                if (user?.userId) {
-                                  localStorage.setItem(`topiclog_mp_connected_${user.userId}`, JSON.stringify(sellerData));
-                                }
-                                setSuccessMessage("🎉 Subconta Asaas vinculada com sucesso! Split Automático e Custódia ativados.");
-                              }}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "6px",
-                                backgroundColor: "#059669",
-                                color: "#FFFFFF",
-                                fontWeight: 700,
-                                fontSize: "12px",
-                                padding: "8px 14px",
-                                borderRadius: "6px",
-                                border: "none",
-                                cursor: "pointer"
-                              }}
-                            >
-                              ⚡ Ativar Split Asaas
-                            </button>
-                          )}
-                        </div>
+                        {!user.pixKey && (
+                          <div style={{ marginTop: "8px", fontSize: "11px", color: "#B91C1C", fontWeight: 700 }}>
+                            ⚠️ Clique em &quot;Editar Perfil&quot; abaixo para cadastrar sua chave Pix e habilitar o recebimento automático.
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-
-                  {/* Informações Complementares de Chave Pix Cadastrada */}
-                  {user.pixKey || user.mpAccountEmail ? (
-                    <div style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 14px", fontSize: "12px", color: "#334155", marginTop: "12px" }}>
-                      <p style={{ margin: "2px 0" }}>
-                        <strong>Chave Pix de Recebimento (Asaas):</strong>{" "}
-                        <span style={{ fontFamily: "monospace", fontWeight: 700, backgroundColor: "#E2E8F0", padding: "2px 6px", borderRadius: "4px" }}>
-                          {user.pixKey || "Não informada"}
-                        </span>{" "}
-                        ({user.pixKeyType || "CPF"}) • <strong>E-mail:</strong> {user.mpAccountEmail || user.email || "Não informado"}
-                      </p>
-                    </div>
-                  ) : null}
+                  </div>
                 </div>
               )}
             </div>
@@ -981,9 +869,9 @@ export default function MyAccountPage(): React.JSX.Element {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, marginBottom: "4px" }}>
-                    <span>⚡</span> SUBCONTA INTEGRADA & CHAVE PIX UNIVERSAL
+                    <span>⚡</span> CHAVE PIX PARA REPASSE DIRETO NA ENTREGA
                   </div>
-                  Para garantir o split automático e o repasse seguro dos fretes, a TopicLog cria automaticamente sua carteira digital integrada (via Asaas). Informe abaixo sua chave Pix de <strong>qualquer banco</strong> de sua titularidade (mesmo CPF/CNPJ cadastrado) para receber seus saques após a confirmação das entregas.
+                  O valor dos seus fretes fica em custódia segura na Conta Mestre da TopicLog e é transferido automaticamente via Pix (<code>POST /v3/transfers</code>) para a chave informada abaixo assim que o destinatário informar o código de entrega. Aceitamos chave Pix de <strong>qualquer banco</strong> (Itaú, Bradesco, BB, Nubank, Inter, Caixa, Santander, Asaas, etc.).
                 </div>
 
                 <div className="grid-two" style={{ gap: "10px", marginBottom: "10px" }}>

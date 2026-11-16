@@ -16,7 +16,8 @@ import {
   rateCarrierApi,
   getCancellationPolicyApi,
   cancelContractBySenderApi,
-  regenerateDeliveryCodeApi
+  regenerateDeliveryCodeApi,
+  retryPayoutApi
 } from "../../lib/api-client";
 import type {
   DeliveryOrderDto,
@@ -137,6 +138,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
   const [cancelReopen, setCancelReopen] = useState<boolean>(true);
   const [submittingCancel, setSubmittingCancel] = useState(false);
   const [regeneratingOrderId, setRegeneratingOrderId] = useState<string | null>(null);
+  const [retryingPayoutOrderId, setRetryingPayoutOrderId] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
   const loadActivities = useCallback(
@@ -325,6 +327,34 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
       });
     }
     setSubmittingCancel(false);
+  };
+
+  const handleRetryPayout = async (orderId: string) => {
+    if (!token || retryingPayoutOrderId) return;
+    setRetryingPayoutOrderId(orderId);
+    try {
+      const res = await retryPayoutApi(orderId, token);
+      if (res.ok && res.data) {
+        const isOk = res.data.payoutStatus === "TRANSFERIDO" || res.data.payoutStatus === "SUCCEEDED";
+        setBanner({
+          type: "success",
+          text: res.data.payoutMessage || (isOk ? "Repasse Pix enviado com sucesso via Asaas!" : "Tentativa de repasse processada.")
+        });
+        await loadActivities(true);
+      } else {
+        setBanner({
+          type: "error",
+          text: res.problem?.detail || "Não foi possível reprocessar o repasse Pix no momento."
+        });
+      }
+    } catch (err: unknown) {
+      setBanner({
+        type: "error",
+        text: err instanceof Error ? err.message : "Erro ao tentar repasse Pix."
+      });
+    } finally {
+      setRetryingPayoutOrderId(null);
+    }
   };
 
   const handleConfirmPickup = async (order: DeliveryOrderDto) => {
@@ -1057,38 +1087,78 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                 )}
 
                 {/* Status de Repasse Pix (Exclusivo para o Transportador) */}
-                {isDelivered && !isSender && order.payoutStatus && (
+                {isDelivered && !isSender && (
                   <div
                     style={{
                       padding: "12px 14px",
                       borderRadius: "10px",
-                      backgroundColor: order.payoutStatus === "SUCCEEDED" ? "#ECFDF5" : "#FFFBEB",
-                      border: order.payoutStatus === "SUCCEEDED" ? "1px solid #6EE7B7" : "1px solid #FDE68A",
-                      color: order.payoutStatus === "SUCCEEDED" ? "#065F46" : "#92400E",
+                      backgroundColor:
+                        order.payoutStatus === "TRANSFERIDO" || order.payoutStatus === "SUCCEEDED"
+                          ? "#ECFDF5"
+                          : "#FFFBEB",
+                      border:
+                        order.payoutStatus === "TRANSFERIDO" || order.payoutStatus === "SUCCEEDED"
+                          ? "1px solid #6EE7B7"
+                          : "1px solid #FDE68A",
+                      color:
+                        order.payoutStatus === "TRANSFERIDO" || order.payoutStatus === "SUCCEEDED"
+                          ? "#065F46"
+                          : "#92400E",
                       fontSize: "13px",
                       marginBottom: "16px",
                       lineHeight: 1.45
                     }}
                   >
-                    <strong>
-                      {order.payoutStatus === "SUCCEEDED"
-                        ? "💸 Repasse Pix Enviado:"
-                        : order.payoutStatus === "PENDING_PIX_KEY"
-                          ? "⚠️ Chave Pix Necessária para Repasse:"
-                          : "⏳ Repasse Liberado em Custódia:"}
-                    </strong>{" "}
-                    {order.payoutMessage ||
-                      (order.payoutAmountCents
-                        ? `Valor líquido: R$ ${(order.payoutAmountCents / 100).toFixed(2).replace(".", ",")}.`
-                        : "Processado na conclusão da entrega.")}
-                    {order.payoutStatus === "PENDING_PIX_KEY" && (
-                      <>
-                        {" "}
-                        <Link href="/minha-conta" style={{ color: "#1D4ED8", fontWeight: 700, textDecoration: "underline" }}>
-                          Cadastrar chave Pix
-                        </Link>
-                      </>
-                    )}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                      <div style={{ flex: 1, minWidth: "220px" }}>
+                        <strong>
+                          {order.payoutStatus === "TRANSFERIDO" || order.payoutStatus === "SUCCEEDED"
+                            ? "💸 Repasse Pix Transferido com Sucesso (Asaas):"
+                            : "⚠️ Repasse Pix Pendente / Em Custódia:"}
+                        </strong>{" "}
+                        {order.payoutMessage ||
+                          (order.payoutAmountCents
+                            ? `Valor líquido: R$ ${(order.payoutAmountCents / 100).toFixed(2).replace(".", ",")}.`
+                            : "Processado na conclusão da entrega.")}
+                        {order.payoutTransferId && (
+                          <div style={{ fontSize: "11px", marginTop: "2px", fontFamily: "monospace" }}>
+                            ID da Transferência Asaas: <strong>{order.payoutTransferId}</strong>
+                          </div>
+                        )}
+                        {order.payoutStatus !== "TRANSFERIDO" && order.payoutStatus !== "SUCCEEDED" && (
+                          <div style={{ marginTop: "6px" }}>
+                            <Link href="/minha-conta" style={{ color: "#1D4ED8", fontWeight: 700, textDecoration: "underline", fontSize: "12px" }}>
+                              👉 Conferir ou Atualizar Chave Pix em Minha Conta
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+
+                      {order.payoutStatus !== "TRANSFERIDO" && order.payoutStatus !== "SUCCEEDED" && (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryPayout(order.id)}
+                          disabled={retryingPayoutOrderId === order.id}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            backgroundColor: "#059669",
+                            color: "#FFFFFF",
+                            fontWeight: 700,
+                            fontSize: "12px",
+                            padding: "8px 14px",
+                            borderRadius: "6px",
+                            border: "none",
+                            cursor: retryingPayoutOrderId === order.id ? "not-allowed" : "pointer",
+                            opacity: retryingPayoutOrderId === order.id ? 0.7 : 1,
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                          }}
+                        >
+                          {retryingPayoutOrderId === order.id ? "Enviando Pix..." : "🔄 Tentar Repasse Novamente"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 

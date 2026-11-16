@@ -444,6 +444,46 @@ public static class FulfillmentEndpoints
             return Results.Ok(result);
         });
 
+        // POST /api/v1/deliveries/{orderId}/retry-payout (Transportador reprocessa transferência Pix Asaas)
+        group.MapPost("/{orderId:guid}/retry-payout", async (
+            Guid orderId,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IFulfillmentApplicationService fulfillmentService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+
+            var result = await fulfillmentService.RetryPayoutAsync(
+                actor.UserId,
+                actorRole,
+                orderId,
+                cancellationToken);
+
+            return Results.Ok(result);
+        });
+
+        // POST /api/v1/delivery-orders/{orderId}/retry-payout (Alias)
+        app.MapPost("/api/v1/delivery-orders/{orderId:guid}/retry-payout", async (
+            Guid orderId,
+            HttpContext httpContext,
+            ResourceAuthorizationService authorization,
+            IFulfillmentApplicationService fulfillmentService,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = authorization.RequireAuthenticatedActor(httpContext);
+            var actorRole = actor.Roles.Contains(UserRole.CARRIER) ? ActorRole.CARRIER : ActorRole.SENDER;
+
+            var result = await fulfillmentService.RetryPayoutAsync(
+                actor.UserId,
+                actorRole,
+                orderId,
+                cancellationToken);
+
+            return Results.Ok(result);
+        });
+
         // GET /api/v1/opportunities/post-delivery-suggestions
         app.MapGet("/api/v1/opportunities/post-delivery-suggestions", async (
             [FromQuery] double latitude,

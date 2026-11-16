@@ -2884,6 +2884,18 @@ export async function cancelContractBySenderApi(
   });
 }
 
+export async function retryPayoutApi(
+  orderId: string,
+  token?: string,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<DeliveryOrderDto>> {
+  return apiRequest<DeliveryOrderDto>(`/api/v1/deliveries/${orderId}/retry-payout`, {
+    method: "POST",
+    token,
+    customCorrelationId
+  });
+}
+
 
 
 

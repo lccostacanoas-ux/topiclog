@@ -128,6 +128,12 @@ public interface IFulfillmentApplicationService
         Guid orderId,
         RateCarrierRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<DeliveryOrderResponse> RetryPayoutAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class FulfillmentApplicationService : IFulfillmentApplicationService
@@ -676,10 +682,11 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
                 order.PayoutProcessedAtUtc = DateTimeOffset.UtcNow;
                 await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
 
+                bool isPayoutSuccess = payoutResult.Status is "TRANSFERIDO" or "SUCCEEDED";
                 await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
                 {
                     DeliveryOrderId = order.Id,
-                    EventType = payoutResult.Status == "SUCCEEDED"
+                    EventType = isPayoutSuccess
                         ? DeliveryEventType.PAYOUT_DISPATCHED
                         : DeliveryEventType.PAYOUT_PENDING,
                     ActorId = actorId,
@@ -694,8 +701,8 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
                 {
                     await _notificationsService.NotifyAsync(
                         order.CarrierId,
-                        payoutResult.Status == "SUCCEEDED" ? "PAYOUT_DISPATCHED" : "PAYOUT_PENDING",
-                        payoutResult.Status == "SUCCEEDED" ? "Repasse Pix enviado!" : "Repasse liberado (aguardando liquidação)",
+                        isPayoutSuccess ? "PAYOUT_DISPATCHED" : "PAYOUT_PENDING",
+                        isPayoutSuccess ? "Repasse Pix enviado!" : "Repasse pendente no Asaas",
                         payoutResult.Message,
                         "/minhas-atividades",
                         relatedShipmentId: order.ShipmentId,
@@ -1356,6 +1363,108 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
             PayoutTransferId: o.PayoutTransferId,
             PayoutMessage: o.PayoutMessage,
             PayoutProcessedAtUtc: o.PayoutProcessedAtUtc);
+    }
+
+    public async Task<DeliveryOrderResponse> RetryPayoutAsync(
+        Guid actorId,
+        ActorRole actorRole,
+        Guid orderId,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await GetOrderOrThrowAsync(orderId, cancellationToken);
+        EnsureIsCarrierOfOrder(actorId, actorRole, order);
+
+        if (order.Status != DeliveryOrderStatus.DELIVERED_VERIFIED)
+        {
+            throw new DomainRuleViolationException(
+                "ORDER_NOT_DELIVERED",
+                "O repasse Pix só pode ser executado após a confirmação da entrega da encomenda.",
+                400);
+        }
+
+        // Idempotência: se já foi transferido com sucesso, não transfere duas vezes
+        if (order.PayoutStatus is "TRANSFERIDO" or "SUCCEEDED")
+        {
+            return MapOrderToResponse(order);
+        }
+
+        if (_payoutService is null)
+        {
+            throw new DomainRuleViolationException(
+                "PAYOUT_SERVICE_UNAVAILABLE",
+                "Serviço de repasse financeiro Asaas indisponível no momento.",
+                503);
+        }
+
+        long grossCents = order.AmountCents;
+        Guid proposalIdForSnap = Guid.Empty;
+        if (grossCents <= 0 && _proposalsRepo is not null)
+        {
+            var c = await _proposalsRepo.GetContractByIdAsync(order.ContractId, cancellationToken);
+            if (c is not null)
+            {
+                grossCents = c.AmountCents;
+                proposalIdForSnap = c.ProposalId;
+            }
+        }
+
+        long carrierNetCents = grossCents;
+        if (grossCents > 0 && _financialPolicyProvider is not null)
+        {
+            var snapshot = await _financialPolicyProvider.GetSnapshotByContractIdAsync(order.ContractId, cancellationToken);
+            if (snapshot is null)
+            {
+                snapshot = await _financialPolicyProvider.CreateOrGetSnapshotForContractAsync(
+                    contractId: order.ContractId,
+                    proposalId: proposalIdForSnap,
+                    shipmentId: order.ShipmentId,
+                    carrierId: order.CarrierId,
+                    senderId: order.SenderId,
+                    amountCents: grossCents,
+                    referenceDate: order.CreatedAtUtc,
+                    cancellationToken: cancellationToken);
+            }
+            carrierNetCents = snapshot.CarrierNetCents;
+        }
+
+        var carrierUser = _userRepository is not null
+            ? await _userRepository.FindByIdAsync(order.CarrierId, cancellationToken)
+            : null;
+
+        var payoutResult = await _payoutService.ExecutePixPayoutAsync(
+            new MercadoPagoPixPayoutRequest(
+                OrderId: order.Id,
+                ContractId: order.ContractId,
+                CarrierId: order.CarrierId,
+                CarrierName: order.CarrierName,
+                PixKeyType: carrierUser?.Profile.PixKeyType,
+                PixKey: carrierUser?.Profile.PixKey,
+                NetAmountCents: carrierNetCents,
+                IdempotencyKey: $"payout-retry-{order.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}"),
+            cancellationToken);
+
+        order.PayoutStatus = payoutResult.Status;
+        order.PayoutAmountCents = payoutResult.AmountCents;
+        order.PayoutTransferId = payoutResult.ProviderTransferId;
+        order.PayoutMessage = payoutResult.Message;
+        order.PayoutProcessedAtUtc = DateTimeOffset.UtcNow;
+        order.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+
+        bool isPayoutSuccess = payoutResult.Status is "TRANSFERIDO" or "SUCCEEDED";
+        await _fulfillmentRepo.AppendEventAsync(new DeliveryEvent
+        {
+            DeliveryOrderId = order.Id,
+            EventType = isPayoutSuccess ? DeliveryEventType.PAYOUT_DISPATCHED : DeliveryEventType.PAYOUT_PENDING,
+            ActorId = actorId,
+            ActorRole = actorRole.ToString(),
+            PreviousStatus = order.Status.ToString(),
+            NewStatus = order.Status.ToString(),
+            Notes = $"Tentativa de repasse Asaas: {payoutResult.Message}",
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        }, cancellationToken);
+
+        return MapOrderToResponse(order);
     }
 
     private static double HaversineDistanceKm(double lat1, double lon1, double lat2, double lon2)

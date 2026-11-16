@@ -260,7 +260,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // B. Criar a Cobrança Pix com Split no Asaas (dueDate: hoje)
+    // B. Criar a Cobrança Pix na Conta Mestre TopicLog (100% em custódia segura, sem split de subconta)
     const today = new Date().toISOString().split("T")[0];
     const paymentPayload: Record<string, unknown> = {
       customer: customerId,
@@ -272,35 +272,16 @@ export async function POST(request: Request) {
       externalReference: body.orderId || undefined
     };
 
-    // Carteira Asaas do transportador para Split Nativo (UUID ou wal_...)
-    const carrierWallet = String(body.carrierWalletId || "63cfd28a-9d24-4835-8f9c-2b36a5469158").trim();
-    const isValidAsaasWallet = carrierWallet.length >= 10 && (
-      /^[0-9a-fA-F-]{10,}$/.test(carrierWallet) ||
-      carrierWallet.startsWith("wal_") ||
-      carrierWallet.startsWith("acc_")
-    );
+    console.info(`[Asaas Pix] Cobrança Pix de R$ ${amount.toFixed(2)} criada em custódia na Conta Mestre PJ TopicLog (sem subcontas).`);
 
-    if (isValidAsaasWallet) {
-      const carrierSharePercent = Number(body.carrierSharePercent) || 85.0;
-      paymentPayload.split = [
-        {
-          walletId: carrierWallet,
-          percentualValue: carrierSharePercent
-        }
-      ];
-      console.info(`[Asaas Pix] Split nativo ativo: ${carrierSharePercent}% para wallet ${carrierWallet}`);
-    } else {
-      console.info(`[Asaas Pix] Carteira "${carrierWallet}" inválida. Frete retido sob custódia da TopicLog.`);
-    }
-
-      const payRes = await fetch(`${baseUrl}/payments`, {
-        method: "POST",
-        headers: {
-          access_token: apiKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(paymentPayload)
-      });
+    const payRes = await fetch(`${baseUrl}/payments`, {
+      method: "POST",
+      headers: {
+        access_token: apiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(paymentPayload)
+    });
 
       if (!payRes.ok) {
         const payErrText = await payRes.text();
