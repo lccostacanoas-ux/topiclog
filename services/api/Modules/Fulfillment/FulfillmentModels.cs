@@ -310,3 +310,10 @@ public sealed record PostDeliverySuggestionResponse(
     int WeightGrams,
     long SuggestedPriceCents,
     double DistanceKm);
+
+public sealed record AsaasTransferEventRequest(
+    string? TransferId,
+    string? Event,
+    string? Status,
+    string? FailReason,
+    decimal? Value);

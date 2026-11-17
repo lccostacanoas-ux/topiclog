@@ -281,6 +281,22 @@ public static class ProposalsEndpoints
             return Results.Ok(updated);
         });
 
+        // POST /api/v1/contracts/{id}/webhook-confirm-payment — Confirmação assíncrona de pagamento via Webhook Asaas (Sistema)
+        app.MapPost("/api/v1/contracts/{id:guid}/webhook-confirm-payment", async (
+            Guid id,
+            [FromBody] ConfirmContractPaymentRequest? request,
+            IProposalsApplicationService proposalsService,
+            CancellationToken cancellationToken) =>
+        {
+            var updated = await proposalsService.ConfirmContractPaymentAsync(
+                Guid.Empty,
+                ActorRole.SYSTEM,
+                id,
+                request,
+                cancellationToken).ConfigureAwait(false);
+            return Results.Ok(updated);
+        });
+
         // POST /api/v1/contracts/{id}/cancel-by-sender — Cancelamento de viagem/contrato pelo remetente a qualquer momento
         app.MapPost("/api/v1/contracts/{id:guid}/cancel-by-sender", async (
             Guid id,

@@ -9,6 +9,8 @@ public interface IFulfillmentRepository
     Task<IReadOnlyList<DeliveryOrder>> ListOrdersByCarrierIdAsync(Guid carrierId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DeliveryOrder>> ListOrdersBySenderIdAsync(Guid senderId, CancellationToken cancellationToken = default);
     Task<DeliveryOrder> UpdateOrderAsync(DeliveryOrder order, CancellationToken cancellationToken = default);
+    Task<DeliveryOrder?> GetOrderByPayoutTransferIdAsync(string transferId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<DeliveryOrder>> GetRecentOrdersAsync(int limit = 50, CancellationToken cancellationToken = default);
 
     Task<DeliveryChallenge> CreateChallengeAsync(DeliveryChallenge challenge, CancellationToken cancellationToken = default);
     Task<DeliveryChallenge?> GetActiveChallengeByOrderIdAsync(Guid orderId, CancellationToken cancellationToken = default);

@@ -49,6 +49,11 @@ temp/
 # OS / IDE
 .DS_Store
 Thumbs.db
+
+# Documentation Reports & Scripts
+*.pdf
+TopicLog_Relatorio_*.*
+generate_pdf_report.js
 .idea/
 *.swp
 

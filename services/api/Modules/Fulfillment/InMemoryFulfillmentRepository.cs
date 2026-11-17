@@ -118,6 +118,19 @@ public sealed class InMemoryFulfillmentRepository : IFulfillmentRepository
         return Task.FromResult(order);
     }
 
+    public Task<DeliveryOrder?> GetOrderByPayoutTransferIdAsync(string transferId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(transferId)) return Task.FromResult<DeliveryOrder?>(null);
+        var order = _orders.Values.FirstOrDefault(o => string.Equals(o.PayoutTransferId, transferId, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(order);
+    }
+
+    public Task<IReadOnlyList<DeliveryOrder>> GetRecentOrdersAsync(int limit = 50, CancellationToken cancellationToken = default)
+    {
+        var list = _orders.Values.OrderByDescending(o => o.DeliveredAtUtc ?? o.CreatedAtUtc).Take(limit).ToList();
+        return Task.FromResult<IReadOnlyList<DeliveryOrder>>(list);
+    }
+
     public Task<DeliveryOrder?> GetOrderByContractIdAsync(Guid contractId, CancellationToken cancellationToken = default)
     {
         var order = _orders.Values.FirstOrDefault(o => o.ContractId == contractId);

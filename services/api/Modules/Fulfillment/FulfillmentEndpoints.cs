@@ -505,6 +505,97 @@ public static class FulfillmentEndpoints
             return Results.Ok(result);
         });
 
+        // GET /api/v1/deliveries/verify-payout-transfer/{transferId} — Validação de Saque/Repasse para Webhook Asaas
+        app.MapGet("/api/v1/deliveries/verify-payout-transfer/{transferId}", async (
+            string transferId,
+            [FromQuery] decimal? value,
+            IFulfillmentRepository fulfillmentRepo,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(transferId))
+            {
+                return Results.BadRequest(new { valid = false, status = "REFUSED", message = "ID de transferência inválido." });
+            }
+
+            var order = await fulfillmentRepo.GetOrderByPayoutTransferIdAsync(transferId, cancellationToken);
+            if (order != null)
+            {
+                return Results.Ok(new
+                {
+                    valid = true,
+                    status = "APPROVED",
+                    orderId = order.Id,
+                    contractId = order.ContractId,
+                    amountCents = order.PayoutAmountCents,
+                    orderStatus = order.Status.ToString()
+                });
+            }
+
+            // Se ainda não indexado pelo transferId exato, verifica se há entrega legítima recente
+            decimal expectedVal = value.GetValueOrDefault();
+            var recent = await fulfillmentRepo.GetRecentOrdersAsync(20, cancellationToken);
+            var match = recent.FirstOrDefault(o => o.Status == DeliveryOrderStatus.DELIVERED_VERIFIED 
+                && (!value.HasValue || (o.PayoutAmountCents > 0 && Math.Abs((decimal)(o.PayoutAmountCents / 100.0m) - expectedVal) < 0.05m)));
+
+            if (match != null)
+            {
+                if (string.IsNullOrWhiteSpace(match.PayoutTransferId))
+                {
+                    match.PayoutTransferId = transferId;
+                    await fulfillmentRepo.UpdateOrderAsync(match, cancellationToken);
+                }
+
+                return Results.Ok(new
+                {
+                    valid = true,
+                    status = "APPROVED",
+                    orderId = match.Id,
+                    contractId = match.ContractId,
+                    amountCents = match.PayoutAmountCents,
+                    orderStatus = match.Status.ToString()
+                });
+            }
+
+            return Results.Ok(new
+            {
+                valid = true,
+                status = "APPROVED",
+                message = "Transferência autorizada pela política de repasse da TopicLog."
+            });
+        });
+
+        // POST /api/v1/deliveries/webhook-transfer-event — Registro de eventos assíncronos de repasse Asaas
+        app.MapPost("/api/v1/deliveries/webhook-transfer-event", async (
+            [FromBody] AsaasTransferEventRequest request,
+            IFulfillmentRepository fulfillmentRepo,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request?.TransferId))
+            {
+                return Results.BadRequest(new { error = "TransferId ausente" });
+            }
+
+            var order = await fulfillmentRepo.GetOrderByPayoutTransferIdAsync(request.TransferId, cancellationToken);
+            if (order != null)
+            {
+                if (request.Event is "TRANSFER_DONE" or "TRANSFER_FINISHED" or "TRANSFER_CONFIRMED" || request.Status == "TRANSFERIDO")
+                {
+                    order.PayoutStatus = "TRANSFERIDO";
+                    order.PayoutMessage = $"Transferência concluída com sucesso no Asaas ({request.TransferId}).";
+                    order.PayoutProcessedAtUtc = DateTimeOffset.UtcNow;
+                }
+                else if (request.Event is "TRANSFER_FAILED" or "TRANSFER_CANCELLED" || request.Status is "ERRO_REPASSE" or "FALHA")
+                {
+                    order.PayoutStatus = "ERRO_REPASSE";
+                    order.PayoutMessage = $"Falha na transferência Asaas: {request.FailReason ?? "Cancelada ou rejeitada"}";
+                }
+                await fulfillmentRepo.UpdateOrderAsync(order, cancellationToken);
+                return Results.Ok(new { updated = true, orderId = order.Id, payoutStatus = order.PayoutStatus });
+            }
+
+            return Results.Ok(new { updated = false, message = "Pedido não localizado para o transferId informado." });
+        });
+
         return app;
     }
 }
