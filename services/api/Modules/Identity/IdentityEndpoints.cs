@@ -70,6 +70,20 @@ public static class IdentityEndpoints
             return Results.Ok(session);
         });
 
+        app.MapPost("/api/v1/auth/google", async (
+            GoogleAuthRequest request,
+            HttpContext httpContext,
+            IdentityApplicationService identityService,
+            CancellationToken cancellationToken) =>
+        {
+            var session = await identityService.AuthenticateWithGoogleAsync(
+                request,
+                httpContext.TraceIdentifier,
+                cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(session);
+        });
+
         app.MapPost("/api/v1/auth/refresh", async (
             RefreshTokenRequest request,
             HttpContext httpContext,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { AlertBanner } from "../../components/AlertBanner";
+import { GoogleSignInButton } from "../../components/GoogleSignInButton";
 import { getTermsManifestApi } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import { formatCpf, isValidCpf } from "../../lib/validation";
@@ -262,6 +263,24 @@ export default function RegisterPage(): React.JSX.Element {
               onClose={() => setProblem(null)}
             />
           )}
+
+          <GoogleSignInButton text="signup_with" />
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              margin: "24px 0 20px 0",
+              color: "#94A3B8",
+              fontSize: "12px",
+              fontWeight: 600,
+              textTransform: "uppercase"
+            }}
+          >
+            <div style={{ flex: 1, height: "1px", backgroundColor: "#E2E8F0" }} />
+            <span style={{ padding: "0 12px" }}>ou preencha o formulário completo</span>
+            <div style={{ flex: 1, height: "1px", backgroundColor: "#E2E8F0" }} />
+          </div>
 
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-group">

@@ -233,6 +233,13 @@ public sealed record LoginRequest(
     string Email,
     string Password);
 
+public sealed record GoogleAuthRequest(
+    string? IdToken,
+    string Email,
+    string? Name = null,
+    string? Picture = null,
+    string? GoogleId = null);
+
 public sealed record RefreshTokenRequest(
     string RefreshToken);
 

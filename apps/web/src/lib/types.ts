@@ -126,6 +126,14 @@ export interface LoginRequest {
   readonly password: string;
 }
 
+export interface GoogleAuthRequest {
+  readonly idToken?: string;
+  readonly email: string;
+  readonly name?: string;
+  readonly picture?: string;
+  readonly googleId?: string;
+}
+
 export interface RefreshTokenRequest {
   readonly refreshToken: string;
 }

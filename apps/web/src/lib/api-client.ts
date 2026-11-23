@@ -5,6 +5,7 @@ import type {
   CreateShipmentPayload,
   CreateTripPayload,
   EvaluateBilateralKycRequest,
+  GoogleAuthRequest,
   KycDossierResponse,
   LoginRequest,
   LogoutRequest,
@@ -678,6 +679,58 @@ export async function loginUserApi(
           ruleCode: "AUTH_INVALID_CREDENTIALS",
           detail: "Verifique o e-mail e a senha informados e tente novamente. Se ainda não possui conta, cadastre-se gratuitamente."
         },
+        correlationId: customCorrelationId || `local-${Date.now()}`,
+        isFallback: true
+      };
+    }
+  }
+
+  return result;
+}
+
+export async function authenticateWithGoogleApi(
+  request: GoogleAuthRequest,
+  customCorrelationId?: string
+): Promise<ApiFetchResult<AuthSessionResponse>> {
+  const result = await apiRequest<AuthSessionResponse>("/api/v1/auth/google", {
+    method: "POST",
+    body: request,
+    customCorrelationId
+  });
+
+  if (result.ok && result.data) {
+    return result;
+  }
+
+  // Fallback em desenvolvimento local quando backend não estiver rodando
+  if (result.status === 404 || result.status === 0 || result.isFallback || result.status === 405) {
+    if (!allowLocalDemoFallback()) {
+      return buildApiUnreachableResult<AuthSessionResponse>(customCorrelationId, result.status);
+    }
+    if (typeof window !== "undefined") {
+      const email = request.email.trim().toLowerCase();
+      const users = getLocalMockUsers();
+      let matched = users.find((u) => u.email && u.email.toLowerCase() === email);
+      if (!matched) {
+        matched = {
+          id: `usr_g_${Date.now()}`,
+          displayName: request.name?.trim() || "Usuário Google",
+          email,
+          password: "",
+          phone: "00000000000",
+          city: "",
+          stateUf: "",
+          roles: ["SENDER"],
+          kycStatus: "NOT_STARTED",
+          createdAt: new Date().toISOString()
+        };
+        saveLocalMockUser(matched);
+      }
+      const session = buildLocalMockSession(matched);
+      return {
+        ok: true,
+        status: 200,
+        data: session,
         correlationId: customCorrelationId || `local-${Date.now()}`,
         isFallback: true
       };

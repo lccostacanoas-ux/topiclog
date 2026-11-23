@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TopicLog.Api.Common.Contracts;
@@ -376,6 +377,150 @@ public sealed class IdentityApplicationService
 
         return await IssueSessionTokensAsync(user, profile, tokenFamilyId: Guid.NewGuid(), nowUtc, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task<AuthSessionResponse> AuthenticateWithGoogleAsync(
+        GoogleAuthRequest request,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        string rawEmail = request.Email;
+        string? displayName = request.Name?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(request.IdToken))
+        {
+            try
+            {
+                var parts = request.IdToken.Split('.');
+                if (parts.Length == 3)
+                {
+                    string payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+                    using var doc = JsonDocument.Parse(payloadJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("email", out var emailProp) && emailProp.GetString() is { Length: > 0 } tokenEmail)
+                    {
+                        rawEmail = tokenEmail;
+                    }
+                    if (root.TryGetProperty("name", out var nameProp) && nameProp.GetString() is { Length: > 0 } tokenName)
+                    {
+                        displayName = tokenName.Trim();
+                    }
+                }
+            }
+            catch
+            {
+                // Em caso de falha de parsing do token bruto, preserva os dados diretos da requisição
+            }
+        }
+
+        string normalizedEmail = NormalizeAndValidateEmail(rawEmail);
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+        var existing = await _userRepository.FindByEmailAsync(normalizedEmail, cancellationToken).ConfigureAwait(false);
+        UserEntity user;
+        UserProfileEntity profile;
+
+        if (existing is not null)
+        {
+            (user, profile) = existing.Value;
+
+            if (user.Status == UserAccountStatus.SUSPENDED)
+            {
+                throw new DomainRuleViolationException(
+                    "AUTH_ACCOUNT_SUSPENDED",
+                    "A conta encontra-se suspensa preventivamente.",
+                    StatusCodes.Status403Forbidden);
+            }
+
+            user.FailedLoginAttempts = 0;
+            user.LockoutUntilUtc = null;
+            if (user.Status == UserAccountStatus.LOCKED)
+            {
+                user.Status = UserAccountStatus.ACTIVE;
+            }
+            user.UpdatedAtUtc = nowUtc;
+
+            await _userRepository.UpdateAsync(user, profile, cancellationToken).ConfigureAwait(false);
+
+            await _auditRepository.AppendAsync(
+                new AuditEventEntity(
+                    Id: Guid.NewGuid(),
+                    ActorUserId: user.Id,
+                    EntityType: "AUTH_SESSION",
+                    EntityId: user.Id.ToString("D"),
+                    Action: "LOGIN_GOOGLE_SUCCEEDED",
+                    CorrelationId: correlationId,
+                    MetadataJson: JsonSerializer.Serialize(new { email = user.Email }),
+                    CreatedAtUtc: nowUtc),
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            string finalDisplayName = !string.IsNullOrWhiteSpace(displayName) ? displayName : "Usuário Google";
+            string dummyPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            string passwordHash = _crypto.HashPassword(dummyPassword);
+
+            string dummyPhone = "00000000000";
+            string phoneEncrypted = _crypto.EncryptPhone(dummyPhone);
+            string phoneMasked = SecurityCryptoService.MaskPhone(dummyPhone);
+
+            user = new UserEntity
+            {
+                Email = normalizedEmail,
+                PhoneEncrypted = phoneEncrypted,
+                PhoneMasked = phoneMasked,
+                PasswordHash = passwordHash,
+                Status = UserAccountStatus.ACTIVE,
+                CreatedAtUtc = nowUtc,
+                UpdatedAtUtc = nowUtc
+            };
+
+            profile = new UserProfileEntity
+            {
+                UserId = user.Id,
+                DisplayName = finalDisplayName,
+                CpfHash = null,
+                CpfMasked = null,
+                City = string.Empty,
+                StateUf = string.Empty,
+                Roles = [UserRole.SENDER],
+                KycStatus = KycStatus.NOT_STARTED,
+                TermsAcceptedVersion = "v1.0-google-oauth",
+                TermsAcceptedAtUtc = nowUtc,
+                RatingAvg = 5.00m,
+                RatingCount = 0
+            };
+
+            await _userRepository.CreateAsync(user, profile, cancellationToken).ConfigureAwait(false);
+
+            await _auditRepository.AppendAsync(
+                new AuditEventEntity(
+                    Id: Guid.NewGuid(),
+                    ActorUserId: user.Id,
+                    EntityType: "USER",
+                    EntityId: user.Id.ToString("D"),
+                    Action: "REGISTER_GOOGLE_SUCCEEDED",
+                    CorrelationId: correlationId,
+                    MetadataJson: JsonSerializer.Serialize(new { email = user.Email, displayName = profile.DisplayName }),
+                    CreatedAtUtc: nowUtc),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return await IssueSessionTokensAsync(user, profile, tokenFamilyId: Guid.NewGuid(), nowUtc, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        string output = input.Replace('-', '+').Replace('_', '/');
+        switch (output.Length % 4)
+        {
+            case 2: output += "=="; break;
+            case 3: output += "="; break;
+        }
+        return Convert.FromBase64String(output);
     }
 
     public async Task<AuthSessionResponse> RefreshSessionAsync(

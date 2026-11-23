@@ -286,6 +286,16 @@ export default function MyAccountPage(): React.JSX.Element {
         />
       )}
 
+      {!user.cpfMasked && (
+        <div style={{ marginBottom: "20px" }}>
+          <AlertBanner
+            tone="warning"
+            title="Complete seu Cadastro (Conta criada via Google)"
+            message="Para contratar transportadores e emitir entregas com segurança jurídica, informe seu CPF e telefone WhatsApp em 'Editar Dados' abaixo."
+          />
+        </div>
+      )}
+
       {/* Painéis de Status e Verificação da Conta */}
       <section className="grid-two" style={{ marginBottom: "24px" }} aria-label="Status da conta e segurança">
         <div className="card" style={{ borderLeft: "4px solid var(--color-success)" }}>

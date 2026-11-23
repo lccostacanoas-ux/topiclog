@@ -8,6 +8,7 @@ import React, {
   useState
 } from "react";
 import {
+  authenticateWithGoogleApi,
   getPrivateProfileApi,
   loginUserApi,
   logoutUserApi,
@@ -17,6 +18,7 @@ import {
 import type {
   ApiFetchResult,
   AuthSessionResponse,
+  GoogleAuthRequest,
   LoginRequest,
   PrivateUserProfileResponse,
   RegisterUserRequest
@@ -35,6 +37,7 @@ interface AuthContextValue {
   readonly isLoading: boolean;
   readonly isAuthenticated: boolean;
   readonly login: (credentials: LoginRequest) => Promise<ApiFetchResult<AuthSessionResponse>>;
+  readonly loginWithGoogle: (payload: GoogleAuthRequest) => Promise<ApiFetchResult<AuthSessionResponse>>;
   readonly register: (data: RegisterUserRequest) => Promise<ApiFetchResult<AuthSessionResponse>>;
   readonly refresh: () => Promise<boolean>;
   readonly logout: () => Promise<void>;
@@ -187,6 +190,22 @@ export function AuthProvider({
     [handleSessionSuccess]
   );
 
+  const loginWithGoogle = useCallback(
+    async (payload: GoogleAuthRequest): Promise<ApiFetchResult<AuthSessionResponse>> => {
+      setIsLoading(true);
+      try {
+        const result = await authenticateWithGoogleApi(payload);
+        if (result.ok && result.data) {
+          handleSessionSuccess(result.data);
+        }
+        return result;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [handleSessionSuccess]
+  );
+
   const register = useCallback(
     async (data: RegisterUserRequest): Promise<ApiFetchResult<AuthSessionResponse>> => {
       setIsLoading(true);
@@ -272,6 +291,7 @@ export function AuthProvider({
     isLoading,
     isAuthenticated: Boolean(token && user),
     login,
+    loginWithGoogle,
     register,
     refresh,
     logout,
