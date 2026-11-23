@@ -270,7 +270,7 @@ export type { ApiFetchResult };
 
 export const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
-export const ACTIVE_TUNNEL_URL = "https://parks-avon-sky-fall.trycloudflare.com";
+export const ACTIVE_TUNNEL_URL = "https://tubes-monroe-badly-capabilities.trycloudflare.com";
 
 /**
  * URL base da API .NET 10.
