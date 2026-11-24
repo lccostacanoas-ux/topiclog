@@ -64,3 +64,4 @@ cloudflared.exe
 *.zip
 .netlify/
 dist-topiclog-web/
+.agents/
