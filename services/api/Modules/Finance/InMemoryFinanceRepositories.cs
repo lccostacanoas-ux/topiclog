@@ -73,6 +73,7 @@ public class InMemoryFinancialPolicyRepository : IFinancialPolicyRepository
             CancellationPenaltyPercent = 10.00m,
             CancellationMinFeeCents = 700,
             CancellationInjuredPartySharePercent = 80.00m,
+            FixedCarrierFeeCents = 199,
             ValidFrom = DateTimeOffset.Parse("2026-10-12T00:00:00Z", CultureInfo.InvariantCulture),
             ValidUntil = null,
             IsActive = true,

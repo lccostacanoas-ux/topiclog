@@ -46,7 +46,8 @@ public static class FinanceEndpoints
                 policy.IsActive,
                 policy.Justification,
                 policy.CreatedAtUtc,
-                FinancialApplicationService.DeterminePolicyStatus(policy));
+                FinancialApplicationService.DeterminePolicyStatus(policy),
+                policy.FixedCarrierFeeCents);
 
             return Results.Ok(response);
         });

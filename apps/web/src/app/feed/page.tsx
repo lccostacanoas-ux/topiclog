@@ -73,6 +73,7 @@ function FeedContent(): React.JSX.Element {
 
   const [isSendingProposal, setIsSendingProposal] = useState(false);
   const [commissionPercent, setCommissionPercent] = useState<number>(15);
+  const [fixedCarrierFeeCents, setFixedCarrierFeeCents] = useState<number>(199);
   const [carrierOfferValue, setCarrierOfferValue] = useState<string>("");
   const [globalMinFreightPriceCents, setGlobalMinFreightPriceCents] = useState<number>(900);
   const [proposalFeedback, setProposalFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -81,8 +82,13 @@ function FeedContent(): React.JSX.Element {
   useEffect(() => {
     let isMounted = true;
     getCommercialPolicyCurrentApi().then((res) => {
-      if (isMounted && res.ok && res.data?.freePlanCommissionPercent != null) {
-        setCommissionPercent(res.data.freePlanCommissionPercent);
+      if (isMounted && res.ok) {
+        if (res.data?.freePlanCommissionPercent != null) {
+          setCommissionPercent(res.data.freePlanCommissionPercent);
+        }
+        if (res.data?.fixedCarrierFeeCents != null) {
+          setFixedCarrierFeeCents(res.data.fixedCarrierFeeCents);
+        }
       }
     });
     getCancellationPolicyApi().then((res) => {
@@ -1817,7 +1823,8 @@ function FeedContent(): React.JSX.Element {
                   const numVal = parseFloat(carrierOfferValue.replace(",", ".").replace(/[^0-9.]/g, "")) || (selectedItem.suggestedPriceCents / 100);
                   const grossCents = Math.round(numVal * 100);
                   const commCents = Math.round(grossCents * (commissionPercent / 100));
-                  const netCents = grossCents - commCents;
+                  const grossCarrierNet = grossCents - commCents;
+                  const netCents = Math.max(0, grossCarrierNet - fixedCarrierFeeCents);
 
                   return (
                     <>
@@ -1878,8 +1885,12 @@ function FeedContent(): React.JSX.Element {
                         <span>Comissão TopicLog ({commissionPercent}% configurada):</span>
                         <span>- R$ {(commCents / 100).toFixed(2).replace(".", ",")}</span>
                       </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--color-muted)", marginBottom: "4px" }}>
+                        <span>Taxa fixa operacional por corrida:</span>
+                        <span style={{ color: "var(--color-danger, #EF4444)" }}>- R$ {(fixedCarrierFeeCents / 100).toFixed(2).replace(".", ",")}</span>
+                      </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", borderTop: "1px dashed var(--color-border)", paddingTop: "6px", color: "var(--color-success)", fontWeight: 700 }}>
-                        <span>Repasse Líquido ao Transportador ({100 - commissionPercent}%):</span>
+                        <span>Repasse Líquido ao Transportador ({100 - commissionPercent}% − R$ {(fixedCarrierFeeCents / 100).toFixed(2).replace(".", ",")}):</span>
                         <span>R$ {(netCents / 100).toFixed(2).replace(".", ",")}</span>
                       </div>
                     </>

@@ -44,6 +44,7 @@ export interface CommercialPoliciesDto {
   readonly premiumPlanMonthlyPriceCents: number;
   readonly premiumPlanCommissionRate: number;
   readonly platformAbsorbsGatewayFees: boolean;
+  readonly fixedCarrierFeeCents?: number;
 }
 
 export interface InsurancePolicyDto {
@@ -1086,6 +1087,7 @@ export interface CommercialPolicyDto {
   readonly justification: string;
   readonly createdAtUtc: string;
   readonly status?: string;
+  readonly fixedCarrierFeeCents?: number;
 }
 
 export interface SubscriptionPlanDto {

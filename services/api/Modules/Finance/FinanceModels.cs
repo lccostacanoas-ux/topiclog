@@ -29,6 +29,7 @@ public class CommercialPolicy
     public decimal CancellationPenaltyPercent { get; set; } = 10.00m;
     public long CancellationMinFeeCents { get; set; } = 700;
     public decimal CancellationInjuredPartySharePercent { get; set; } = 80.00m;
+    public long FixedCarrierFeeCents { get; set; } = 199;
     public DateTimeOffset ValidFrom { get; set; }
     public DateTimeOffset? ValidUntil { get; set; }
     public bool IsActive { get; set; } = true;
@@ -67,6 +68,7 @@ public class FinancialSnapshot
     public long TransportAmountCents { get; set; }
     public long PlatformCommissionCents { get; set; }
     public long CarrierNetCents { get; set; }
+    public long FixedCarrierFeeCents { get; set; } = 199;
     public long RoundingDifferenceCents { get; set; }
     public bool GatewayFeesAbsorbedByPlatform { get; set; } = true;
     public DateTimeOffset SnapshottedAtUtc { get; set; } = DateTimeOffset.UtcNow;
@@ -99,7 +101,8 @@ public record CreateCommercialPolicyRequest(
     long? CancellationMinFeeCents,
     decimal? CancellationInjuredPartySharePercent,
     DateTimeOffset ValidFrom,
-    string Justification);
+    string Justification,
+    long? FixedCarrierFeeCents = 199);
 
 public record CommercialPolicyResponse(
     Guid Id,
@@ -116,7 +119,8 @@ public record CommercialPolicyResponse(
     bool IsActive,
     string Justification,
     DateTimeOffset CreatedAtUtc,
-    string Status = "VIGENTE");
+    string Status = "VIGENTE",
+    long FixedCarrierFeeCents = 199);
 
 public record RevokeCommercialPolicyRequest(
     string? Reason);
@@ -149,7 +153,8 @@ public record FinancialSnapshotResponse(
     long PlatformCommissionCents,
     long CarrierNetCents,
     bool GatewayFeesAbsorbedByPlatform,
-    DateTimeOffset SnapshottedAtUtc);
+    DateTimeOffset SnapshottedAtUtc,
+    long FixedCarrierFeeCents = 199);
 
 public record SimulateSplitRequest(
     long TransportAmountCents,
@@ -163,7 +168,8 @@ public record SimulateSplitResponse(
     long PlatformCommissionCents,
     long CarrierNetCents,
     bool GatewayFeesAbsorbedByPlatform,
-    string PolicyVersionApplied);
+    string PolicyVersionApplied,
+    long FixedFeeCents = 199);
 
 public record PlanCatalogItemResponse(
     string PlanCode,

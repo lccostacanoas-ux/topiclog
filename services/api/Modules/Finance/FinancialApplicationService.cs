@@ -142,9 +142,19 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
             string planCode = isPremium ? "PREMIUM" : "FREE";
             decimal commissionPercent = isPremium ? policy.PremiumPlanCommissionPercent : policy.FreePlanCommissionPercent;
 
-            // 4. Cálculo com matemática de inteiros e arredondamento financeiro determinístico (MidpointRounding.AwayFromZero)
-            long commissionCents = (long)Math.Round(amountCents * (commissionPercent / 100.0m), MidpointRounding.AwayFromZero);
-            long carrierNetCents = amountCents - commissionCents;
+            // 4. Cálculo com matemática de inteiros e taxa fixa operacional por corrida
+            long percentageCommissionCents = (long)Math.Round(amountCents * (commissionPercent / 100.0m), MidpointRounding.AwayFromZero);
+            long grossCarrierNetCents = amountCents - percentageCommissionCents;
+
+            long fixedFeeCents = policy.FixedCarrierFeeCents;
+            long carrierNetCents = grossCarrierNetCents;
+            long commissionCents = percentageCommissionCents;
+
+            if (fixedFeeCents > 0 && grossCarrierNetCents > fixedFeeCents)
+            {
+                carrierNetCents = grossCarrierNetCents - fixedFeeCents;
+                commissionCents += fixedFeeCents;
+            }
 
             // Invariante contábil (ADR-0002)
             if (commissionCents + carrierNetCents != amountCents)
@@ -170,6 +180,7 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
                 TransportAmountCents = amountCents,
                 PlatformCommissionCents = commissionCents,
                 CarrierNetCents = carrierNetCents,
+                FixedCarrierFeeCents = fixedFeeCents,
                 RoundingDifferenceCents = 0,
                 GatewayFeesAbsorbedByPlatform = true,
                 SnapshottedAtUtc = DateTimeOffset.UtcNow
@@ -241,8 +252,18 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
             }
         }
 
-        long platformCommissionCents = (long)Math.Round(amountCents * (commissionPercent / 100.0m), MidpointRounding.AwayFromZero);
-        long carrierNetCents = amountCents - platformCommissionCents;
+        long percentageCommissionCents = (long)Math.Round(amountCents * (commissionPercent / 100.0m), MidpointRounding.AwayFromZero);
+        long grossCarrierNetCents = amountCents - percentageCommissionCents;
+
+        long fixedFeeCents = policy.FixedCarrierFeeCents;
+        long carrierNetCents = grossCarrierNetCents;
+        long platformCommissionCents = percentageCommissionCents;
+
+        if (fixedFeeCents > 0 && grossCarrierNetCents > fixedFeeCents)
+        {
+            carrierNetCents = grossCarrierNetCents - fixedFeeCents;
+            platformCommissionCents += fixedFeeCents;
+        }
 
         return new SimulateSplitResponse(
             TransportAmountCents: amountCents,
@@ -251,7 +272,8 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
             PlatformCommissionCents: platformCommissionCents,
             CarrierNetCents: carrierNetCents,
             GatewayFeesAbsorbedByPlatform: true,
-            PolicyVersionApplied: policy.Version);
+            PolicyVersionApplied: policy.Version,
+            FixedFeeCents: fixedFeeCents);
     }
 
     public async Task<CommercialPolicyResponse> CreatePolicyVersionAsync(
@@ -366,6 +388,7 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
                 CancellationPenaltyPercent = request.CancellationPenaltyPercent ?? 10.00m,
                 CancellationMinFeeCents = request.CancellationMinFeeCents ?? 700,
                 CancellationInjuredPartySharePercent = request.CancellationInjuredPartySharePercent ?? 80.00m,
+                FixedCarrierFeeCents = request.FixedCarrierFeeCents ?? 199,
                 ValidFrom = request.ValidFrom,
                 ValidUntil = null,
                 IsActive = true,
@@ -664,7 +687,8 @@ public class FinancialApplicationService : IFinancialPolicyProvider, IDisposable
         p.IsActive,
         p.Justification,
         p.CreatedAtUtc,
-        DeterminePolicyStatus(p));
+        DeterminePolicyStatus(p),
+        p.FixedCarrierFeeCents);
 
     private static SubscriptionResponse MapSubscriptionResponse(CarrierSubscription s) => new(
         s.Id,

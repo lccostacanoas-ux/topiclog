@@ -279,7 +279,8 @@ namespace TopicLog.Api
                         freePlanCommissionRate = t.DefaultCommercialPolicies.FreePlanCommissionRate,
                         premiumPlanMonthlyPriceCents = t.DefaultCommercialPolicies.PremiumPlanMonthlyPriceCents,
                         premiumPlanCommissionRate = t.DefaultCommercialPolicies.PremiumPlanCommissionRate,
-                        platformAbsorbsGatewayFees = t.DefaultCommercialPolicies.PlatformAbsorbsGatewayFees
+                        platformAbsorbsGatewayFees = t.DefaultCommercialPolicies.PlatformAbsorbsGatewayFees,
+                        fixedCarrierFeeCents = t.DefaultCommercialPolicies.FixedCarrierFeeCents
                     },
                     insurance = new
                     {

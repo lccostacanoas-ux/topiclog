@@ -6,6 +6,7 @@ export interface FinancialBreakdownPreviewProps {
   readonly freeCommissionRate?: number;
   readonly premiumCommissionRate?: number;
   readonly premiumMonthlyPriceCents?: number;
+  readonly fixedCarrierFeeCents?: number;
 }
 
 function formatBrlFromCents(cents: number): string {
@@ -18,15 +19,17 @@ function formatBrlFromCents(cents: number): string {
 
 /**
  * Componente FinancialBreakdown conforme 04-Design-System.md (Seção 4, 5 e 6)
- * Modelo oficial: Alíquota configurável pelo administrador da plataforma sobre fretes realizados, sem taxas de mensalidade.
+ * Modelo oficial: Repasse líquido de 85% descontada a taxa fixa operacional de R$ 1,99 por corrida (configurada no console administrativo).
  */
 export function FinancialBreakdownPreview({
   transportAmountCents,
-  freeCommissionRate = 0.15
+  freeCommissionRate = 0.15,
+  fixedCarrierFeeCents = 199
 }: FinancialBreakdownPreviewProps): React.JSX.Element {
   const commissionRatePercent = Math.round(freeCommissionRate * 100);
   const commissionCents = Math.round(transportAmountCents * freeCommissionRate);
-  const carrierReceivesCents = transportAmountCents - commissionCents;
+  const grossCarrierReceivesCents = transportAmountCents - commissionCents;
+  const carrierReceivesCents = Math.max(0, grossCarrierReceivesCents - fixedCarrierFeeCents);
 
   return (
     <section className="card" aria-labelledby="financial-preview-heading">
@@ -34,13 +37,12 @@ export function FinancialBreakdownPreview({
         Transparência Financeira e Repasse Líquido (Taxa Configurável)
       </h2>
       <p style={{ color: "var(--color-muted)", marginTop: "4px" }}>
-        A Topic Log opera sem mensalidades fixas. A taxa de comissão é configurada pelo administrador no console administrativo (atualmente {commissionRatePercent}%),
-        e todas as taxas de intermediação bancária (Pix, cartão e débito) são 100% absorvidas pela plataforma.
+        A Topic Log opera com repasse direto ao transportador ({100 - commissionRatePercent}% do frete), deduzida a taxa fixa operacional por corrida ({formatBrlFromCents(fixedCarrierFeeCents)}), configurável no console administrativo. Todas as taxas de intermediação bancária (Pix, cartão e débito) são 100% absorvidas pela plataforma.
       </p>
 
       <div style={{ marginTop: "16px", maxWidth: "480px" }}>
         <div className="card" style={{ backgroundColor: "var(--color-background)" }}>
-          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% de Taxa Vigente)</h3>
+          <h3 style={{ marginTop: 0, fontSize: "16px" }}>Demonstrativo por Frete ({commissionRatePercent}% + {formatBrlFromCents(fixedCarrierFeeCents)})</h3>
           <dl style={{ margin: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
               <dt>Valor do transporte:</dt>
@@ -51,7 +53,11 @@ export function FinancialBreakdownPreview({
               <dd style={{ margin: 0, color: "var(--color-danger, #EF4444)" }}>- {formatBrlFromCents(commissionCents)}</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-              <dt>Taxas de intermediação / Pix:</dt>
+              <dt>Taxa fixa operacional por corrida:</dt>
+              <dd style={{ margin: 0, color: "var(--color-danger, #EF4444)" }}>- {formatBrlFromCents(fixedCarrierFeeCents)}</dd>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+              <dt>Taxas de intermediação bancária / Pix:</dt>
               <dd style={{ margin: 0, color: "var(--color-success)" }}>R$ 0,00 (absorvidas)</dd>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--color-border)" }}>

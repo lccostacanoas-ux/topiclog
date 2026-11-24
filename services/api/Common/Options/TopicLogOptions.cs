@@ -84,6 +84,11 @@ public sealed class CommercialPolicyOptions
     /// Topic Log absorve taxas ordinárias de processamento e transferência do gateway — D12.
     /// </summary>
     public bool PlatformAbsorbsGatewayFees { get; set; } = true;
+
+    /// <summary>
+    /// Taxa fixa operacional por corrida descontada do repasse do transportador (em centavos): R$ 1,99 (199 centavos).
+    /// </summary>
+    public long FixedCarrierFeeCents { get; set; } = 199;
 }
 
 /// <summary>
