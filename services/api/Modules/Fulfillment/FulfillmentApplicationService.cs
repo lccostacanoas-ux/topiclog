@@ -312,7 +312,8 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         var order = await GetOrderOrThrowAsync(orderId, cancellationToken);
         EnsureIsCarrierOfOrder(actorId, actorRole, order);
 
-        if (string.IsNullOrWhiteSpace(request.FileBase64OrUrl))
+        string payload = request.EffectivePayload;
+        if (string.IsNullOrWhiteSpace(payload))
         {
             throw new DomainRuleViolationException(
                 "DELIVERY_PROOF_FILE_REQUIRED",
@@ -321,7 +322,7 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         }
 
         // Sanitização básica LGPD: rejeita se payload contiver indicadores explícitos de biometria bruta
-        if (request.FileBase64OrUrl.Contains("raw-face-biometry", StringComparison.OrdinalIgnoreCase))
+        if (payload.Contains("raw-face-biometry", StringComparison.OrdinalIgnoreCase))
         {
             throw new DomainRuleViolationException(
                 "LGPD_BIOMETRY_FORBIDDEN",
@@ -330,17 +331,72 @@ public sealed class FulfillmentApplicationService : IFulfillmentApplicationServi
         }
 
         // Gera hash SHA256 do payload
-        var sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.FileBase64OrUrl)));
+        var sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+
+        var proofId = Guid.NewGuid();
+        string fileUrl;
+        long fileSizeBytes;
+        string resolvedMime = request.MimeType ?? "image/jpeg";
+
+        string rawPayload = payload.Trim();
+        bool isBase64Payload = rawPayload.StartsWith("data:image", StringComparison.OrdinalIgnoreCase) ||
+                               (!rawPayload.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
+                                !rawPayload.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && 
+                                rawPayload.Length > 100);
+
+        if (isBase64Payload)
+        {
+            try
+            {
+                string base64Content = rawPayload;
+                if (rawPayload.Contains(','))
+                {
+                    var headerAndData = rawPayload.Split(',', 2);
+                    if (headerAndData[0].Contains("image/png", StringComparison.OrdinalIgnoreCase)) resolvedMime = "image/png";
+                    else if (headerAndData[0].Contains("image/webp", StringComparison.OrdinalIgnoreCase)) resolvedMime = "image/webp";
+                    else if (headerAndData[0].Contains("image/jpeg", StringComparison.OrdinalIgnoreCase) || headerAndData[0].Contains("image/jpg", StringComparison.OrdinalIgnoreCase)) resolvedMime = "image/jpeg";
+                    base64Content = headerAndData[1];
+                }
+
+                byte[] imageBytes = Convert.FromBase64String(base64Content);
+                fileSizeBytes = imageBytes.Length;
+
+                string extension = resolvedMime switch
+                {
+                    "image/png" => ".png",
+                    "image/webp" => ".webp",
+                    _ => ".jpg"
+                };
+
+                string proofsDir = Path.Combine(TopicLog.Api.Common.StoragePathResolver.ResolveStorageDirectory(), "proofs", order.Id.ToString());
+                Directory.CreateDirectory(proofsDir);
+                string filePath = Path.Combine(proofsDir, $"{proofId:N}{extension}");
+                File.WriteAllBytes(filePath, imageBytes);
+
+                fileUrl = $"/api/v1/deliveries/{order.Id}/proofs/file";
+            }
+            catch
+            {
+                fileUrl = $"/api/v1/deliveries/{order.Id}/proofs/file";
+                fileSizeBytes = Encoding.UTF8.GetByteCount(payload);
+            }
+        }
+        else
+        {
+            fileUrl = rawPayload.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? rawPayload
+                : $"/api/v1/deliveries/{order.Id}/proofs/file";
+            fileSizeBytes = Encoding.UTF8.GetByteCount(payload);
+        }
 
         var proof = new DeliveryProof
         {
+            Id = proofId,
             DeliveryOrderId = order.Id,
-            FileUrl = request.FileBase64OrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                ? request.FileBase64OrUrl
-                : $"https://storage.topiclog.local/proofs/{order.Id}/{Guid.NewGuid():N}.jpg",
+            FileUrl = fileUrl,
             Sha256Hash = sha256,
-            MimeType = request.MimeType ?? "image/jpeg",
-            FileSizeBytes = Encoding.UTF8.GetByteCount(request.FileBase64OrUrl),
+            MimeType = resolvedMime,
+            FileSizeBytes = fileSizeBytes,
             ApproximateLat = request.Latitude,
             ApproximateLng = request.Longitude,
             UploadedByUserId = actorId,

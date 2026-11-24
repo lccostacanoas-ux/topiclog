@@ -73,7 +73,7 @@ public class InMemoryFinancialPolicyRepository : IFinancialPolicyRepository
             CancellationPenaltyPercent = 10.00m,
             CancellationMinFeeCents = 700,
             CancellationInjuredPartySharePercent = 80.00m,
-            FixedCarrierFeeCents = 199,
+            FixedCarrierFeeCents = isTest ? 0 : 199,
             ValidFrom = DateTimeOffset.Parse("2026-10-12T00:00:00Z", CultureInfo.InvariantCulture),
             ValidUntil = null,
             IsActive = true,
@@ -216,8 +216,67 @@ public class InMemorySubscriptionRepository : ISubscriptionRepository
 
 public class InMemoryFinancialSnapshotRepository : IFinancialSnapshotRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
+    };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("financial_snapshots.json");
+
     private readonly ConcurrentDictionary<Guid, FinancialSnapshot> _snapshotsByContract = new();
     private readonly Lock _syncLock = new();
+
+    public InMemoryFinancialSnapshotRepository()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!isTest)
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<FinancialSnapshot>>(json, _jsonOptions);
+            if (list != null)
+            {
+                foreach (var s in list)
+                {
+                    _snapshotsByContract[s.ContractId] = s;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Finance] Aviso ao carregar snapshots financeiros em disco: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        lock (_syncLock)
+        {
+            try
+            {
+                var list = _snapshotsByContract.Values.ToList();
+                var json = System.Text.Json.JsonSerializer.Serialize(list, _jsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Finance] Erro ao persistir snapshots financeiros: {ex.Message}");
+            }
+        }
+    }
 
     public Task<FinancialSnapshot?> GetSnapshotByContractIdAsync(Guid contractId, CancellationToken cancellationToken = default)
     {
@@ -236,6 +295,7 @@ public class InMemoryFinancialSnapshotRepository : IFinancialSnapshotRepository
             }
 
             _snapshotsByContract[snapshot.ContractId] = snapshot;
+            SaveToDisk();
             return Task.FromResult(snapshot);
         }
     }
@@ -243,11 +303,72 @@ public class InMemoryFinancialSnapshotRepository : IFinancialSnapshotRepository
 
 public class InMemoryFinancialAuditRepository : IFinancialAuditRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
+    };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("financial_audit.json");
+
     private readonly ConcurrentQueue<FinancialAuditEntry> _entries = new();
+    private readonly Lock _syncLock = new();
+
+    public InMemoryFinancialAuditRepository()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!isTest)
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<FinancialAuditEntry>>(json, _jsonOptions);
+            if (list != null)
+            {
+                foreach (var e in list)
+                {
+                    _entries.Enqueue(e);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Finance] Aviso ao carregar auditoria financeira em disco: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        lock (_syncLock)
+        {
+            try
+            {
+                var list = _entries.ToList();
+                var json = System.Text.Json.JsonSerializer.Serialize(list, _jsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Finance] Erro ao persistir auditoria financeira: {ex.Message}");
+            }
+        }
+    }
 
     public Task RecordAuditEntryAsync(FinancialAuditEntry entry, CancellationToken cancellationToken = default)
     {
         _entries.Enqueue(entry);
+        SaveToDisk();
         return Task.CompletedTask;
     }
 

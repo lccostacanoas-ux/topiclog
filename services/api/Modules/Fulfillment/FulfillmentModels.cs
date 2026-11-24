@@ -179,11 +179,15 @@ public sealed record RateCarrierRequest(
     int Stars);
 
 public sealed record DeliveryProofUploadRequest(
-    string FileBase64OrUrl,
+    string? FileBase64OrUrl = null,
+    string? FileUrl = null,
     string? MimeType = "image/jpeg",
     string? Description = null,
     double? Latitude = null,
-    double? Longitude = null);
+    double? Longitude = null)
+{
+    public string EffectivePayload => !string.IsNullOrWhiteSpace(FileBase64OrUrl) ? FileBase64OrUrl : (FileUrl ?? string.Empty);
+}
 
 public sealed record ConfirmDeliveryRequest(
     string DeliveryCode,

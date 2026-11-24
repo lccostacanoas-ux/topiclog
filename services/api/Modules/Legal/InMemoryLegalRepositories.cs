@@ -324,8 +324,67 @@ Este regulamento municipal vigora de forma cumulativa com as normas estaduais de
 
 public class InMemoryLegalAcceptanceRepository : ILegalAcceptanceRepository
 {
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true
+    };
+    private static string StorageFilePath => TopicLog.Api.Common.StoragePathResolver.ResolveFilePath("legal_acceptances_store.json");
+
     private readonly ConcurrentDictionary<Guid, LegalAcceptanceRecord> _acceptances = new();
     private readonly Lock _syncLock = new();
+
+    public InMemoryLegalAcceptanceRepository()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (!isTest)
+        {
+            LoadFromDisk();
+        }
+    }
+
+    private void LoadFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(StorageFilePath)) return;
+            var json = File.ReadAllText(StorageFilePath);
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<LegalAcceptanceRecord>>(json, _jsonOptions);
+            if (list != null)
+            {
+                foreach (var a in list)
+                {
+                    _acceptances[a.Id] = a;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TopicLog.Legal] Aviso ao carregar aceites legais em disco: {ex.Message}");
+        }
+    }
+
+    private void SaveToDisk()
+    {
+        bool isTest = string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_TEST"), "true", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Environment.GetEnvironmentVariable("TOPICLOG_IS_UNIT_TEST"), "true", StringComparison.OrdinalIgnoreCase);
+        if (isTest) return;
+
+        lock (_syncLock)
+        {
+            try
+            {
+                var list = _acceptances.Values.ToList();
+                var json = System.Text.Json.JsonSerializer.Serialize(list, _jsonOptions);
+                TopicLog.Api.Common.StoragePathResolver.SaveFileAtomically(StorageFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TopicLog.Legal] Erro ao persistir aceites legais: {ex.Message}");
+            }
+        }
+    }
 
     public Task<LegalAcceptanceRecord> RecordAcceptanceAsync(LegalAcceptanceRecord record, CancellationToken cancellationToken = default)
     {
@@ -333,6 +392,7 @@ public class InMemoryLegalAcceptanceRepository : ILegalAcceptanceRepository
         lock (_syncLock)
         {
             _acceptances[record.Id] = record;
+            SaveToDisk();
             return Task.FromResult(record);
         }
     }

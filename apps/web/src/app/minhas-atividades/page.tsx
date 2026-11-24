@@ -12,6 +12,7 @@ import {
   getOrderCodesApi,
   confirmPickupApi,
   confirmDeliveryApi,
+  uploadDeliveryProofApi,
   updateDeliveryLocationApi,
   rateCarrierApi,
   getCancellationPolicyApi,
@@ -117,6 +118,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [pickupCodeInputs, setPickupCodeInputs] = useState<Record<string, string>>({});
   const [deliveryCodeInputs, setDeliveryCodeInputs] = useState<Record<string, string>>({});
+  const [proofPhotos, setProofPhotos] = useState<Record<string, string>>({});
   const [gpsWatchingOrderId, setGpsWatchingOrderId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [ratingModalOrder, setRatingModalOrder] = useState<DeliveryOrderDto | null>(null);
@@ -391,6 +393,35 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
     setSubmittingId(null);
   };
 
+  const handlePhotoCapture = (orderId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setBanner({ type: "error", text: "A foto não pode ultrapassar 10 MB." });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setProofPhotos((prev) => ({ ...prev, [orderId]: base64 }));
+      setBanner({
+        type: "success",
+        text: "📸 Foto do comprovante anexada! Agora insira o código de 4 dígitos do destinatário para encerrar."
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = (orderId: string) => {
+    setProofPhotos((prev) => {
+      const copy = { ...prev };
+      delete copy[orderId];
+      return copy;
+    });
+  };
+
   const handleConfirmDelivery = async (order: DeliveryOrderDto) => {
     if (!token) return;
     const code = (deliveryCodeInputs[order.id] || "").trim();
@@ -401,6 +432,38 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
 
     setSubmittingId(order.id);
     setBanner(null);
+
+    // Se houver foto capturada pelo transportador, envia o comprovante fotográfico primeiro (Decisão D16)
+    const photoBase64 = proofPhotos[order.id];
+    if (photoBase64) {
+      try {
+        const proofRes = await uploadDeliveryProofApi(
+          order.id,
+          {
+            fileBase64OrUrl: photoBase64,
+            mimeType: "image/jpeg",
+            description: "Comprovante fotográfico de entrega capturado pelo transportador no destino."
+          },
+          token
+        );
+        if (!proofRes.ok) {
+          setBanner({
+            type: "error",
+            text: proofRes.problem?.detail || "Erro ao registrar a foto do comprovante. Tente novamente."
+          });
+          setSubmittingId(null);
+          return;
+        }
+      } catch {
+        setBanner({
+          type: "error",
+          text: "Falha na comunicação ao enviar foto do comprovante."
+        });
+        setSubmittingId(null);
+        return;
+      }
+    }
+
     const res = await confirmDeliveryApi(
       order.id,
       {
@@ -418,7 +481,7 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
       }
       setBanner({
         type: "success",
-        text: "✅ Entrega confirmada e viagem encerrada! O remetente recebeu o alerta de conclusão."
+        text: "✅ Entrega confirmada e viagem encerrada! O remetente recebeu o alerta de conclusão e o comprovante fotográfico foi registrado com sucesso."
       });
       await loadActivities(true);
     } else {
@@ -958,8 +1021,73 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                       <div style={{ fontSize: "14px", fontWeight: 800, color: "#065F46", marginBottom: "6px" }}>
                         🏁 Chegou ao Destino? Encerre a Viagem
                       </div>
+
+                      {/* Decisão D16: Comprovante Fotográfico de Entrega */}
+                      <div style={{ margin: "10px 0 14px 0", padding: "12px 14px", backgroundColor: "#F0FDF4", borderRadius: "8px", border: "1px dashed #86EFAC" }}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#166534", marginBottom: "4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span>📸 1º Passo: Foto do Comprovante de Entrega (D16)</span>
+                          {proofPhotos[order.id] && (
+                            <span style={{ fontSize: "12px", color: "#059669", fontWeight: 800 }}>✓ Foto Pronta</span>
+                          )}
+                        </div>
+                        <p style={{ margin: "0 0 8px 0", fontSize: "12px", color: "#4B5563" }}>
+                          Tire uma foto nítida do pacote entregue no destino para garantir a segurança e liberação do repasse.
+                        </p>
+                        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                          <label
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: "8px",
+                              backgroundColor: proofPhotos[order.id] ? "#DCFCE7" : "#059669",
+                              color: proofPhotos[order.id] ? "#166534" : "#FFFFFF",
+                              border: proofPhotos[order.id] ? "1px solid #86EFAC" : "none",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px"
+                            }}
+                          >
+                            <span>{proofPhotos[order.id] ? "🔄 Tirar Outra Foto" : "📷 Tirar Foto pelo Celular / Anexar"}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              style={{ display: "none" }}
+                              onChange={(e) => handlePhotoCapture(order.id, e)}
+                            />
+                          </label>
+
+                          {proofPhotos[order.id] && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <img
+                                src={proofPhotos[order.id]}
+                                alt="Comprovante"
+                                style={{ width: "42px", height: "42px", objectFit: "cover", borderRadius: "6px", border: "1.5px solid #059669" }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhoto(order.id)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#DC2626",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  textDecoration: "underline"
+                                }}
+                              >
+                                Remover foto
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#334155" }}>
-                        Peça ao destinatário que está recebendo a encomenda o <strong>Código de Entrega (4 dígitos)</strong>:
+                        <strong>2º Passo:</strong> Peça ao destinatário que está recebendo a encomenda o <strong>Código de Entrega (4 dígitos)</strong>:
                       </p>
                       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                         <input
@@ -1037,16 +1165,30 @@ export default function MinhasAtividadesPage(): React.JSX.Element {
                       fontWeight: 700,
                       marginBottom: "16px",
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "10px"
+                      flexDirection: "column",
+                      gap: "8px"
                     }}
                   >
-                    <span>
-                      ✅ Viagem concluída e verificada com sucesso!
-                      {order.deliveredAtUtc ? ` Entregue em ${new Date(order.deliveredAtUtc).toLocaleString("pt-BR")}.` : ""}
-                    </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                      <span>
+                        ✅ Viagem concluída e verificada com sucesso!
+                        {order.deliveredAtUtc ? ` Entregue em ${new Date(order.deliveredAtUtc).toLocaleString("pt-BR")}.` : ""}
+                      </span>
+                      <span style={{ fontSize: "11px", backgroundColor: "#BBF7D0", padding: "2px 8px", borderRadius: "6px" }}>
+                        Repasse Liberado
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: "#15803D", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <span>📸 Comprovante fotográfico D16:</span>
+                      <a
+                        href={`/api/v1/deliveries/${order.id}/proofs/file`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "#065F46", textDecoration: "underline", fontWeight: 700 }}
+                      >
+                        Visualizar Foto da Entrega Registrada ↗
+                      </a>
+                    </div>
                     {isSender && order.carrierRatingStars != null && (
                       <span
                         style={{

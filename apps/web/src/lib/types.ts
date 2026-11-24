@@ -1032,8 +1032,11 @@ export interface ConfirmPickupRequest {
 }
 
 export interface UploadDeliveryProofRequest {
-  readonly proofType: DeliveryProofType;
-  readonly fileUrl: string;
+  readonly fileBase64OrUrl?: string;
+  readonly fileUrl?: string;
+  readonly proofType?: DeliveryProofType;
+  readonly mimeType?: string;
+  readonly description?: string | null;
   readonly notes?: string | null;
   readonly latitude?: number | null;
   readonly longitude?: number | null;

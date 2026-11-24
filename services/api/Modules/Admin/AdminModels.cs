@@ -118,8 +118,8 @@ public record UpdateOperationalSettingsRequest(
     decimal? CancellationPenaltyPercent,
     long? CancellationMinFeeCents,
     decimal? CancellationInjuredPartySharePercent,
-    long? MinimumFreightPriceCents,
-    string Justification);
+    long? MinimumFreightPriceCents = null,
+    string Justification = "");
 
 public record OperationalSettingsResponse(
     Guid Id,

@@ -147,6 +147,36 @@ public static class FulfillmentEndpoints
             return Results.Created($"/api/v1/deliveries/{orderId}/proofs", result);
         });
 
+        // GET /api/v1/deliveries/{orderId}/proofs/file (Serviço físico da foto comprovante D16)
+        group.MapGet("/{orderId:guid}/proofs/file", async (
+            Guid orderId,
+            IFulfillmentRepository fulfillmentRepo,
+            CancellationToken cancellationToken) =>
+        {
+            var proof = await fulfillmentRepo.GetProofByOrderIdAsync(orderId, cancellationToken);
+            if (proof is null)
+            {
+                return Results.NotFound(new { message = "Comprovante de entrega não localizado." });
+            }
+
+            string proofsDir = Path.Combine(TopicLog.Api.Common.StoragePathResolver.ResolveStorageDirectory(), "proofs", orderId.ToString());
+            if (Directory.Exists(proofsDir))
+            {
+                var files = Directory.GetFiles(proofsDir, $"{proof.Id:N}.*");
+                if (files.Length > 0 && File.Exists(files[0]))
+                {
+                    return Results.File(files[0], proof.MimeType ?? "image/jpeg");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(proof.FileUrl) && proof.FileUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Redirect(proof.FileUrl);
+            }
+
+            return Results.NotFound(new { message = "Arquivo físico da evidência fotográfica não encontrado no disco local." });
+        });
+
         // GET /api/v1/deliveries/{orderId}/delivery-code
         group.MapGet("/{orderId:guid}/delivery-code", async (
             Guid orderId,
