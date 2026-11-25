@@ -49,6 +49,9 @@ temp/
 # OS / IDE
 .DS_Store
 Thumbs.db
+*.zip
+publish-linux-api/
+Thumbs.db
 
 # Documentation Reports & Scripts
 *.pdf
