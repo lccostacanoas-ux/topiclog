@@ -145,6 +145,8 @@ export default function MensagensPage(): React.JSX.Element {
   const [messageBody, setMessageBody] = useState("");
   const [protocol, setProtocol] = useState<string | null>(null);
   const [sentSuccess, setSentSuccess] = useState(false);
+  const [isSendingAdminEmail, setIsSendingAdminEmail] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Somente contratos ativos com pagamento confirmado (viagens encerradas removem o chat da tela)
   const [paidContracts, setPaidContracts] = useState<ContractDto[]>([]);
@@ -219,27 +221,42 @@ export default function MensagensPage(): React.JSX.Element {
     );
   }
 
-  const handleSendAdminEmail = (e: React.FormEvent) => {
+  const handleSendAdminEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageBody.trim()) return;
+    const trimmed = messageBody.trim();
+    if (!trimmed || isSendingAdminEmail) return;
 
-    const newProtocol = `TL-ADM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    setProtocol(newProtocol);
-    setSentSuccess(true);
+    setIsSendingAdminEmail(true);
+    setErrorMessage(null);
 
-    const emailSubject = encodeURIComponent(`[TopicLog Protocolo ${newProtocol}] ${subject} - ${user?.displayName || "Usuário"}`);
-    const emailBody = encodeURIComponent(
-      `Prezada Administração da Topic Log,\n\n` +
-      `Identificação do Solicitante:\n` +
-      `- Nome: ${user?.displayName || "Não informado"}\n` +
-      `- E-mail: ${user?.email || "Não informado"}\n` +
-      `- Telefone de Contato: ${user?.phoneMasked || "Não informado"}\n` +
-      `- Protocolo: ${newProtocol}\n\n` +
-      `Mensagem:\n${messageBody.trim()}\n\n` +
-      `Enviado via Central Oficial de Atendimento Topic Log.`
-    );
+    try {
+      const res = await fetch("/api/mail/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: user?.displayName || "Usuário Topiclog",
+          email: user?.email || "",
+          phone: user?.phoneMasked || "",
+          subject,
+          message: trimmed
+        })
+      });
 
-    window.location.href = `mailto:suporte@topiclog.com.br?subject=${emailSubject}&body=${emailBody}`;
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) {
+        setErrorMessage(data.error || "Não foi possível enviar a mensagem no momento. Tente novamente em instantes.");
+        return;
+      }
+
+      setProtocol(data.protocol || "TL-ADM-REGISTRADO");
+      setSentSuccess(true);
+      setMessageBody("");
+    } catch {
+      setErrorMessage("Erro de conexão ao enviar a mensagem. Verifique sua conexão e tente novamente.");
+    } finally {
+      setIsSendingAdminEmail(false);
+    }
   };
 
   return (
@@ -317,10 +334,26 @@ export default function MensagensPage(): React.JSX.Element {
               fontSize: "14px"
             }}
           >
-            <strong>✓ Solicitação Registrada com Sucesso! Protocolo: {protocol}</strong>
+            <strong>✓ Solicitação Registrada e Enviada com Sucesso! Protocolo: {protocol}</strong>
             <p style={{ margin: "6px 0 0 0", fontSize: "13px" }}>
-              Sua mensagem foi preparada para o suporte oficial (<strong>suporte@topiclog.com.br</strong>). Se o seu cliente de e-mail não abriu automaticamente, você pode nos contatar diretamente citando o protocolo acima.
+              Sua mensagem foi transmitida diretamente para nossa equipe de atendimento oficial. Enviamos também uma cópia de confirmação para o seu e-mail cadastrado (<strong>{user?.email}</strong>).
             </p>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div
+            style={{
+              padding: "14px 18px",
+              backgroundColor: "#FEF2F2",
+              color: "#991B1B",
+              border: "1px solid #FECACA",
+              borderRadius: "10px",
+              marginBottom: "20px",
+              fontSize: "14px"
+            }}
+          >
+            <strong>✕ Atenção:</strong> {errorMessage}
           </div>
         )}
 
@@ -456,6 +489,7 @@ export default function MensagensPage(): React.JSX.Element {
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="submit"
+              disabled={isSendingAdminEmail || !messageBody.trim()}
               className="btn btn--primary"
               style={{
                 padding: "10px 22px",
@@ -463,10 +497,12 @@ export default function MensagensPage(): React.JSX.Element {
                 fontWeight: 700,
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px"
+                gap: "8px",
+                opacity: isSendingAdminEmail ? 0.7 : 1,
+                cursor: isSendingAdminEmail ? "not-allowed" : "pointer"
               }}
             >
-              <span>✉️</span> Enviar para a Administração via E-mail
+              <span>{isSendingAdminEmail ? "⏳" : "✉️"}</span> {isSendingAdminEmail ? "Enviando Mensagem..." : "Enviar Mensagem para a Administração"}
             </button>
           </div>
         </form>

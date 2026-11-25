@@ -5,6 +5,7 @@ export interface MailOptions {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
 }
 
 export interface MailResult {
@@ -81,6 +82,7 @@ export async function sendMail(options: MailOptions): Promise<MailResult> {
     const info = await transporter.sendMail({
       from,
       to: to.trim(),
+      replyTo: options.replyTo ? options.replyTo.trim() : undefined,
       subject,
       text: text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
       html
@@ -409,4 +411,88 @@ export async function sendPasswordResetEmail({
     subject: "Topiclog • Código de Recuperação de Senha",
     html
   });
+}
+
+/**
+ * Envia notificação de atendimento para a administração da TopicLog e confirmação para o solicitante.
+ */
+export async function sendSupportContactEmail({
+  senderName,
+  senderEmail,
+  senderPhone,
+  protocol,
+  subject,
+  messageBody
+}: {
+  senderName: string;
+  senderEmail: string;
+  senderPhone?: string;
+  protocol: string;
+  subject: string;
+  messageBody: string;
+}): Promise<{ adminResult: MailResult; userResult: MailResult }> {
+  const adminRecipient = process.env.SMTP_USER || "topiclog@topiclog.com.br";
+  const safeName = senderName.trim() || "Usuário Topiclog";
+  const safeEmail = senderEmail.trim();
+  const safePhone = senderPhone?.trim() || "Não informado";
+  const safeSubject = subject.trim() || "Atendimento Geral";
+  const safeBody = messageBody.trim().replace(/\n/g, "<br/>");
+
+  // 1. E-mail enviado para a equipe de Suporte/Administração
+  const adminHtml = wrapTopiclogTemplate(`
+    <div style="background-color: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+      <strong style="color: #92400E; font-size: 14px;">✉️ Nova Solicitação de Atendimento</strong>
+      <span style="display: block; font-size: 12px; color: #B45309; margin-top: 2px;">Protocolo: <strong>${protocol}</strong></span>
+    </div>
+
+    <h2 style="color: #0F172A; margin-top: 0; font-size: 18px;">${safeSubject}</h2>
+
+    <div style="margin: 16px 0; padding: 14px 18px; background-color: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 14px; line-height: 1.6;">
+      <p style="margin: 0 0 6px 0;"><strong>Nome do Solicitante:</strong> ${safeName}</p>
+      <p style="margin: 0 0 6px 0;"><strong>E-mail:</strong> <a href="mailto:${safeEmail}">${safeEmail}</a></p>
+      <p style="margin: 0;"><strong>Telefone:</strong> ${safePhone}</p>
+    </div>
+
+    <div style="margin: 20px 0; padding: 18px; background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 14px; line-height: 1.6; color: #1E293B;">
+      <strong style="display: block; margin-bottom: 8px; color: #475569; font-size: 12px; text-transform: uppercase;">Mensagem do Cliente:</strong>
+      ${safeBody}
+    </div>
+
+    <p style="font-size: 12px; color: #64748B;">Para responder diretamente ao solicitante, basta responder a este e-mail.</p>
+  `);
+
+  const adminResult = await sendMail({
+    to: adminRecipient,
+    replyTo: safeEmail,
+    subject: `[TopicLog Protocolo ${protocol}] ${safeSubject} - ${safeName}`,
+    html: adminHtml
+  });
+
+  // 2. Confirmação automática entregue na caixa de entrada do solicitante
+  const userHtml = wrapTopiclogTemplate(`
+    <h2 style="color: #0F172A; margin-top: 0; font-size: 20px;">Recebemos sua mensagem!</h2>
+    <p>Olá, <strong>${safeName}</strong>.</p>
+    <p>Sua solicitação de atendimento foi registrada com sucesso na central oficial da Topiclog.</p>
+
+    <div style="margin: 20px 0; padding: 16px; background-color: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 8px;">
+      <span style="font-size: 12px; color: #1E40AF; font-weight: 600; display: block;">PROTOCOLO DE ATENDIMENTO</span>
+      <span style="font-size: 22px; font-weight: 800; color: #1D4ED8; font-family: monospace;">${protocol}</span>
+      <span style="display: block; font-size: 13px; color: #3B82F6; margin-top: 4px;">Assunto: <strong>${safeSubject}</strong></span>
+    </div>
+
+    <div style="margin: 16px 0; padding: 14px 18px; background-color: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 13px; line-height: 1.5; color: #475569;">
+      <strong style="display: block; margin-bottom: 4px; color: #334155;">Sua mensagem enviada:</strong>
+      ${safeBody}
+    </div>
+
+    <p style="font-size: 14px; color: #475569;">Nossa equipe de suporte responderá ao seu chamado em breve diretamente no seu e-mail.</p>
+  `);
+
+  const userResult = await sendMail({
+    to: safeEmail,
+    subject: `Topiclog • Solicitação de Atendimento Registrada [${protocol}]`,
+    html: userHtml
+  });
+
+  return { adminResult, userResult };
 }
