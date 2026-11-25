@@ -68,3 +68,6 @@ cloudflared.exe
 .netlify/
 dist-topiclog-web/
 .agents/
+
+.vercel
+.env*
