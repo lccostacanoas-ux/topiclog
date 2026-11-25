@@ -100,20 +100,20 @@ public sealed class SmtpEmailDeliveryService : IEmailDeliveryService
     {
         var fileSettings = ReadFromLocalFile();
 
-        string host = FirstNonEmpty(Environment.GetEnvironmentVariable("Email__SmtpHost"), fileSettings?.SmtpHost) ?? "smtp.gmail.com";
-        int port = int.TryParse(Environment.GetEnvironmentVariable("Email__SmtpPort"), out int envPort) && envPort > 0
+        string host = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_HOST"), Environment.GetEnvironmentVariable("Email__SmtpHost"), fileSettings?.SmtpHost) ?? "my.mailbux.com";
+        int port = int.TryParse(Environment.GetEnvironmentVariable("SMTP_PORT") ?? Environment.GetEnvironmentVariable("Email__SmtpPort"), out int envPort) && envPort > 0
             ? envPort
-            : (fileSettings?.SmtpPort > 0 ? fileSettings.SmtpPort : 587);
-        bool enableSsl = bool.TryParse(Environment.GetEnvironmentVariable("Email__EnableSsl"), out bool envSsl)
+            : (fileSettings?.SmtpPort > 0 ? fileSettings.SmtpPort : 465);
+        bool enableSsl = bool.TryParse(Environment.GetEnvironmentVariable("SMTP_SECURE") ?? Environment.GetEnvironmentVariable("Email__EnableSsl"), out bool envSsl)
             ? envSsl
             : (fileSettings?.EnableSsl ?? true);
 
-        string? username = FirstNonEmpty(Environment.GetEnvironmentVariable("Email__Username"), fileSettings?.Username);
-        string? rawPassword = FirstNonEmpty(Environment.GetEnvironmentVariable("Email__Password"), fileSettings?.AppPassword);
+        string? username = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_USER"), Environment.GetEnvironmentVariable("Email__Username"), fileSettings?.Username);
+        string? rawPassword = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_PASS"), Environment.GetEnvironmentVariable("Email__Password"), fileSettings?.AppPassword);
         string? normalizedPassword = rawPassword is null ? null : string.Concat(rawPassword.Where(ch => !char.IsWhiteSpace(ch)));
 
-        string? fromAddress = FirstNonEmpty(Environment.GetEnvironmentVariable("Email__FromAddress"), fileSettings?.FromAddress, username);
-        string fromName = FirstNonEmpty(Environment.GetEnvironmentVariable("Email__FromName"), fileSettings?.FromName) ?? "Topic Log";
+        string? fromAddress = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_FROM"), Environment.GetEnvironmentVariable("Email__FromAddress"), fileSettings?.FromAddress, username);
+        string fromName = FirstNonEmpty(Environment.GetEnvironmentVariable("SMTP_FROM_NAME"), Environment.GetEnvironmentVariable("Email__FromName"), fileSettings?.FromName) ?? "Topiclog";
 
         if (string.IsNullOrWhiteSpace(host)
             || string.IsNullOrWhiteSpace(username)

@@ -429,6 +429,24 @@ export default function PublicarEncomendaPage(): React.JSX.Element {
       }
 
       setSuccessMsg("✓ Encomenda publicada com sucesso no mural oficial! Redirecionando para suas encomendas...");
+
+      // Disparo assíncrono e não-bloqueante de notificação de frete (SMTP Mailbux)
+      if (user?.email) {
+        fetch("/api/mail/shipment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: user.email,
+            name: user.displayName || "Remetente",
+            title,
+            originCity: origin.city,
+            destinationCity: destination.city,
+            estimatedValue: priceCents ? priceCents / 100 : undefined,
+            status: "PUBLICADO"
+          })
+        }).catch(() => {});
+      }
+
       setTimeout(() => {
         router.push("/encomendas");
       }, 1200);

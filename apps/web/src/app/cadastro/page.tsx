@@ -224,6 +224,17 @@ export default function RegisterPage(): React.JSX.Element {
       });
 
       if (result.ok) {
+        // Disparo assíncrono e não-bloqueante do e-mail de boas-vindas (SMTP Mailbux)
+        fetch("/api/mail/welcome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            name: displayName.trim(),
+            role: isCarrier ? "CARRIER" : "SENDER"
+          })
+        }).catch(() => {});
+
         setSuccessModalOpen(true);
         setTimeout(() => {
           router.push("/minha-conta");
