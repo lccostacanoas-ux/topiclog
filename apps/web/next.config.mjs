@@ -2,17 +2,18 @@
 const isVercel = Boolean(process.env.VERCEL);
 const isExport = !isVercel && (process.env.NEXT_EXPORT === "true" || process.env.NETLIFY === "true");
 
-// URL ativa do túnel Cloudflare que conecta a Vercel à API local (.NET 10 na porta 5080)
-const ACTIVE_TUNNEL_URL = "https://tubes-monroe-badly-capabilities.trycloudflare.com";
+// Backend API oficial em produção na VPS Linux (.NET 10 LTS na porta 5080)
+const VPS_API_URL = "http://45.180.218.247:5080";
 
 let apiBaseUrl = (process.env.API_BASE_URL || "").trim();
-// Se não configurado, ou se estiver apontando para o túnel antigo expirado ou localhost na Vercel:
+// Se não configurado, ou se estiver apontando para túnel antigo expirado ou localhost na Vercel:
 if (
   !apiBaseUrl ||
+  apiBaseUrl.includes("trycloudflare.com") ||
   apiBaseUrl.includes("helmet-retreat-qui-pursuant") ||
   (isVercel && (apiBaseUrl.includes("127.0.0.1") || apiBaseUrl.includes("localhost")))
 ) {
-  apiBaseUrl = isVercel ? ACTIVE_TUNNEL_URL : (process.env.API_BASE_URL || "http://127.0.0.1:5080");
+  apiBaseUrl = isVercel ? VPS_API_URL : (process.env.API_BASE_URL || "http://127.0.0.1:5080");
 }
 apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
 

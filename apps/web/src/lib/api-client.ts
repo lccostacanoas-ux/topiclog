@@ -270,7 +270,8 @@ export type { ApiFetchResult };
 
 export const CORRELATION_ID_HEADER = "X-Correlation-Id";
 
-export const ACTIVE_TUNNEL_URL = "https://tubes-monroe-badly-capabilities.trycloudflare.com";
+export const VPS_API_URL = "http://45.180.218.247:5080";
+export const ACTIVE_TUNNEL_URL = VPS_API_URL;
 
 /**
  * URL base da API .NET 10.
@@ -283,7 +284,7 @@ export function getApiBaseUrl(): string {
   const configured = process.env["NEXT_PUBLIC_API_BASE_URL"];
   if (configured && configured.trim().length > 0) {
     const trimmed = configured.trim().replace(/\/+$/, "");
-    if (!trimmed.includes("helmet-retreat-qui-pursuant")) {
+    if (!trimmed.includes("helmet-retreat-qui-pursuant") && !trimmed.includes("trycloudflare.com")) {
       return trimmed;
     }
   }
@@ -294,10 +295,11 @@ export function getApiBaseUrl(): string {
   if (
     !srv ||
     srv.includes("helmet-retreat-qui-pursuant") ||
+    srv.includes("trycloudflare.com") ||
     srv.includes("127.0.0.1") ||
     srv.includes("localhost")
   ) {
-    return ACTIVE_TUNNEL_URL;
+    return VPS_API_URL;
   }
   return srv.replace(/\/+$/, "");
 }
