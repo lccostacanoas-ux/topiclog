@@ -5,6 +5,7 @@
   "description": "Topic Log — Marketplace de pequenas encomendas e rotas em Minas Gerais (Ambiente de Testes)",
   "scripts": {
     "dev": "next dev --port 3000",
+    "dev:crm-test": "next dev -p 3001",
     "dev:turbo": "next dev --turbopack --port 3000",
     "build": "next build && node ./scripts/sync-next.js",
     "start": "next start --port 3000",
@@ -26,10 +27,12 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "@types/leaflet": "^1.9.22",
+    "@types/pg": "^8.23.1",
     "bcryptjs": "^3.0.3",
     "leaflet": "^1.9.4",
     "next": "^15.2.0",
     "nodemailer": "^10.6.1",
+    "pg": "^8.23.1",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

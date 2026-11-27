@@ -7,6 +7,7 @@ import { CapacitorInit } from "../components/CapacitorInit";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { InstallAppPrompt } from "../components/InstallAppPrompt";
 import { MobileBottomNav } from "../components/MobileBottomNav";
+import { SupportChatWidget } from "../components/SupportChatWidget";
 import "leaflet/dist/leaflet.css";
 import "../styles/tokens.css";
 
@@ -73,6 +74,7 @@ export default function RootLayout({
           <NavigationHeader />
           <main id="main-content">{children}</main>
           <MobileBottomNav />
+          <SupportChatWidget />
         </AuthProvider>
       </body>
     </html>

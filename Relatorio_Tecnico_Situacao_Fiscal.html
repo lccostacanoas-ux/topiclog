@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório Técnico de Situação Fiscal</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 16mm 14mm 16mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      margin: 0;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .header-bar {
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .header-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 4px 0 2px 0;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #475569;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .sub-subtitle {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    /* Grid de Identificação */
+    .info-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px 14px;
+    }
+    .info-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .info-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 2px;
+    }
+    .info-value {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .info-value.alert {
+      color: #b91c1c;
+    }
+
+    /* Parecer Geral */
+    .parecer-box {
+      background: #fff7ed;
+      border-left: 4px solid #f97316;
+      border-right: 1px solid #fed7aa;
+      border-top: 1px solid #fed7aa;
+      border-bottom: 1px solid #fed7aa;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+    }
+    .parecer-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #c2410c;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .parecer-text {
+      font-size: 12px;
+      color: #9a3412;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin: 18px 0 10px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    /* Seção 1 */
+    .definition-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .def-item {
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: #334155;
+    }
+    .def-term {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .sub-def {
+      margin-left: 14px;
+      margin-top: 4px;
+      padding-left: 8px;
+      border-left: 2px solid #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    /* Tabela */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px 0;
+      font-size: 11px;
+    }
+    th {
+      background: #0f172a;
+      color: #ffffff;
+      font-weight: 600;
+      text-align: left;
+      padding: 7px 10px;
+      font-size: 10.5px;
+      letter-spacing: 0.02em;
+    }
+    th:first-child { border-top-left-radius: 6px; }
+    th:last-child { border-top-right-radius: 6px; }
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #334155;
+    }
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 0.02em;
+    }
+    .badge-warning {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .badge-inss {
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: 700;
+    }
+    .badge-simples {
+      background: #e0e7ff;
+      color: #3730a3;
+      font-weight: 700;
+    }
+
+    /* Etapas */
+    .steps-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+    .step-box {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 9px 12px;
+      background: #ffffff;
+    }
+    .step-title {
+      font-weight: 700;
+      font-size: 12px;
+      color: #0f172a;
+      margin-bottom: 3px;
+    }
+    .step-desc {
+      font-size: 11.5px;
+      color: #475569;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    /* Recomendação */
+    .recom-box {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      border-right: 1px solid #bfdbfe;
+      border-top: 1px solid #bfdbfe;
+      border-bottom: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 14px;
+    }
+    .recom-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #1d4ed8;
+      margin-bottom: 4px;
+    }
+    .recom-text {
+      font-size: 11.5px;
+      color: #1e40af;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    .footer {
+      margin-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <span class="header-badge">Documento Técnico</span>
+    <h1>Relatório Técnico de Situação Fiscal</h1>
+    <div class="subtitle">Análise de Pendências — Receita Federal e PGFN</div>
+    <div class="sub-subtitle">Interpretação dos títulos cadastrais, mapeamento de inscrições em Dívida Ativa e roteiro de consulta detalhada</div>
+  </div>
+
+  <!-- Identificação -->
+  <div class="info-card">
+    <div class="info-item">
+      <span class="info-label">Contribuinte / Titular</span>
+      <span class="info-value">LUIZ CARLOS COSTA</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">CPF</span>
+      <span class="info-value">550.427.246-72</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">Domicílio Fiscal</span>
+      <span class="info-value">DRF FORTALEZA-CE (03.101.00)</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">Última Certidão Negativa</span>
+      <span class="info-value alert">ACEC.C696.04E2.1718 (Venc.: 18/11/2026)</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">Devedor Principal</span>
+      <span class="info-value">48.374.280/0001-24</span>
+    </div>
+    <div class="info-item">
+      <span class="info-label">Emissão do Relatório Base</span>
+      <span class="info-value">24/11/2026 às 19:17:11</span>
+    </div>
+  </div>
+
+  <!-- Parecer Geral -->
+  <div class="parecer-box">
+    <div class="parecer-title">⚠️ Parecer Geral</div>
+    <p class="parecer-text">
+      O CPF analisado encontra-se <strong>regular na Receita Federal</strong>, sem pendências diretas de pessoa física. Entretanto, <strong>consta vínculo como corresponsável por quatro dívidas inscritas em Dívida Ativa da União (PGFN)</strong> originadas pelo CNPJ 48.374.280/0001-24. Como a última Certidão Negativa venceu em 18/11/2026, a emissão de nova certidão está bloqueada até a regularização dessas cobranças.
+    </p>
+  </div>
+
+  <!-- Seção 1 -->
+  <h2>1. Explicação dos Títulos e Campos do Documento</h2>
+  <div class="definition-list">
+    <div class="def-item">
+      <span class="def-term">• Diagnóstico Fiscal na Receita Federal:</span> Avalia tributos administrados diretamente pela Receita (como Imposto de Renda Pessoa Física). Consta <strong>sem pendências detectadas</strong>.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Diagnóstico Fiscal na PGFN — Pendência | Inscrição (SIDA):</span> Quando um débito não é quitado na Receita Federal, ele é transferido para a Procuradoria-Geral da Fazenda Nacional (PGFN) e registrado no SIDA (Sistema da Dívida Ativa), passando a sofrer acréscimos legais e cobrança administrativa ou judicial.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Inscrição:</span> Número identificador único do débito na Dívida Ativa (ex.: 30.4.25.089261-08), utilizado para consultar extratos, emitir guias (DARF) e formalizar parcelamentos.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Receita:</span> Código e natureza do tributo não recolhido que originou a dívida:
+      <div class="sub-def">
+        <div><strong style="color: #991b1b;">4133 — CONTR. SEGURADOS:</strong> Contribuição previdenciária (INSS) descontada da folha de pagamento de empregados ou pró-labore e não repassada ao fisco. <em>A retenção sem repasse exige prioridade máxima de tratamento.</em></div>
+        <div><strong style="color: #3730a3;">1507 — SIMPLES NACIONAL:</strong> Tributos mensais unificados (DAS) apurados no regime do Simples Nacional.</div>
+      </div>
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Inscrito em:</span> Data oficial de registro do débito na Dívida Ativa da União.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Ajuizado em:</span> Campo em branco nas quatro inscrições, indicando que a PGFN <strong>ainda não ingressou com Execução Fiscal na Justiça</strong> para bloqueio judicial de bens ou contas bancárias.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Processo:</span> Número do processo administrativo fiscal que originou e fundamenta a inscrição.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Tipo de Devedor (CORRESPONSÁVEL) e Devedor Principal:</span> Demonstra que a obrigação original pertence à pessoa jurídica (CNPJ 48.374.280/0001-24), mas o CPF do sócio ou administrador foi incluído no polo passivo por redirecionamento de responsabilidade tributária.
+    </div>
+    <div class="def-item">
+      <span class="def-term">• Situação (ATIVA A SER AJUIZADA):</span> Indica que a dívida está válida, exigível e na fila da Procuradoria para envio ao Poder Judiciário caso não seja quitada ou negociada.
+    </div>
+  </div>
+
+  <!-- Seção 2 -->
+  <h2>2. Resumo das Pendências Inscritas na PGFN</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Nº da Inscrição</th>
+        <th>Tributo (Receita)</th>
+        <th>Inscrito em</th>
+        <th>Processo Administrativo</th>
+        <th>Situação</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>30.4.25.089261-08</strong></td>
+        <td><span class="badge badge-inss">4133 — Contr. Segurados</span></td>
+        <td>29/09/2025</td>
+        <td>19414.358.398/2025-01</td>
+        <td><span class="badge badge-warning">Ativa a ser ajuizada</span></td>
+      </tr>
+      <tr>
+        <td><strong>30.4.26.043611-08</strong></td>
+        <td><span class="badge badge-simples">1507 — Simples Nacional</span></td>
+        <td>17/04/2026</td>
+        <td>12376.722.008/2026-99</td>
+        <td><span class="badge badge-warning">Ativa a ser ajuizada</span></td>
+      </tr>
+      <tr>
+        <td><strong>30.4.26.043623-41</strong></td>
+        <td><span class="badge badge-inss">4133 — Contr. Segurados</span></td>
+        <td>17/04/2026</td>
+        <td>10641.096.056/2025-26</td>
+        <td><span class="badge badge-warning">Ativa a ser ajuizada</span></td>
+      </tr>
+      <tr>
+        <td><strong>30.4.26.043686-25</strong></td>
+        <td><span class="badge badge-inss">4133 — Contr. Segurados</span></td>
+        <td>17/04/2026</td>
+        <td>14966.188.786/2026-21</td>
+        <td><span class="badge badge-warning">Ativa a ser ajuizada</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Seção 3 -->
+  <h2>3. Como Consultar Valores e o Conteúdo Detalhado</h2>
+  <p style="font-size: 11.5px; color: #475569; margin: 0 0 10px 0;">
+    O relatório emitido pela Receita Federal funciona apenas como um índice cadastral e não exibe saldos devedores ou competências em aberto. Para obter o extrato financeiro completo e a fundamentação jurídica, siga as etapas abaixo:
+  </p>
+
+  <div class="steps-container">
+    <div class="step-box">
+      <div class="step-title">1. Acesso ao Portal Regularize (PGFN)</div>
+      <p class="step-desc">Acesse <strong>regularize.pgfn.gov.br</strong> e faça login via conta <strong>Gov.br</strong> utilizando o CPF do titular (ou Certificado Digital da empresa para acesso direto pelo CNPJ 48.374.280/0001-24).</p>
+    </div>
+
+    <div class="step-box">
+      <div class="step-title">2. Consulta de Extrato e Competências</div>
+      <p class="step-desc">No painel inicial, selecione <strong>"Consultar Dívida Ativa"</strong>. Ao clicar sobre cada um dos quatro números de inscrição listados na tabela acima, o sistema exibirá o valor principal, multa, juros, encargos legais e os meses exatos (competências) não recolhidos.</p>
+    </div>
+
+    <div class="step-box">
+      <div class="step-title">3. Cópia Integral do Processo Administrativo</div>
+      <p class="step-desc">Para verificar o motivo formal da inclusão do CPF como corresponsável, acesse no próprio Portal Regularize o menu <strong>Outros Serviços &gt; Cópia de Processo Administrativo</strong> (ou utilize o <strong>Portal e-CAC</strong> da Receita Federal na aba <em>Processos Digitais</em>) e informe os números de processo da tabela.</p>
+    </div>
+  </div>
+
+  <!-- Recomendação -->
+  <div class="recom-box">
+    <div class="recom-title">📌 Recomendação Operacional</div>
+    <p class="recom-text">
+      Diante da existência de débitos previdenciários retidos de segurados (código 4133) e do status <strong>"Ativa a ser ajuizada"</strong>, recomenda-se consultar imediatamente as modalidades de negociação ou transação tributária disponíveis no Portal Regularize, evitando o ajuizamento de Execução Fiscal e eventuais bloqueios patrimoniais via Sisbajud.
+    </p>
+  </div>
+
+  <div class="footer">
+    <span>Análise de Situação Fiscal — CPF 550.427.246-72</span>
+    <span>Emissão: 24/11/2026 às 19:17:11</span>
+  </div>
+
+</body>
+</html>

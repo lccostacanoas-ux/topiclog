@@ -1240,7 +1240,8 @@ export default function HomePage(): React.JSX.Element {
         <footer
           style={{
             marginTop: "32px",
-            paddingTop: "20px",
+            paddingTop: "24px",
+            paddingBottom: "24px",
             borderTop: "1px solid #CBD5E1",
             textAlign: "center"
           }}
@@ -1264,9 +1265,35 @@ export default function HomePage(): React.JSX.Element {
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>TODO O BRASIL</span>
             </div>
           </div>
-          <p style={{ margin: 0, fontSize: "11px", color: "#94A3B8" }}>
-            Cobertura Nacional: Todos os municípios e estados do Brasil
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#64748B" }}>
+            Cobertura Nacional: Todos os 5.570 municípios e estados do Brasil
           </p>
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#64748B",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "16px",
+              flexWrap: "wrap",
+              marginTop: "8px"
+            }}
+          >
+            <span>
+              ✉️ Contato Administrativo:{" "}
+              <a
+                href="mailto:contato@topiclog.com.br"
+                style={{ color: "#2563EB", textDecoration: "none", fontWeight: 600 }}
+              >
+                contato@topiclog.com.br
+              </a>
+            </span>
+            <span>•</span>
+            <span style={{ color: "#475569", fontWeight: 600 }}>
+              💬 Suporte Operacional Integrado (24h via Chat Interno)
+            </span>
+          </div>
         </footer>
       </div>
     </main>
