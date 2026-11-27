@@ -91,9 +91,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
     const userMessage = userMsgRes.rows[0];
 
-    // 3. Encaminhar para o DeskcommCRM Webhook
-    const crmBaseUrl = process.env.DESKCOMM_CRM_URL || "http://localhost:3000";
-    const crmSecret = process.env.TOPICLOG_CHAT_SECRET || "";
+    // 3. Encaminhar para o DeskcommCRM Webhook (VPS 45.180.218.247:3300 em produção)
+    const crmBaseUrl =
+      process.env.DESKCOMM_CRM_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "http://45.180.218.247:3300"
+        : "http://45.180.218.247:3300");
+    const crmSecret =
+      process.env.TOPICLOG_CHAT_SECRET ||
+      "fa7098440d2054dd66009e79e259daebc11a5e0ea28deba963e9435cdf9c1270";
     const crmWebhookUrl = `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat`;
 
     let replyMessage: {
