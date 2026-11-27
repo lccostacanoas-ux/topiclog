@@ -14,8 +14,10 @@ export function getDbPool(): Pool {
         connectionTimeoutMillis: 5000,
       });
     } else {
+      const defaultHost =
+        process.env.NODE_ENV === "production" ? "45.180.218.247" : "127.0.0.1";
       pool = new Pool({
-        host: process.env.TOPICLOG_DB_HOST || "127.0.0.1",
+        host: process.env.TOPICLOG_DB_HOST || defaultHost,
         port: Number(process.env.TOPICLOG_DB_PORT || 54322),
         database: process.env.TOPICLOG_DB_NAME || "postgres",
         user: process.env.TOPICLOG_DB_USER || "postgres",
