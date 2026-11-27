@@ -27,6 +27,7 @@ export function SupportChatWidget(): React.JSX.Element | null {
   const [ticket, setTicket] = useState<SupportTicket | null>(null);
   const [inputText, setInputText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +48,40 @@ export function SupportChatWidget(): React.JSX.Element | null {
       console.warn("[SupportChatWidget] Falha ao carregar mensagens:", err);
     }
   }, [user?.userId]);
+
+  const handleClearChat = async () => {
+    if (!user?.userId || isClearing || isSending || messages.length === 0) return;
+    const confirmed = window.confirm(
+      "Deseja limpar esta conversa e iniciar um novo atendimento com o suporte?",
+    );
+    if (!confirmed) return;
+
+    setIsClearing(true);
+    try {
+      const res = await fetch(`/api/support/ticket?userId=${encodeURIComponent(user.userId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setTicket(null);
+        setMessages([]);
+      } else {
+        // Fallback via POST
+        const resPost = await fetch("/api/support/ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.userId, action: "clear" }),
+        });
+        if (resPost.ok) {
+          setTicket(null);
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      console.error("[SupportChatWidget] Erro ao limpar conversa:", err);
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   // Carregar histórico ao abrir
   useEffect(() => {
@@ -238,21 +273,49 @@ export function SupportChatWidget(): React.JSX.Element | null {
                 </span>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                backgroundColor: "transparent",
-                border: "none",
-                color: "#FFFFFF",
-                fontSize: "20px",
-                cursor: "pointer",
-                padding: "4px",
-                lineHeight: 1,
-              }}
-              title="Fechar"
-            >
-              ✕
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearChat}
+                  disabled={isClearing || isSending}
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.16)",
+                    border: "1px solid rgba(255, 255, 255, 0.25)",
+                    borderRadius: "8px",
+                    color: "#FFFFFF",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: isClearing || isSending ? "not-allowed" : "pointer",
+                    padding: "4px 9px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    transition: "all 0.2s ease-in-out",
+                  }}
+                  title="Limpar conversa e iniciar novo atendimento"
+                >
+                  <span style={{ fontSize: "13px" }}>🗑️</span>
+                  <span>{isClearing ? "Limpando..." : "Limpar"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                style={{
+                  backgroundColor: "transparent",
+                  border: "none",
+                  color: "#FFFFFF",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  padding: "4px",
+                  lineHeight: 1,
+                }}
+                title="Fechar"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Contexto do Usuário (Badge) */}
