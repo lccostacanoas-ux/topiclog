@@ -30,10 +30,49 @@ export function SupportChatWidget(): React.JSX.Element | null {
   const [isClearing, setIsClearing] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const storageKey = user?.userId ? `topiclog_support_chat_${user.userId}` : null;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Atualizar mensagens com persistência segura no localStorage
+  const updateMessages = useCallback(
+    (updater: SupportMessage[] | ((prev: SupportMessage[]) => SupportMessage[])) => {
+      setMessages((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        if (storageKey) {
+          try {
+            if (next.length > 0) {
+              localStorage.setItem(storageKey, JSON.stringify(next));
+            } else {
+              localStorage.removeItem(storageKey);
+            }
+          } catch (e) {
+            console.warn("[SupportChatWidget] Falha ao persistir no cache local:", e);
+          }
+        }
+        return next;
+      });
+    },
+    [storageKey],
+  );
+
+  // Carregar imediatamente do localStorage ao inicializar/trocar usuário
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn("[SupportChatWidget] Falha ao ler cache local:", e);
+    }
+  }, [storageKey]);
 
   const loadTicketAndMessages = useCallback(async () => {
     if (!user?.userId) return;
@@ -41,13 +80,19 @@ export function SupportChatWidget(): React.JSX.Element | null {
       const res = await fetch(`/api/support/ticket?userId=${encodeURIComponent(user.userId)}`);
       if (res.ok) {
         const data = await res.json();
-        setTicket(data.ticket);
-        setMessages(data.messages || []);
+        if (data.ticket) {
+          setTicket(data.ticket);
+        }
+        // REGRA CRÍTICA: Só atualiza mensagens se o servidor retornou mensagens reais.
+        // Se o servidor retornou array vazio temporário, NÃO apaga o histórico que o usuário já vê!
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          updateMessages(data.messages);
+        }
       }
     } catch (err) {
       console.warn("[SupportChatWidget] Falha ao carregar mensagens:", err);
     }
-  }, [user?.userId]);
+  }, [user?.userId, updateMessages]);
 
   const handleClearChat = async () => {
     if (!user?.userId || isClearing || isSending || messages.length === 0) return;
@@ -61,21 +106,16 @@ export function SupportChatWidget(): React.JSX.Element | null {
       const res = await fetch(`/api/support/ticket?userId=${encodeURIComponent(user.userId)}`, {
         method: "DELETE",
       });
-      if (res.ok) {
-        setTicket(null);
-        setMessages([]);
-      } else {
+      if (!res.ok) {
         // Fallback via POST
-        const resPost = await fetch("/api/support/ticket", {
+        await fetch("/api/support/ticket", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: user.userId, action: "clear" }),
         });
-        if (resPost.ok) {
-          setTicket(null);
-          setMessages([]);
-        }
       }
+      setTicket(null);
+      updateMessages([]);
     } catch (err) {
       console.error("[SupportChatWidget] Erro ao limpar conversa:", err);
     } finally {
@@ -141,7 +181,7 @@ export function SupportChatWidget(): React.JSX.Element | null {
       created_at: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, tempMsg]);
+    updateMessages((prev) => [...prev, tempMsg]);
     setInputText("");
     setIsSending(true);
 
@@ -162,7 +202,7 @@ export function SupportChatWidget(): React.JSX.Element | null {
       if (res.ok) {
         const data = await res.json();
         if (data.reply_message) {
-          setMessages((prev) => [
+          updateMessages((prev) => [
             ...prev.filter((m) => m.id !== tempMsg.id),
             data.user_message,
             data.reply_message,

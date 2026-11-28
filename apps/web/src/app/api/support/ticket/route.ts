@@ -14,8 +14,38 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // 1. Prioridade: Consultar histórico centralizado no DeskcommCRM (porta 3300 / SSL)
+  const crmBaseUrl = process.env.DESKCOMM_CRM_URL || "https://deskcomm.topiclog.com.br";
+  const crmSecret =
+    process.env.TOPICLOG_CHAT_SECRET ||
+    "fa7098440d2054dd66009e79e259daebc11a5e0ea28deba963e9435cdf9c1270";
+
   try {
-    // Buscar ticket ativo mais recente
+    const crmRes = await fetch(
+      `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat?topiclog_user_id=${encodeURIComponent(userId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${crmSecret}`,
+        },
+        signal: AbortSignal.timeout(3500),
+      },
+    );
+
+    if (crmRes.ok) {
+      const crmData = await crmRes.json();
+      if (crmData.ticket || (Array.isArray(crmData.messages) && crmData.messages.length > 0)) {
+        return NextResponse.json({
+          ticket: crmData.ticket,
+          messages: crmData.messages || [],
+        });
+      }
+    }
+  } catch (crmErr) {
+    console.warn("[GET /api/support/ticket] Aviso: Falha ao consultar CRM Deskcomm:", crmErr);
+  }
+
+  // 2. Fallback local: Buscar no banco SQL se disponível
+  try {
     const ticketRes = await query<{
       id: string;
       user_id: string;
@@ -38,7 +68,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ticket: null, messages: [] });
     }
 
-    // Buscar mensagens do ticket
     const msgsRes = await query<{
       id: string;
       ticket_id: string;
@@ -60,7 +89,6 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.warn("[GET /api/support/ticket] Aviso: Falha ao consultar histórico de suporte no banco SQL:", errorMsg);
-    // Retornar fallback limpo para a interface do usuário abrir sem tela de erro
     return NextResponse.json({
       ticket: {
         id: `ticket_${userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`,
@@ -86,6 +114,27 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Notificar CRM Deskcomm para encerrar conversa
+  const crmBaseUrl = process.env.DESKCOMM_CRM_URL || "https://deskcomm.topiclog.com.br";
+  const crmSecret =
+    process.env.TOPICLOG_CHAT_SECRET ||
+    "fa7098440d2054dd66009e79e259daebc11a5e0ea28deba963e9435cdf9c1270";
+
+  try {
+    await fetch(
+      `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat?topiclog_user_id=${encodeURIComponent(userId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${crmSecret}`,
+        },
+        signal: AbortSignal.timeout(3000),
+      },
+    );
+  } catch (crmErr) {
+    console.warn("[DELETE /api/support/ticket] Aviso ao notificar encerramento no CRM:", crmErr);
+  }
+
   try {
     // Fecha todos os tickets ativos do usuário para reiniciar o chat limpo
     await query(
@@ -94,19 +143,14 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
        WHERE user_id = $1 AND status != 'closed'`,
       [userId],
     );
-
-    return NextResponse.json({
-      success: true,
-      message: "Conversa de suporte encerrada e limpa com sucesso",
-    });
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn("[DELETE /api/support/ticket] Aviso: Falha ao encerrar suporte no banco SQL:", errorMsg);
-    return NextResponse.json({
-      success: true,
-      message: "Conversa de suporte encerrada com sucesso",
-    });
+    console.warn("[DELETE /api/support/ticket] Aviso ao atualizar suporte no banco SQL:", err);
   }
+
+  return NextResponse.json({
+    success: true,
+    message: "Conversa de suporte encerrada e limpa com sucesso",
+  });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -123,12 +167,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     if (action === "clear" || action === "close") {
-      await query(
-        `UPDATE support_tickets
-         SET status = 'closed', updated_at = NOW()
-         WHERE user_id = $1 AND status != 'closed'`,
-        [userId],
-      );
+      const crmBaseUrl = process.env.DESKCOMM_CRM_URL || "https://deskcomm.topiclog.com.br";
+      const crmSecret =
+        process.env.TOPICLOG_CHAT_SECRET ||
+        "fa7098440d2054dd66009e79e259daebc11a5e0ea28deba963e9435cdf9c1270";
+
+      try {
+        await fetch(
+          `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat?topiclog_user_id=${encodeURIComponent(userId)}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${crmSecret}` },
+            signal: AbortSignal.timeout(3000),
+          },
+        );
+      } catch (crmErr) {
+        console.warn("[POST /api/support/ticket] Aviso ao notificar encerramento no CRM:", crmErr);
+      }
+
+      try {
+        await query(
+          `UPDATE support_tickets
+           SET status = 'closed', updated_at = NOW()
+           WHERE user_id = $1 AND status != 'closed'`,
+          [userId],
+        );
+      } catch (dbErr) {
+        console.warn("[POST /api/support/ticket] Aviso ao fechar ticket no banco SQL:", dbErr);
+      }
 
       return NextResponse.json({
         success: true,
