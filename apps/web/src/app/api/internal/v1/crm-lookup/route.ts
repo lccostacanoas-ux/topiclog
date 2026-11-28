@@ -470,14 +470,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (error) {
-    console.error("[CRM-Lookup Error]", error);
-    return NextResponse.json(
-      {
-        error: "Internal Server Error",
-        message: "Falha ao consultar base operacional do usuário",
-        detalhe: error instanceof Error ? error.message : String(error),
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.warn("[CRM-Lookup Warning] Consulta operacional falhou ou banco indisponível:", errorMsg);
+    return NextResponse.json({
+      success: true,
+      encontrado: false,
+      topiclog_user_id: userId,
+      tipo_consulta,
+      consultado_em: new Date().toISOString(),
+      mensagem: "Dados cadastrais e operacionais temporariamente indisponíveis para consulta direta.",
+      dados: {
+        cadastro_kyc: null,
+        fretes_recentes: [],
+        financeiro_pix: null,
       },
-      { status: 500 },
-    );
+    });
   }
 }

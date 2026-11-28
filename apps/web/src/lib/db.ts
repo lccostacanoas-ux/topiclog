@@ -24,7 +24,7 @@ export function getDbPool(): Pool {
         password: process.env.TOPICLOG_DB_PASSWORD || "postgres",
         max: 10,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: 1500,
       });
     }
 
