@@ -106,6 +106,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
+  const reason = searchParams.get("reason") || "user_clear";
 
   if (!userId) {
     return NextResponse.json(
@@ -122,7 +123,7 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
 
   try {
     await fetch(
-      `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat?topiclog_user_id=${encodeURIComponent(userId)}`,
+      `${crmBaseUrl.replace(/\/+$/, "")}/api/webhooks/topiclog-chat?topiclog_user_id=${encodeURIComponent(userId)}&reason=${encodeURIComponent(reason)}`,
       {
         method: "DELETE",
         headers: {

@@ -20,6 +20,8 @@ interface SupportTicket {
   updated_at: string;
 }
 
+const INACTIVITY_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos de inatividade
+
 export function SupportChatWidget(): React.JSX.Element | null {
   const { user, isAuthenticated } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -29,6 +31,8 @@ export function SupportChatWidget(): React.JSX.Element | null {
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isClosedByInactivity, setIsClosedByInactivity] = useState(false);
+  const lastActivityRef = useRef<number>(Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const storageKey = user?.userId ? `topiclog_support_chat_${user.userId}` : null;
 
@@ -66,6 +70,14 @@ export function SupportChatWidget(): React.JSX.Element | null {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const lastM = parsed[parsed.length - 1];
+          const lastMTime = lastM ? new Date(lastM.created_at).getTime() : 0;
+          const isInactive = Date.now() - lastMTime >= INACTIVITY_TIMEOUT_MS;
+          const hasClosingMsg = lastM?.content === "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.";
+
+          if (isInactive || hasClosingMsg) {
+            setIsClosedByInactivity(true);
+          }
           setMessages(parsed);
         }
       }
@@ -83,16 +95,46 @@ export function SupportChatWidget(): React.JSX.Element | null {
         if (data.ticket) {
           setTicket(data.ticket);
         }
-        // REGRA CRÍTICA: Só atualiza mensagens se o servidor retornou mensagens reais.
-        // Se o servidor retornou array vazio temporário, NÃO apaga o histórico que o usuário já vê!
-        if (Array.isArray(data.messages) && data.messages.length > 0) {
-          updateMessages(data.messages);
+
+        if (Array.isArray(data.messages)) {
+          if (data.messages.length === 0) {
+            // Se o servidor já encerrou a conversa, limpar localmente
+            if (isClosedByInactivity) {
+              updateMessages([]);
+            }
+          } else {
+            const lastM = data.messages[data.messages.length - 1];
+            const lastMTime = lastM ? new Date(lastM.created_at).getTime() : 0;
+            const isInactive = Date.now() - lastMTime >= INACTIVITY_TIMEOUT_MS;
+            const hasClosingMsg = lastM?.content === "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.";
+
+            if (isInactive && !hasClosingMsg) {
+              setIsClosedByInactivity(true);
+              const closingMsg: SupportMessage = {
+                id: `inactivity_${Date.now()}`,
+                ticket_id: data.ticket?.id || "closed",
+                sender_type: "ai_agent",
+                content: "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.",
+                created_at: new Date().toISOString(),
+              };
+              updateMessages([...data.messages, closingMsg]);
+              void fetch(
+                `/api/support/ticket?userId=${encodeURIComponent(user.userId)}&reason=inactivity`,
+                { method: "DELETE" },
+              );
+            } else {
+              if (hasClosingMsg) {
+                setIsClosedByInactivity(true);
+              }
+              updateMessages(data.messages);
+            }
+          }
         }
       }
     } catch (err) {
       console.warn("[SupportChatWidget] Falha ao carregar mensagens:", err);
     }
-  }, [user?.userId, updateMessages]);
+  }, [user?.userId, updateMessages, isClosedByInactivity]);
 
   const handleClearChat = async () => {
     if (!user?.userId || isClearing || isSending || messages.length === 0) return;
@@ -103,18 +145,21 @@ export function SupportChatWidget(): React.JSX.Element | null {
 
     setIsClearing(true);
     try {
-      const res = await fetch(`/api/support/ticket?userId=${encodeURIComponent(user.userId)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/support/ticket?userId=${encodeURIComponent(user.userId)}&reason=user_clear`,
+        { method: "DELETE" },
+      );
       if (!res.ok) {
         // Fallback via POST
         await fetch("/api/support/ticket", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: user.userId, action: "clear" }),
+          body: JSON.stringify({ userId: user.userId, action: "clear", reason: "user_clear" }),
         });
       }
       setTicket(null);
+      setIsClosedByInactivity(false);
+      lastActivityRef.current = Date.now();
       updateMessages([]);
     } catch (err) {
       console.error("[SupportChatWidget] Erro ao limpar conversa:", err);
@@ -123,9 +168,42 @@ export function SupportChatWidget(): React.JSX.Element | null {
     }
   };
 
+  // Monitorar inatividade em tempo real (a cada 4s) enquanto o chat estiver aberto
+  useEffect(() => {
+    if (!isOpen || !user?.userId || messages.length === 0 || isClosedByInactivity) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const lastMsg = messages[messages.length - 1];
+      const lastMsgTime = lastMsg ? new Date(lastMsg.created_at).getTime() : 0;
+      const lastActive = Math.max(lastActivityRef.current, lastMsgTime);
+
+      if (now - lastActive >= INACTIVITY_TIMEOUT_MS) {
+        setIsClosedByInactivity(true);
+        const closingMsg: SupportMessage = {
+          id: `inactivity_${Date.now()}`,
+          ticket_id: ticket?.id || "closed",
+          sender_type: "ai_agent",
+          content: "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.",
+          created_at: new Date().toISOString(),
+        };
+
+        updateMessages((prev) => [...prev, closingMsg]);
+
+        void fetch(
+          `/api/support/ticket?userId=${encodeURIComponent(user.userId)}&reason=inactivity`,
+          { method: "DELETE" },
+        );
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, user?.userId, messages, isClosedByInactivity, ticket?.id, updateMessages]);
+
   // Carregar histórico ao abrir
   useEffect(() => {
     if (isOpen && user?.userId) {
+      lastActivityRef.current = Date.now();
       setIsLoadingHistory(true);
       loadTicketAndMessages().finally(() => {
         setIsLoadingHistory(false);
@@ -181,7 +259,21 @@ export function SupportChatWidget(): React.JSX.Element | null {
       created_at: new Date().toISOString(),
     };
 
-    updateMessages((prev) => [...prev, tempMsg]);
+    const lastMsg = messages[messages.length - 1];
+    const isClosed =
+      isClosedByInactivity ||
+      lastMsg?.content === "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.";
+
+    lastActivityRef.current = Date.now();
+    setIsClosedByInactivity(false);
+
+    if (isClosed) {
+      // Inicia novo ciclo de conversa: apenas a nova mensagem fica na tela
+      updateMessages([tempMsg]);
+    } else {
+      updateMessages((prev) => [...prev, tempMsg]);
+    }
+
     setInputText("");
     setIsSending(true);
 
@@ -425,6 +517,42 @@ export function SupportChatWidget(): React.JSX.Element | null {
               messages.map((msg) => {
                 const isUser = msg.sender_type === "user";
                 const isHuman = msg.sender_type === "human_agent";
+                const isInactivity =
+                  msg.content === "Devido a inatividade por mais de 3 minutos este chat está sendo encerrado.";
+
+                if (isInactivity) {
+                  return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        margin: "10px 0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: "12px",
+                          backgroundColor: "#FEF3C7",
+                          border: "1px solid #FCD34D",
+                          color: "#92400E",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          textAlign: "center",
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <span>⏳</span>
+                        <span>{msg.content}</span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={msg.id}
@@ -492,8 +620,11 @@ export function SupportChatWidget(): React.JSX.Element | null {
             <input
               type="text"
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Digite sua dúvida ou mensagem..."
+              onChange={(e) => {
+                setInputText(e.target.value);
+                lastActivityRef.current = Date.now();
+              }}
+              placeholder={isClosedByInactivity ? "Digite para iniciar um novo atendimento..." : "Digite sua dúvida ou mensagem..."}
               disabled={isSending}
               style={{
                 flex: 1,
